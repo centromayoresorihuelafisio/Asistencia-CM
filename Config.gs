@@ -1,0 +1,146 @@
+/**
+ * Config.gs — Nombres de hojas, columnas y valores fijos.
+ * Es el ÚNICO sitio donde se escriben los nombres de hojas y columnas.
+ * El resto del código los usa siempre desde aquí.
+ */
+
+const ZONA_HORARIA = 'Europe/Madrid';
+
+const HOJAS = {
+  MONITORAS: 'Monitoras',
+  TALLERES: 'Talleres',
+  GRUPOS: 'Grupos',
+  USUARIOS: 'Usuarios',
+  INSCRIPCIONES: 'Inscripciones',
+  SESIONES: 'Sesiones',
+  ASISTENCIA: 'Asistencia',
+  ESTADOS: 'Estados',
+  LISTAS: 'Listas',
+  CONFIG: 'Config',
+  DIAS_ESPECIALES: 'Dias especiales'
+};
+
+/**
+ * Columnas de cada hoja, en orden.
+ * - texto: columnas con formato de texto (@) para no perder ceros ni convertir valores.
+ * - fecha: fechas reales en la hoja; viajan como texto yyyy-MM-dd.
+ * - fechaHora: fecha y hora de guardado.
+ */
+const ESQUEMA = {
+  [HOJAS.MONITORAS]: {
+    columnas: ['email', 'nombre', 'rol', 'activa'],
+    texto: ['email']
+  },
+  [HOJAS.TALLERES]: {
+    columnas: ['taller_id', 'nombre', 'activo'],
+    texto: ['taller_id']
+  },
+  [HOJAS.GRUPOS]: {
+    columnas: ['grupo_id', 'taller_id', 'nombre', 'monitoras', 'dias', 'hora', 'curso', 'activo'],
+    texto: ['grupo_id', 'taller_id', 'dias', 'hora', 'curso']
+  },
+  [HOJAS.USUARIOS]: {
+    columnas: ['usuario_id', 'nombre', 'telefono', 'activo'],
+    texto: ['usuario_id', 'telefono']
+  },
+  [HOJAS.INSCRIPCIONES]: {
+    columnas: ['inscripcion_id', 'usuario_id', 'grupo_id', 'fecha_alta', 'fecha_baja', 'motivo_baja'],
+    texto: ['inscripcion_id', 'usuario_id', 'grupo_id'],
+    fecha: ['fecha_alta', 'fecha_baja']
+  },
+  [HOJAS.SESIONES]: {
+    columnas: ['fecha', 'grupo_id', 'estado', 'nota', 'registrada_por', 'timestamp'],
+    texto: ['grupo_id'],
+    fecha: ['fecha'],
+    fechaHora: ['timestamp']
+  },
+  [HOJAS.ASISTENCIA]: {
+    columnas: ['clave', 'fecha', 'grupo_id', 'usuario_id', 'estado', 'taller', 'grupo', 'mes',
+      'observaciones', 'registrada_por', 'timestamp'],
+    texto: ['clave', 'grupo_id', 'usuario_id', 'estado', 'mes'],
+    fecha: ['fecha'],
+    fechaHora: ['timestamp']
+  },
+  [HOJAS.ESTADOS]: {
+    columnas: ['codigo', 'etiqueta', 'tipo', 'color', 'activo'],
+    texto: ['codigo', 'color']
+  },
+  [HOJAS.LISTAS]: {
+    columnas: ['lista', 'valor'],
+    texto: ['lista']
+  },
+  [HOJAS.CONFIG]: {
+    columnas: ['clave', 'valor'],
+    texto: ['clave']
+  },
+  // Días sin clase: festivos, asuntos propios, vacaciones… grupo_id vacío = afecta a todos los grupos.
+  [HOJAS.DIAS_ESPECIALES]: {
+    columnas: ['fecha', 'tipo', 'descripcion', 'grupo_id'],
+    texto: ['grupo_id'],
+    fecha: ['fecha']
+  }
+};
+
+const SI = 'SI';
+const NO = 'NO';
+
+const ROL = { ADMIN: 'admin', MONITORA: 'monitora' };
+
+const TIPO_ESTADO = { PRESENTE: 'presente', AUSENTE: 'ausente', NEUTRO: 'neutro' };
+
+const ESTADO_SESION = { REALIZADA: 'realizada', CANCELADA: 'cancelada' };
+
+// Estado con el que empieza cada usuario en un pase de lista nuevo.
+const ESTADO_POR_DEFECTO = 'ASI';
+
+const LISTA_MOTIVO_BAJA = 'motivo_baja';
+const LISTA_TIPO_DIA = 'tipo_dia';
+
+// Motivo reservado para la acción «Cambiar de grupo».
+const MOTIVO_CAMBIO_GRUPO = 'Cambio de grupo';
+
+// Letra de cada día de la semana. El índice es el de Date.getDay() (0 = domingo).
+const LETRAS_DIAS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+
+const CLAVES_CONFIG = {
+  CURSO: 'curso_activo',
+  INICIO: 'inicio_curso',
+  FIN: 'fin_curso',
+  DIAS_PENDIENTES: 'dias_pendientes'
+};
+
+const DIAS_PENDIENTES_POR_DEFECTO = 14;
+
+// Cabeceras que se reconocen al importar (comparadas en mayúsculas y sin tildes).
+const IMPORTAR_CABECERA_ID = ['ID'];
+const IMPORTAR_CABECERA_NOMBRE = ['USUARIO', 'NOMBRE', 'APELLIDOS NOMBRE', 'APELLIDO APELLIDO NOMBRE'];
+const IMPORTAR_CABECERA_TELEFONO = ['TELEFONO', 'TFNO', 'TLF'];
+
+// Datos que crea setup() la primera vez (solo si la hoja está vacía).
+const DATOS_INICIALES = {
+  estados: [
+    { codigo: 'ASI', etiqueta: 'Asistió', tipo: TIPO_ESTADO.PRESENTE, color: '#2e7d32', activo: SI },
+    { codigo: 'NOJ', etiqueta: 'No asistió', tipo: TIPO_ESTADO.AUSENTE, color: '#c62828', activo: SI },
+    { codigo: 'JUS', etiqueta: 'Justificada', tipo: TIPO_ESTADO.AUSENTE, color: '#f9a825', activo: SI },
+    { codigo: 'EVE', etiqueta: 'Evento', tipo: TIPO_ESTADO.NEUTRO, color: '#1565c0', activo: SI }
+  ],
+  listas: [
+    { lista: LISTA_MOTIVO_BAJA, valor: MOTIVO_CAMBIO_GRUPO },
+    { lista: LISTA_MOTIVO_BAJA, valor: 'Cambio de domicilio' },
+    { lista: LISTA_MOTIVO_BAJA, valor: 'Motivos de salud' },
+    { lista: LISTA_MOTIVO_BAJA, valor: 'Motivos personales' },
+    { lista: LISTA_MOTIVO_BAJA, valor: 'Otros' },
+    { lista: LISTA_TIPO_DIA, valor: 'Festivo' },
+    { lista: LISTA_TIPO_DIA, valor: 'Asunto propio' },
+    { lista: LISTA_TIPO_DIA, valor: 'Vacaciones' },
+    { lista: LISTA_TIPO_DIA, valor: 'Otro' }
+  ],
+  config: [
+    { clave: CLAVES_CONFIG.CURSO, valor: '2026-2027' },
+    { clave: CLAVES_CONFIG.INICIO, valor: '2026-09-01', esFecha: true },
+    { clave: CLAVES_CONFIG.FIN, valor: '2027-06-30', esFecha: true },
+    { clave: CLAVES_CONFIG.DIAS_PENDIENTES, valor: String(DIAS_PENDIENTES_POR_DEFECTO) }
+  ],
+  taller: { taller_id: 'YOGA', nombre: 'Yoga', activo: SI },
+  grupo: { grupo_id: 'YOGA-SUELO-LX', taller_id: 'YOGA', nombre: 'Yoga suelo', dias: 'L,X', hora: '10:00', activo: SI }
+};

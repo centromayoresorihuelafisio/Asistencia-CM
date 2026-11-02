@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <title>Asistencia talleres</title>
+    <?!= include('Estilos'); ?>
+  </head>
+  <body>
+    <header class="barra" id="barra">
+      <button type="button" class="barra-volver oculto" id="btnVolver" aria-label="Volver">
+        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="barra-titulo">
+        <div class="barra-principal" id="barraTitulo">Asistencia</div>
+        <div class="barra-sub" id="barraSub"></div>
+      </div>
+    </header>
+
+    <main id="vista" class="vista">
+      <p class="vacio">Cargando…</p>
+    </main>
+
+    <div id="pie" class="pie oculto"></div>
+
+    <div id="fondoPanel" class="fondo-panel oculto"></div>
+    <section id="panel" class="panel oculto" role="dialog" aria-modal="true"></section>
+
+    <div id="cargando" class="cargando oculto" aria-live="polite">
+      <div class="girador"></div>
+    </div>
+
+    <div id="aviso" class="aviso oculto" role="status"></div>
+
+    <?!= include('Cliente'); ?>
+  </body>
+</html>

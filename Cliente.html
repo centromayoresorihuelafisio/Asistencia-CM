@@ -1,0 +1,636 @@
+<script>
+  (function () {
+    'use strict';
+
+    // ---------- Estado de la app ----------
+    const app = {
+      init: null,        // datos de api_init
+      fecha: null,       // fecha elegida en Inicio (yyyy-MM-dd)
+      vista: 'inicio',
+      pase: null,        // pase de lista abierto
+      grupo: null,       // gestión de grupo abierta
+      pestana: 'lista',
+      busqueda: 0        // nº de la última búsqueda (para ignorar respuestas viejas)
+    };
+
+    const $ = function (id) { return document.getElementById(id); };
+
+    // ---------- Utilidades ----------
+
+    function esc(texto) {
+      return String(texto == null ? '' : texto)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+    const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
+      'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+    function aFecha(texto) {
+      const p = String(texto).split('-').map(Number);
+      return new Date(p[0], p[1] - 1, p[2]);
+    }
+    function fechaLarga(texto) {
+      const d = aFecha(texto);
+      return DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()];
+    }
+    function fechaCorta(texto) {
+      const d = aFecha(texto);
+      return DIAS[d.getDay()].substring(0, 3) + ' ' + d.getDate() + ' ' + MESES[d.getMonth()].substring(0, 3);
+    }
+    function fechaNumerica(texto) {
+      if (!texto) return '';
+      const p = String(texto).substring(0, 10).split('-');
+      return p[2] + '/' + p[1] + '/' + p[0];
+    }
+    function fechaHora(texto) {
+      if (!texto) return '';
+      return fechaNumerica(texto) + ' ' + String(texto).substring(11, 16);
+    }
+
+    /** Color de texto legible sobre un color de fondo (#rrggbb). */
+    function colorTexto(fondo) {
+      const m = /^#?([0-9a-f]{6})$/i.exec(String(fondo || '').trim());
+      if (!m) return '#000';
+      const n = parseInt(m[1], 16);
+      const luz = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+      return luz > 0.6 ? '#000' : '#fff';
+    }
+
+    function estadoInfo(codigo) {
+      const e = (app.init.estados || []).find(function (x) { return x.codigo === codigo; });
+      return e || { codigo: codigo, etiqueta: codigo, color: '#9e9e9e' };
+    }
+    function estiloEstado(codigo) {
+      const e = estadoInfo(codigo);
+      return 'background:' + esc(e.color) + ';color:' + colorTexto(e.color);
+    }
+
+    const ICONO_TELEFONO = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg>';
+
+    function enlaceLlamar(telefono) {
+      if (!telefono) return '';
+      return '<a class="llamar" href="tel:' + esc(telefono) + '" aria-label="Llamar al ' + esc(telefono) + '">' + ICONO_TELEFONO + '</a>';
+    }
+
+    // ---------- Servidor ----------
+
+    let llamadasEnCurso = 0;
+    let temporizadorCarga = null;
+
+    function cargando(sumar) {
+      llamadasEnCurso += sumar;
+      if (llamadasEnCurso > 0 && !temporizadorCarga) {
+        temporizadorCarga = setTimeout(function () { $('cargando').classList.remove('oculto'); }, 150);
+      }
+      if (llamadasEnCurso <= 0) {
+        llamadasEnCurso = 0;
+        clearTimeout(temporizadorCarga);
+        temporizadorCarga = null;
+        $('cargando').classList.add('oculto');
+      }
+    }
+
+    /** Llama a una función api_* y devuelve una promesa con sus datos. */
+    function llamar(funcion) {
+      const args = Array.prototype.slice.call(arguments, 1);
+      return llamarSinCarga(true, funcion, args);
+    }
+    function llamarSinCarga(conCarga, funcion, args) {
+      if (conCarga) cargando(1);
+      return new Promise(function (resolver, rechazar) {
+        const runner = google.script.run
+          .withSuccessHandler(function (r) {
+            if (conCarga) cargando(-1);
+            if (r && r.ok) resolver(r.data);
+            else rechazar(new Error((r && r.error) || 'Respuesta no válida del servidor.'));
+          })
+          .withFailureHandler(function () {
+            if (conCarga) cargando(-1);
+            rechazar(new Error('No se ha podido conectar con el servidor. Comprueba la conexión e inténtalo de nuevo.'));
+          });
+        runner[funcion].apply(runner, args);
+      });
+    }
+
+    let temporizadorAviso = null;
+    function aviso(texto, esError) {
+      const a = $('aviso');
+      a.textContent = texto;
+      a.classList.toggle('error', !!esError);
+      a.classList.remove('oculto');
+      clearTimeout(temporizadorAviso);
+      temporizadorAviso = setTimeout(function () { a.classList.add('oculto'); }, esError ? 7000 : 3500);
+    }
+
+    // ---------- Panel inferior ----------
+
+    function abrirPanel(html) {
+      $('panel').innerHTML = html;
+      $('panel').classList.remove('oculto');
+      $('fondoPanel').classList.remove('oculto');
+      $('panel').scrollTop = 0;
+    }
+    function cerrarPanel() {
+      $('panel').classList.add('oculto');
+      $('fondoPanel').classList.add('oculto');
+      $('panel').innerHTML = '';
+    }
+
+    // ---------- Barra y pie ----------
+
+    function barra(titulo, sub, conVolver) {
+      $('barraTitulo').textContent = titulo;
+      $('barraSub').textContent = sub || '';
+      $('btnVolver').classList.toggle('oculto', !conVolver);
+    }
+    function pie(html) {
+      $('pie').innerHTML = html || '';
+      $('pie').classList.toggle('oculto', !html);
+      $('vista').classList.toggle('con-pie', !!html);
+    }
+
+    // ---------- Inicio ----------
+
+    function irInicio() {
+      app.vista = 'inicio';
+      app.pase = null;
+      app.grupo = null;
+      cerrarPanel();
+      pie('');
+      barra('Hola, ' + app.init.monitora.nombre, app.init.curso ? 'Curso ' + app.init.curso : '', false);
+      llamar('api_inicio', app.fecha).then(pintarInicio).catch(function (e) {
+        $('vista').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>';
+      });
+    }
+
+    function etiquetaSesion(g) {
+      if (g.estadoSesion === 'realizada') return '<span class="etiqueta realizada">Lista pasada</span>';
+      if (g.estadoSesion === 'cancelada') return '<span class="etiqueta cancelada">Cancelada</span>';
+      if (g.diaEspecial) return '<span class="etiqueta especial">' + esc(g.diaEspecial.tipo || 'Sin clase') + '</span>';
+      return '<span class="etiqueta pendiente">Pendiente</span>';
+    }
+
+    function pintarInicio(d) {
+      if (app.vista !== 'inicio') return;
+      let html = '<div class="selector-fecha"><label for="fechaInicio">Fecha</label>' +
+        '<input type="date" id="fechaInicio" value="' + esc(app.fecha) + '" max="' + esc(d.hoy) + '"></div>';
+
+      if (d.pendientes.length) {
+        html += '<h2 class="seccion peligro">Pendientes (' + d.pendientes.length + ')</h2>';
+        d.pendientes.forEach(function (p) {
+          html += '<button type="button" class="tarjeta pendiente" data-accion="pase" data-grupo="' + esc(p.grupo_id) +
+            '" data-fecha="' + esc(p.fecha) + '"><div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(p.nombre) +
+            '</div><div class="tarjeta-detalle">' + esc(p.taller) + ' · ' + esc(fechaCorta(p.fecha)) + '</div></div></button>';
+        });
+      }
+
+      html += '<h2 class="seccion">' + (d.fecha === d.hoy ? 'Hoy' : esc(fechaLarga(d.fecha))) + '</h2>';
+      if (!d.grupos.length) {
+        html += '<p class="vacio">No hay clases este día.</p>';
+      } else {
+        let tallerActual = null;
+        d.grupos.forEach(function (g) {
+          if (g.taller !== tallerActual) {
+            tallerActual = g.taller;
+            html += '<h3 class="taller">' + esc(g.taller) + '</h3>';
+          }
+          html += '<button type="button" class="tarjeta" data-accion="pase" data-grupo="' + esc(g.grupo_id) +
+            '" data-fecha="' + esc(d.fecha) + '"><div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(g.nombre) +
+            '</div><div class="tarjeta-detalle">' + (g.hora ? esc(g.hora) + ' · ' : '') + g.inscritos + ' usuarios</div></div>' +
+            etiquetaSesion(g) + '</button>';
+        });
+      }
+
+      html += '<details class="plegable"><summary>Mis grupos (' + app.init.grupos.length + ')</summary>';
+      if (!app.init.grupos.length) html += '<p class="vacio">No tienes grupos asignados.</p>';
+      app.init.grupos.forEach(function (g) {
+        html += '<div class="grupo-fila"><div class="tarjeta-titulo">' + esc(g.nombre) + '</div>' +
+          '<div class="tarjeta-detalle">' + esc(g.taller) + ' · ' + esc(g.dias) + (g.hora ? ' · ' + esc(g.hora) : '') + '</div>' +
+          '<div class="botones"><button type="button" class="boton" data-accion="pase" data-grupo="' + esc(g.grupo_id) +
+          '" data-fecha="' + esc(d.fecha) + '">Pasar lista</button>' +
+          '<button type="button" class="boton" data-accion="grupo" data-grupo="' + esc(g.grupo_id) + '">Gestionar</button></div></div>';
+      });
+      html += '</details>';
+
+      $('vista').innerHTML = html;
+      window.scrollTo(0, 0);
+    }
+
+    // ---------- Pase de lista ----------
+
+    function claveBorrador(grupoId, fecha) { return grupoId + '|' + fecha; }
+
+    function leerBorrador(clave) {
+      try { return JSON.parse(window.localStorage.getItem(clave) || 'null'); } catch (e) { return null; }
+    }
+    function guardarBorrador() {
+      const p = app.pase;
+      if (!p) return;
+      const usuarios = {};
+      p.usuarios.forEach(function (u) { usuarios[u.usuario_id] = { estado: u.estado, observaciones: u.observaciones }; });
+      try {
+        window.localStorage.setItem(claveBorrador(p.grupo.grupo_id, p.fecha), JSON.stringify({ usuarios: usuarios, nota: p.nota }));
+      } catch (e) { /* sin localStorage: se ignora */ }
+    }
+    function borrarBorrador(grupoId, fecha) {
+      try { window.localStorage.removeItem(claveBorrador(grupoId, fecha)); } catch (e) { /* se ignora */ }
+    }
+
+    function abrirPase(grupoId, fecha) {
+      llamar('api_sesion', grupoId, fecha).then(function (d) {
+        d.nota = d.sesion ? (d.sesion.nota || '') : '';
+        d.borradorRecuperado = false;
+        const b = leerBorrador(claveBorrador(grupoId, fecha));
+        if (b && b.usuarios) {
+          d.usuarios.forEach(function (u) {
+            const g = b.usuarios[u.usuario_id];
+            if (g) { u.estado = g.estado; u.observaciones = g.observaciones || ''; }
+          });
+          if (typeof b.nota === 'string') d.nota = b.nota;
+          d.borradorRecuperado = true;
+        }
+        app.vista = 'pase';
+        app.pase = d;
+        pintarPase();
+      }).catch(function (e) { aviso(e.message, true); });
+    }
+
+    function pintarPase() {
+      const p = app.pase;
+      barra(p.grupo.nombre, fechaLarga(p.fecha), true);
+      let html = '<div class="avisos-sesion">';
+      if (p.borradorRecuperado) html += '<div class="banda info">Se han recuperado cambios sin guardar de la última vez.</div>';
+      if (p.diaEspecial) {
+        html += '<div class="banda especial">Día sin clase: ' + esc(p.diaEspecial.tipo || '') +
+          (p.diaEspecial.descripcion ? ' – ' + esc(p.diaEspecial.descripcion) : '') +
+          '. Si aun así hubo clase, puedes pasar lista.</div>';
+      }
+      if (p.sesion && p.sesion.estado === 'realizada') {
+        html += '<div class="banda realizada">Lista guardada el ' + esc(fechaHora(p.sesion.timestamp)) + '. Puedes corregirla y volver a guardar.</div>';
+      }
+      if (p.sesion && p.sesion.estado === 'cancelada') {
+        html += '<div class="banda cancelada">Sesión cancelada' + (p.sesion.nota ? ': ' + esc(p.sesion.nota) : '') +
+          '. Si guardas la lista, volverá a contar como realizada.</div>';
+      }
+      html += '</div>';
+
+      if (!p.usuarios.length) {
+        html += '<p class="vacio">No hay usuarios inscritos en este grupo en esta fecha.</p>';
+      } else {
+        html += '<button type="button" class="boton ancho" data-accion="aplicar-todos" style="margin-bottom:10px">Aplicar un estado a todos…</button>';
+        html += '<div id="listaUsuarios">' + p.usuarios.map(filaUsuario).join('') + '</div>';
+      }
+      html += '<div class="campo" style="margin-top:14px"><label for="notaSesion">Nota de la sesión (opcional)</label>' +
+        '<textarea id="notaSesion" rows="2">' + esc(p.nota) + '</textarea></div>';
+      $('vista').innerHTML = html;
+      pintarPiePase();
+      window.scrollTo(0, 0);
+    }
+
+    function filaUsuario(u, i) {
+      const e = estadoInfo(u.estado);
+      return '<div class="fila-usuario" data-accion="usuario" data-indice="' + i + '" id="fila' + i + '">' +
+        '<div class="nombre">' + esc(u.nombre) + (u.observaciones ? '<span class="obs">' + esc(u.observaciones) + '</span>' : '') + '</div>' +
+        '<span class="chip" style="' + estiloEstado(u.estado) + '">' + esc(e.etiqueta) + '</span>' +
+        enlaceLlamar(u.telefono) + '</div>';
+    }
+
+    function contadores() {
+      const cuenta = {};
+      app.pase.usuarios.forEach(function (u) { cuenta[u.estado] = (cuenta[u.estado] || 0) + 1; });
+      return cuenta;
+    }
+
+    function pintarPiePase() {
+      const cuenta = contadores();
+      let html = '<div class="contadores">';
+      app.init.estados.concat(Object.keys(cuenta).filter(function (c) {
+        return !app.init.estados.some(function (e) { return e.codigo === c; });
+      }).map(estadoInfo)).forEach(function (e) {
+        if (!cuenta[e.codigo]) return;
+        html += '<span class="chip" style="' + estiloEstado(e.codigo) + '">' + esc(e.etiqueta) + ': ' + cuenta[e.codigo] + '</span>';
+      });
+      html += '</div><div class="botones">' +
+        '<button type="button" class="boton peligro" data-accion="cancelar-sesion">Sesión cancelada</button>' +
+        '<button type="button" class="boton primario" data-accion="guardar"' + (app.pase.usuarios.length ? '' : ' disabled') + '>Guardar</button></div>';
+      pie(html);
+    }
+
+    function botonesEstados(accion) {
+      return '<div class="opciones-estado">' + app.init.estados.map(function (e) {
+        return '<button type="button" class="opcion-estado" data-accion="' + accion + '" data-estado="' + esc(e.codigo) +
+          '" style="' + estiloEstado(e.codigo) + '">' + esc(e.etiqueta) + '</button>';
+      }).join('') + '</div>';
+    }
+
+    function abrirPanelUsuario(i) {
+      const u = app.pase.usuarios[i];
+      app.pase.indice = i;
+      abrirPanel('<div><h3>' + esc(u.nombre) + '</h3>' +
+        botonesEstados('elegir-estado').replace('data-estado="' + esc(u.estado) + '"', 'data-estado="' + esc(u.estado) + '" data-elegido="1"') +
+        '<div class="campo"><label for="obsUsuario">Observaciones</label><textarea id="obsUsuario" rows="2">' + esc(u.observaciones) + '</textarea></div>' +
+        '<button type="button" class="boton ancho" data-accion="cerrar-usuario">Hecho</button></div>');
+      const elegido = $('panel').querySelector('[data-elegido]');
+      if (elegido) elegido.classList.add('elegido');
+    }
+
+    function cerrarPanelUsuario(nuevoEstado) {
+      const p = app.pase;
+      const u = p.usuarios[p.indice];
+      if (nuevoEstado) u.estado = nuevoEstado;
+      const obs = $('obsUsuario');
+      if (obs) u.observaciones = obs.value.trim();
+      cerrarPanel();
+      $('fila' + p.indice).outerHTML = filaUsuario(u, p.indice);
+      pintarPiePase();
+      guardarBorrador();
+    }
+
+    function abrirResumenGuardar() {
+      const cuenta = contadores();
+      let lista = '<ul class="resumen-lista">';
+      Object.keys(cuenta).forEach(function (c) {
+        lista += '<li><span>' + esc(estadoInfo(c).etiqueta) + '</span><strong>' + cuenta[c] + '</strong></li>';
+      });
+      lista += '<li><span>Total</span><strong>' + app.pase.usuarios.length + '</strong></li></ul>';
+      abrirPanel('<div><h3>¿Guardar la lista?</h3><p>' + esc(app.pase.grupo.nombre) + ' · ' + esc(fechaLarga(app.pase.fecha)) + '</p>' +
+        lista + '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
+        '<button type="button" class="boton primario" data-accion="confirmar-guardar" id="btnConfirmarGuardar">Sí, guardar</button></div></div>');
+    }
+
+    function guardarPase() {
+      const p = app.pase;
+      const payload = {
+        grupo_id: p.grupo.grupo_id,
+        fecha: p.fecha,
+        nota: p.nota,
+        registros: p.usuarios.map(function (u) {
+          return { usuario_id: u.usuario_id, estado: u.estado, observaciones: u.observaciones };
+        })
+      };
+      llamar('api_guardarSesion', payload).then(function () {
+        borrarBorrador(p.grupo.grupo_id, p.fecha);
+        aviso('Lista guardada.');
+        irInicio();
+      }).catch(function (e) {
+        aviso(e.message, true);
+        const b = $('btnConfirmarGuardar');
+        if (b) b.textContent = 'Reintentar';
+      });
+    }
+
+    function abrirCancelarSesion() {
+      abrirPanel('<div><h3>¿Marcar la sesión como cancelada?</h3>' +
+        '<p>No contará como clase realizada y se borrarán las marcas guardadas de este día.</p>' +
+        '<div class="campo"><label for="motivoCancelar">Motivo (opcional)</label><textarea id="motivoCancelar" rows="2"></textarea></div>' +
+        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">No</button>' +
+        '<button type="button" class="boton peligro-lleno" data-accion="confirmar-cancelar">Sí, cancelar</button></div></div>');
+    }
+
+    function cancelarPase() {
+      const p = app.pase;
+      llamar('api_cancelarSesion', p.grupo.grupo_id, p.fecha, $('motivoCancelar').value.trim()).then(function () {
+        borrarBorrador(p.grupo.grupo_id, p.fecha);
+        aviso('Sesión marcada como cancelada.');
+        irInicio();
+      }).catch(function (e) { aviso(e.message, true); });
+    }
+
+    // ---------- Gestión del grupo ----------
+
+    function abrirGrupo(grupoId, pestana) {
+      llamar('api_grupo', grupoId).then(function (d) {
+        app.vista = 'grupo';
+        app.grupo = d;
+        app.pestana = pestana || 'lista';
+        pie('');
+        cerrarPanel();
+        pintarGrupo();
+      }).catch(function (e) { aviso(e.message, true); });
+    }
+
+    function pintarGrupo() {
+      const d = app.grupo;
+      barra(d.grupo.nombre, d.grupo.taller + ' · ' + d.inscritos.length + ' inscritos', true);
+      const pestanas = [['lista', 'Lista'], ['alta', 'Alta'], ['baja', 'Baja']];
+      let html = '<div class="pestanas">' + pestanas.map(function (p) {
+        return '<button type="button" class="pestana' + (app.pestana === p[0] ? ' activa' : '') + '" data-accion="pestana" data-pestana="' +
+          p[0] + '">' + p[1] + '</button>';
+      }).join('') + '</div>';
+
+      if (app.pestana === 'lista') html += htmlLista(d);
+      if (app.pestana === 'alta') html += htmlAlta();
+      if (app.pestana === 'baja') html += htmlBaja(d);
+      $('vista').innerHTML = html;
+      window.scrollTo(0, 0);
+    }
+
+    function htmlLista(d) {
+      if (!d.inscritos.length) return '<p class="vacio">Todavía no hay usuarios inscritos.</p>';
+      return d.inscritos.map(function (u) {
+        return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(u.nombre) + '</strong></div>' +
+          '<div class="sub">ID ' + esc(u.usuario_id) + ' · alta ' + esc(fechaNumerica(u.fecha_alta)) +
+          (u.fecha_baja ? ' · baja ' + esc(fechaNumerica(u.fecha_baja)) : '') + '</div></div>' + enlaceLlamar(u.telefono) + '</div>';
+      }).join('');
+    }
+
+    function htmlAlta() {
+      return '<div class="bloque"><h3>Inscribir a un usuario</h3>' +
+        '<div class="campo"><label for="fechaAlta">Fecha de alta</label><input type="date" id="fechaAlta" value="' + esc(app.init.hoy) + '"></div>' +
+        '<div class="campo"><label for="textoBuscar">Buscar por ID o por nombre</label>' +
+        '<input type="search" id="textoBuscar" autocomplete="off" placeholder="Ej.: 1498 o GARCIA"></div>' +
+        '<div id="resultadosBusqueda"></div></div>' +
+        '<div class="bloque"><h3>¿No aparece?</h3>' +
+        '<div class="campo"><label for="nuevoId">ID del centro</label><input type="text" id="nuevoId" autocomplete="off"></div>' +
+        '<div class="campo"><label for="nuevoNombre">Apellidos y nombre</label><input type="text" id="nuevoNombre" autocomplete="off" placeholder="APELLIDO APELLIDO NOMBRE"></div>' +
+        '<div class="campo"><label for="nuevoTelefono">Teléfono (opcional)</label><input type="tel" id="nuevoTelefono" autocomplete="off"></div>' +
+        '<button type="button" class="boton primario ancho" data-accion="crear-usuario">Crear usuario nuevo e inscribir</button></div>';
+    }
+
+    function htmlBaja(d) {
+      const activos = d.inscritos.filter(function (u) { return !u.fecha_baja; });
+      if (!activos.length) return '<p class="vacio">No hay usuarios para dar de baja.</p>';
+      const opcionesUsuario = '<option value="">— Elige un usuario —</option>' + activos.map(function (u) {
+        return '<option value="' + esc(u.inscripcion_id) + '">' + esc(u.nombre) + ' (' + esc(u.usuario_id) + ')</option>';
+      }).join('');
+      const opcionesMotivo = '<option value="">— Elige el motivo —</option>' + app.init.motivosBaja.map(function (m) {
+        return '<option>' + esc(m) + '</option>';
+      }).join('');
+      const opcionesDestino = '<option value="">— Elige el grupo nuevo —</option>' + d.destinos.map(function (g) {
+        return '<option value="' + esc(g.grupo_id) + '">' + esc(g.taller) + ' · ' + esc(g.nombre) + (g.dias ? ' (' + esc(g.dias) + ')' : '') + '</option>';
+      }).join('');
+
+      return '<div class="campo"><label for="bajaUsuario">Usuario</label><select id="bajaUsuario">' + opcionesUsuario + '</select></div>' +
+        '<div class="bloque"><h3>Dar de baja</h3>' +
+        '<div class="campo"><label for="fechaBaja">Último día en el grupo</label><input type="date" id="fechaBaja" value="' + esc(app.init.hoy) + '"></div>' +
+        '<div class="campo"><label for="motivoBaja">Motivo</label><select id="motivoBaja">' + opcionesMotivo + '</select></div>' +
+        '<button type="button" class="boton peligro ancho" data-accion="dar-baja">Dar de baja</button></div>' +
+        '<div class="bloque"><h3>Cambiar de grupo</h3>' +
+        '<div class="campo"><label for="grupoDestino">Grupo nuevo</label><select id="grupoDestino">' + opcionesDestino + '</select></div>' +
+        '<div class="campo"><label for="fechaCambio">Primer día en el grupo nuevo</label><input type="date" id="fechaCambio" value="' + esc(app.init.hoy) + '"></div>' +
+        '<button type="button" class="boton primario ancho" data-accion="cambiar-grupo">Cambiar de grupo</button></div>';
+    }
+
+    let temporizadorBusqueda = null;
+    function programarBusqueda() {
+      clearTimeout(temporizadorBusqueda);
+      temporizadorBusqueda = setTimeout(buscar, 450);
+    }
+
+    function buscar() {
+      const caja = $('textoBuscar');
+      if (!caja) return;
+      const texto = caja.value.trim();
+      const destino = $('resultadosBusqueda');
+      if (texto.length < 2) { destino.innerHTML = ''; return; }
+      const numero = ++app.busqueda;
+      destino.innerHTML = '<p class="vacio">Buscando…</p>';
+      llamarSinCarga(false, 'api_buscarUsuarios', [texto, app.grupo.grupo.grupo_id]).then(function (lista) {
+        if (numero !== app.busqueda || !$('resultadosBusqueda')) return;
+        if (!lista.length) {
+          $('resultadosBusqueda').innerHTML = '<p class="vacio">No se ha encontrado a nadie. Puedes crearlo abajo.</p>';
+          if (/^\S+$/.test(texto) && /\d/.test(texto)) $('nuevoId').value = texto.toUpperCase();
+          return;
+        }
+        $('resultadosBusqueda').innerHTML = lista.map(function (u) {
+          return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(u.nombre) + '</strong></div>' +
+            '<div class="sub">ID ' + esc(u.usuario_id) + '</div></div>' +
+            (u.enGrupo ? '<span class="etiqueta realizada">Ya está</span>'
+              : '<button type="button" class="boton primario" data-accion="inscribir" data-usuario="' + esc(u.usuario_id) + '">Inscribir</button>') +
+            '</div>';
+        }).join('');
+      }).catch(function (e) {
+        if (numero === app.busqueda && $('resultadosBusqueda')) $('resultadosBusqueda').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>';
+      });
+    }
+
+    function inscribir(datos) {
+      datos.fecha_alta = $('fechaAlta').value;
+      llamar('api_altaUsuario', app.grupo.grupo.grupo_id, datos).then(function (r) {
+        aviso((r.creado ? 'Usuario creado e inscrito: ' : 'Inscrito/a: ') + r.nombre);
+        abrirGrupo(app.grupo.grupo.grupo_id, 'alta');
+      }).catch(function (e) { aviso(e.message, true); });
+    }
+
+    function nombreInscripcion(inscripcionId) {
+      const u = app.grupo.inscritos.find(function (x) { return x.inscripcion_id === inscripcionId; });
+      return u ? u.nombre : '';
+    }
+
+    function pedirBaja() {
+      const insc = $('bajaUsuario').value;
+      const fecha = $('fechaBaja').value;
+      const motivo = $('motivoBaja').value;
+      if (!insc) return aviso('Elige primero el usuario.', true);
+      if (!fecha) return aviso('Indica la fecha de baja.', true);
+      if (!motivo) return aviso('Elige el motivo de la baja.', true);
+      app.grupo.accion = { tipo: 'baja', insc: insc, fecha: fecha, motivo: motivo };
+      abrirPanel('<div><h3>¿Dar de baja?</h3><p><strong>' + esc(nombreInscripcion(insc)) + '</strong><br>Último día: ' +
+        esc(fechaNumerica(fecha)) + '<br>Motivo: ' + esc(motivo) + '</p>' +
+        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">No</button>' +
+        '<button type="button" class="boton peligro-lleno" data-accion="confirmar-accion-grupo">Sí, dar de baja</button></div></div>');
+    }
+
+    function pedirCambio() {
+      const insc = $('bajaUsuario').value;
+      const destino = $('grupoDestino').value;
+      const fecha = $('fechaCambio').value;
+      if (!insc) return aviso('Elige primero el usuario.', true);
+      if (!destino) return aviso('Elige el grupo nuevo.', true);
+      if (!fecha) return aviso('Indica la fecha del cambio.', true);
+      const g = app.grupo.destinos.find(function (x) { return x.grupo_id === destino; });
+      app.grupo.accion = { tipo: 'cambio', insc: insc, destino: destino, fecha: fecha };
+      abrirPanel('<div><h3>¿Cambiar de grupo?</h3><p><strong>' + esc(nombreInscripcion(insc)) + '</strong><br>Pasa a: ' +
+        esc(g ? g.taller + ' · ' + g.nombre : destino) + '<br>Desde el ' + esc(fechaNumerica(fecha)) + '</p>' +
+        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">No</button>' +
+        '<button type="button" class="boton primario" data-accion="confirmar-accion-grupo">Sí, cambiar</button></div></div>');
+    }
+
+    function confirmarAccionGrupo() {
+      const a = app.grupo.accion;
+      const grupoId = app.grupo.grupo.grupo_id;
+      const promesa = a.tipo === 'baja'
+        ? llamar('api_baja', a.insc, a.fecha, a.motivo)
+        : llamar('api_cambiarGrupo', a.insc, a.destino, a.fecha);
+      promesa.then(function () {
+        aviso(a.tipo === 'baja' ? 'Baja registrada.' : 'Cambio de grupo registrado.');
+        abrirGrupo(grupoId, 'lista');
+      }).catch(function (e) { cerrarPanel(); aviso(e.message, true); });
+    }
+
+    // ---------- Eventos ----------
+
+    document.addEventListener('click', function (ev) {
+      if (ev.target.closest('a.llamar')) return;
+      const el = ev.target.closest('[data-accion]');
+      if (!el) return;
+      const accion = el.getAttribute('data-accion');
+      switch (accion) {
+        case 'pase': abrirPase(el.getAttribute('data-grupo'), el.getAttribute('data-fecha')); break;
+        case 'grupo': abrirGrupo(el.getAttribute('data-grupo')); break;
+        case 'usuario': abrirPanelUsuario(Number(el.getAttribute('data-indice'))); break;
+        case 'elegir-estado': cerrarPanelUsuario(el.getAttribute('data-estado')); break;
+        case 'cerrar-usuario': cerrarPanelUsuario(null); break;
+        case 'aplicar-todos':
+          abrirPanel('<div><h3>Aplicar a todos</h3><p>Se pondrá el mismo estado a todo el grupo. Después puedes cambiar casos sueltos.</p>' +
+            botonesEstados('aplicar-estado') + '<button type="button" class="boton ancho" data-accion="cerrar-panel">Cancelar</button></div>');
+          break;
+        case 'aplicar-estado':
+          app.pase.usuarios.forEach(function (u) { u.estado = el.getAttribute('data-estado'); });
+          cerrarPanel();
+          $('listaUsuarios').innerHTML = app.pase.usuarios.map(filaUsuario).join('');
+          pintarPiePase();
+          guardarBorrador();
+          break;
+        case 'guardar': abrirResumenGuardar(); break;
+        case 'confirmar-guardar': guardarPase(); break;
+        case 'cancelar-sesion': abrirCancelarSesion(); break;
+        case 'confirmar-cancelar': cancelarPase(); break;
+        case 'cerrar-panel': cerrarPanel(); break;
+        case 'pestana': app.pestana = el.getAttribute('data-pestana'); pintarGrupo(); break;
+        case 'inscribir': inscribir({ usuario_id: el.getAttribute('data-usuario') }); break;
+        case 'crear-usuario': {
+          const id = $('nuevoId').value.trim();
+          const nombre = $('nuevoNombre').value.trim();
+          if (!id || !nombre) { aviso('Escribe el ID y el nombre del usuario nuevo.', true); break; }
+          inscribir({ usuario_id: id, nombre: nombre, telefono: $('nuevoTelefono').value.trim() });
+          break;
+        }
+        case 'dar-baja': pedirBaja(); break;
+        case 'cambiar-grupo': pedirCambio(); break;
+        case 'confirmar-accion-grupo': confirmarAccionGrupo(); break;
+      }
+    });
+
+    document.addEventListener('input', function (ev) {
+      if (ev.target.id === 'textoBuscar') programarBusqueda();
+      if (ev.target.id === 'notaSesion' && app.pase) { app.pase.nota = ev.target.value; guardarBorrador(); }
+    });
+
+    document.addEventListener('change', function (ev) {
+      if (ev.target.id === 'fechaInicio' && ev.target.value) {
+        app.fecha = ev.target.value;
+        irInicio();
+      }
+    });
+
+    $('fondoPanel').addEventListener('click', function () {
+      if (app.vista === 'pase' && $('obsUsuario')) cerrarPanelUsuario(null);
+      else cerrarPanel();
+    });
+    $('btnVolver').addEventListener('click', irInicio);
+
+    // ---------- Arranque ----------
+
+    llamar('api_init').then(function (d) {
+      app.init = d;
+      app.fecha = d.hoy;
+      irInicio();
+    }).catch(function (e) {
+      barra('Asistencia', '', false);
+      $('vista').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>';
+    });
+  })();
+</script>

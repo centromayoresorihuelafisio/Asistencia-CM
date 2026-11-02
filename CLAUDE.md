@@ -19,7 +19,7 @@ Este documento es la especificación completa del proyecto. Léelo entero antes 
 | Arquitectura | Opción A: **Apps Script como app completa** (`HtmlService`), sin hosting externo |
 | Datos | Google Sheets, proyecto de Apps Script **vinculado a la hoja** (container-bound) |
 | Modo sin conexión | **No** en esta versión (limitación asumida de Apps Script) |
-| Identificación | Por **cuenta de Google** de cada monitora, sin PIN (ver sección 13: falta confirmar el tipo de cuenta) |
+| Identificación | Por **cuenta de Google** (Gmail personal), sin PIN. **Una copia de la hoja y de la app por monitora**: quien la despliega es admin de su copia (decidido el 2-nov-2026, sección 13) |
 | Terminología | Las personas que asisten a los talleres son **«usuarios»** en toda la app, hojas y código. El personal que pasa lista son **«monitoras»** |
 | ID de usuario | Se usa el **ID que ya asigna el centro** a cada usuario. No se genera ninguno propio |
 | Nombre del usuario | Una sola columna con formato `APELLIDOS NOMBRE`, en mayúsculas y sin espacios sobrantes |
@@ -143,13 +143,15 @@ Clave única: `fecha|grupo_id`.
 Las columnas `taller`, `grupo` y `mes` se escriben al guardar para que las tablas dinámicas funcionen sin búsquedas y el histórico no cambie si se renombra un grupo.
 
 ### Estados (editable por el admin)
+
+Columnas: `codigo`, `etiqueta`, `tipo`, `color` (`#rrggbb`) y `activo` (`SI`/`NO`). Un estado que deja de usarse se pone `activo = NO` en vez de borrarlo, para no romper el histórico. Datos iniciales (las letras son las que usaban las monitoras en sus Excel):
+
 | codigo | etiqueta | tipo | color (ejemplo) |
 |---|---|---|---|
-| ASI | Asistió | presente | verde |
-| JUS | Justificada | ausente | amarillo |
-| NOJ | No justificada | ausente | rojo |
-| EVE | Evento | neutro | azul |
-| EXC | Excursión | neutro | morado |
+| ASI | Asistió (antes «X») | presente | verde |
+| NOJ | No asistió (antes, casilla en blanco) | ausente | rojo |
+| JUS | Justificada (antes «J») | ausente | amarillo |
+| EVE | Evento (antes «E») | neutro | azul |
 
 `tipo` (`presente` / `ausente` / `neutro`) define cómo cuenta cada estado en las estadísticas. El estado por defecto de un pase de lista nuevo es `ASI`. Añadir un estado nuevo en la hoja no debe requerir tocar código.
 
@@ -159,13 +161,13 @@ Columnas `lista` y `valor`. Inicialmente, la lista `motivo_baja` con: Cambio de 
 ### Config
 Columnas `clave` y `valor`: `curso_activo`, `inicio_curso`, `fin_curso`, `dias_pendientes` (por defecto 14).
 
-### Festivos
-Columnas `fecha` y `descripcion`. La rellena el admin a mano con los festivos nacionales, autonómicos y locales de Orihuela que afecten a las clases. Se usa para no marcar como pendientes los días sin clase.
+### Dias especiales
+Columnas `fecha`, `tipo` (lista `tipo_dia`: Festivo, Asunto propio, Vacaciones, Otro), `descripcion` y `grupo_id` (vacío = afecta a todos los grupos). La rellena el admin a mano. Sustituye a las palabras escritas en vertical en los Excel antiguos («ASUNTO PROPIO»…). Un día especial no genera pendiente, y el pase de lista de ese día muestra un aviso (se puede pasar lista igualmente si hubo clase).
 
 ## 6. Reglas de negocio
 
 1. **Inscrito en una fecha**: `fecha_alta ≤ fecha` y (`fecha_baja` vacía o `fecha ≤ fecha_baja`).
-2. **Sesión esperada**: la letra del día de la semana está en `Grupos.dias`, la fecha está entre `inicio_curso` y `fin_curso` y no está en Festivos.
+2. **Sesión esperada**: la letra del día de la semana está en `Grupos.dias`, la fecha está entre `inicio_curso` y `fin_curso` y no es un día especial de ese grupo (hoja Dias especiales).
 3. **Sesión pendiente**: sesión esperada, anterior a hoy, dentro de los últimos `dias_pendientes` días y sin fila en Sesiones. La sesión de hoy no es pendiente, aparece en «Hoy».
 4. **Guardar sesión**:
    - La fecha no puede ser futura.
@@ -229,9 +231,9 @@ Todas devuelven `{ ok: true, data: ... }` o `{ ok: false, error: "mensaje en esp
 | `api_inicio(fecha)` | Pendientes y grupos de la fecha con el estado de su sesión |
 | `api_sesion(grupo_id, fecha)` | Usuarios inscritos en esa fecha y estados guardados (o por defecto) |
 | `api_guardarSesion(payload)` | Guarda la sesión (regla 4) |
-| `api_cancelarSesion(grupo_id, fecha)` | Cancela la sesión (regla 5) |
+| `api_cancelarSesion(grupo_id, fecha, nota)` | Cancela la sesión (regla 5). `nota` (motivo) es opcional |
 | `api_grupo(grupo_id)` | Inscripciones activas del grupo |
-| `api_buscarUsuarios(texto)` | Búsqueda por ID o nombre |
+| `api_buscarUsuarios(texto, grupo_id)` | Búsqueda por ID o nombre; marca quién ya está en el grupo |
 | `api_altaUsuario(grupo_id, datos)` | Crea el usuario si no existe e inscribe |
 | `api_baja(inscripcion_id, fecha_baja, motivo)` | Da de baja |
 | `api_cambiarGrupo(inscripcion_id, grupo_destino, fecha)` | Cambio de grupo (regla 8) |
@@ -290,13 +292,15 @@ Comportamiento:
 - Crea la inscripción al `grupo_id` indicado con `fecha_alta` = `fechaAlta` (por defecto `inicio_curso`), sin duplicar inscripciones.
 - Devuelve y muestra un resumen: usuarios creados, ya existentes, inscripciones creadas y avisos.
 
-El grupo debe existir antes en la hoja Grupos (lo crea el admin a mano).
+El grupo debe existir antes en la hoja Grupos (lo crea el admin a mano). Cada pestaña de los Excel de las monitoras es un grupo (ej. «MARTES Y JUEVES ESTERILLA»).
+
+Ampliaciones (2-nov-2026): `grupo_id` vacío crea solo los usuarios, sin inscribirlos; la columna del nombre se reconoce como `USUARIO`, `NOMBRE` o `APELLIDOS NOMBRE` (sirve también para la pestaña «ALTAS TODAS» del Excel general); si un usuario existente no tiene teléfono y el documento sí, se le añade. Desde el menú se hace con «Importar usuarios desde hoja…» (cuatro preguntas). El documento de origen debe ser una hoja de cálculo de Google, no un Excel subido tal cual.
 
 ## 11. Seguridad y privacidad
 
 - Datos personales: nombre y teléfono de los usuarios. Solo se muestran a las monitoras del grupo y al admin.
 - La hoja de cálculo se comparte **solo con los admins**. Las monitoras acceden únicamente a través de la web app.
-- Despliegue (si las cuentas son del dominio de Google Workspace del centro): `executeAs: USER_DEPLOYING` y `access: DOMAIN`. Con esa combinación `Session.getActiveUser().getEmail()` devuelve el correo de la monitora.
+- Despliegue actual (una copia por monitora, Gmail personal): `executeAs: USER_DEPLOYING` y `access: MYSELF` en `appsscript.json`. La monitora despliega su copia y solo ella puede abrirla. Si algún día las cuentas son de un dominio de Google Workspace: `access: DOMAIN`, y `Session.getActiveUser().getEmail()` devolverá el correo de cada monitora.
 - No registrar datos personales en logs.
 - Conviene que la dirección o la persona responsable de protección de datos del centro revise el uso y los permisos.
 - Despliegue: *Implementar → Nueva implementación → Aplicación web*. Cada cambio de código requiere una nueva versión de la implementación. El admin prueba con la URL de desarrollo (`/dev`).
@@ -305,7 +309,7 @@ El grupo debe existir antes en la hoja Grupos (lo crea el admin a mano).
 ## 12. Fases y criterios de aceptación
 
 ### Fase 1: MVP
-Incluye `setup()`, menú, identificación, Festivos, Inicio con pendientes, pase de lista, altas, bajas, cambio de grupo e importación de usuarios.
+Incluye `setup()`, menú, identificación, días especiales (festivos), Inicio con pendientes, pase de lista, altas, bajas, cambio de grupo e importación de usuarios.
 
 Se considera completa cuando:
 - `setup()` crea todas las hojas con cabeceras, formatos de texto en ID y teléfono, estados y listas iniciales y un grupo de ejemplo.
@@ -313,7 +317,7 @@ Se considera completa cuando:
 - Se pasa lista de un grupo (todos presentes por defecto), se cambia un estado, se guarda y al reabrir aparece lo guardado.
 - Guardar dos veces la misma sesión **no duplica** filas en Asistencia.
 - Una sesión cancelada elimina sus filas de Asistencia y se puede volver a registrar.
-- Un grupo con clase ayer y sin registro aparece en Pendientes; un festivo no genera pendiente.
+- Un grupo con clase ayer y sin registro aparece en Pendientes; un día especial (festivo, asunto propio…) no genera pendiente.
 - El alta con un ID existente no crea un usuario duplicado.
 - Baja y cambio de grupo respetan las fechas de inscripción: al abrir una fecha anterior a la baja, el usuario sigue en la lista.
 - La importación desde una hoja con el formato descrito crea usuarios e inscripciones sin duplicados y sin tocar asistencias.
@@ -333,10 +337,10 @@ Se considera completa cuando:
 
 ## 13. Decisiones abiertas
 
-1. **Tipo de cuenta de las monitoras** (pendiente de confirmar):
+1. **Tipo de cuenta de las monitoras** — RESUELTO el 2-nov-2026: Gmail personal, con **una copia por monitora** (su propia hoja con solo sus talleres). En `Auth.gs`, quien despliega la copia es siempre admin; además entra cualquier correo activo de la hoja Monitoras, si Google lo entrega. Opciones que quedan para el futuro:
    - Si son cuentas del mismo dominio de Google Workspace: despliegue indicado en la sección 11, sin PIN.
    - Si son cuentas Gmail personales, con la app ejecutándose como propietario Google no entrega el correo del visitante. Alternativas: ejecutar como el usuario que accede (obliga a compartir la hoja con cada monitora como editora) o usar un PIN por monitora.
-   - Por eso la identificación está **aislada en `Auth.gs` (`identificarMonitora()`)**: cambiar el sistema no debe afectar al resto del código.
+   - Por eso la identificación está **aislada en `Auth.gs` (`identificarMonitora_()`)**: cambiar el sistema no debe afectar al resto del código.
 2. Si **«Justificada»** cuenta como `ausente` (valor por defecto) o `neutro`. Se cambia en la hoja Estados, sin tocar código.
 3. Los talleres y grupos iniciales y los festivos los introduce el admin en las hojas.
 
@@ -352,9 +356,17 @@ Hoja **Informe**, con tablas dinámicas o fórmulas sobre Asistencia, Sesiones e
 
 ## 15. Convenciones de trabajo
 
+- No hacer commit, push ni `clasp push` salvo que el dueño lo pida. Todos los archivos en LF.
+- Las funciones internas acaban en `_` (así Apps Script no deja llamarlas desde el navegador). Las únicas públicas son las `api_*`, `doGet`, `include`, `onOpen`, las del menú (`menu*`), `setup`, `validarDatos` e `importarUsuariosDesdeHoja`; las tres últimas comprueban `soloAdmin_()`.
+
 - Código y comentarios en español, con identificadores consistentes entre archivos. Antes de renombrar algo, buscar todos sus usos (servidor, cliente, hojas y `Config.gs`).
 - Sin dependencias externas ni librerías.
 - Cuando se modifique un archivo, **entregarlo completo**, no como diferencias, y explicar con claridad qué se cambió y por qué.
 - **No hacer cambios que no se hayan pedido.** Si se detecta otro problema, comentarlo sin tocarlo.
 - Trabajar por incrementos pequeños y verificables, priorizando lo pragmático sobre reescrituras completas.
 - Cada vez que se entregue un archivo, indicar su ruta dentro del proyecto.
+
+## 16. Estado del trabajo
+
+- **2-nov-2026 — Fase 1 escrita** (todos los archivos de la sección 9). Probada en el ordenador con una simulación de las hojas: altas, pase de lista, guardar dos veces sin duplicar, cancelar, días especiales, bajas, cambio de grupo e importación con el Excel real de Yoga. **Falta probarla en Google**: `clasp push`, «Configuración inicial» desde el menú de la hoja y abrir la URL `/dev`.
+- Pendiente: Fase 2 (historial, resumen, hoja Informe) y renovar grupos de un trimestre o curso a otro (Fase 3).
