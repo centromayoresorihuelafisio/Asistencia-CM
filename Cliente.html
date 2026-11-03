@@ -153,6 +153,153 @@
       });
     }
 
+    // ---------- Memoria de datos ----------
+    // Las lecturas se recuerdan por función y argumentos: volver a una pantalla ya vista no espera al servidor.
+    // Cada escritura olvida solo lo que deja anticuado (anticuar) y la precarga lo vuelve a pedir en segundo plano.
+
+    const memoria = {};          // clave → { funcion, args, promesa, listo, datos }
+    let memoriaDesde = Date.now();
+    const REFRESCO_MS = 10 * 60 * 1000;
+
+    function claveMemoria(funcion, args) { return funcion + '|' + JSON.stringify(args); }
+    function copia(d) { return d === undefined ? d : JSON.parse(JSON.stringify(d)); }
+
+    /** Como llamar(), pero si ya tiene la respuesta la devuelve al momento y sin barra de carga. Devuelve siempre una copia. */
+    function pedir(funcion) {
+      return pedirCon(true, funcion, Array.prototype.slice.call(arguments, 1));
+    }
+    function pedirCon(conCarga, funcion, args) {
+      const clave = claveMemoria(funcion, args);
+      let e = memoria[clave];
+      if (!e) {
+        e = memoria[clave] = { funcion: funcion, args: args, listo: false, datos: null };
+        e.promesa = llamarSinCarga(false, funcion, args).then(function (d) {
+          if (memoria[clave] === e) { e.datos = d; e.listo = true; }
+          return d;
+        }, function (err) {
+          if (memoria[clave] === e) delete memoria[clave];
+          throw err;
+        });
+      }
+      if (e.listo) return Promise.resolve(copia(e.datos));
+      if (!conCarga) return e.promesa.then(copia);
+      cargando(1);
+      return e.promesa.then(function (d) { cargando(-1); return copia(d); },
+        function (err) { cargando(-1); throw err; });
+    }
+    function tieneMemoria(funcion, args) { return !!memoria[claveMemoria(funcion, args)]; }
+
+    /** Olvida las respuestas de una función (todas, o las que cumplan el filtro sobre sus argumentos). */
+    function olvidar(funcion, filtro) {
+      Object.keys(memoria).forEach(function (k) {
+        const e = memoria[k];
+        if (e.funcion === funcion && (!filtro || filtro.apply(null, e.args))) delete memoria[k];
+      });
+    }
+    function olvidarTodo() {
+      Object.keys(memoria).forEach(function (k) { delete memoria[k]; });
+    }
+
+    /** Qué deja anticuado cada tipo de cambio. */
+    function anticuar(cambio, grupoId, fecha) {
+      const varias = function (lista) { lista.forEach(function (f) { olvidar(f); }); };
+      if (cambio === 'sesion') {
+        // Pase de lista guardado o cancelado
+        olvidar('api_sesion', function (g, f) { return g === grupoId && f === fecha; });
+        olvidar('api_historial', function (g, m) { return g === grupoId && m === fecha.substring(0, 7); });
+        varias(['api_inicio', 'api_informe', 'api_usuario']);
+      } else if (cambio === 'inscripciones') {
+        // Altas, bajas y cambios de grupo
+        varias(['api_grupo', 'api_sesion', 'api_inicio', 'api_historial', 'api_informe', 'api_usuario', 'api_gestion', 'api_usuariosGestion']);
+      } else if (cambio === 'usuario-nuevo') {
+        // Usuario nuevo, todavía sin grupo
+        varias(['api_usuariosGestion', 'api_gestion']);
+      } else if (cambio === 'usuario') {
+        // Datos de un usuario (nombre, teléfono, activo)
+        varias(['api_usuario', 'api_usuariosGestion', 'api_gestion', 'api_grupo', 'api_sesion', 'api_historial']);
+      } else if (cambio === 'dias') {
+        varias(['api_inicio', 'api_sesion', 'api_historial', 'api_gestion']);
+      } else if (cambio === 'lista') {
+        olvidar('api_gestion');
+      } else {
+        // Grupos, estados o curso: afecta a casi todo
+        olvidarTodo();
+      }
+    }
+
+    // --- Precarga en segundo plano: como mucho dos peticiones a la vez, para no saturar Apps Script ---
+
+    const colaFondo = [];
+    let enFondo = 0;
+    const MAX_FONDO = 2;
+
+    /** Pide algo en segundo plano si aún no está en memoria. alLlegar recibe los datos. */
+    function enCola(funcion, args, primero, alLlegar) {
+      const tarea = { funcion: funcion, args: args, alLlegar: alLlegar };
+      if (primero) colaFondo.unshift(tarea); else colaFondo.push(tarea);
+      siguienteFondo();
+    }
+    function siguienteFondo() {
+      while (enFondo < MAX_FONDO && colaFondo.length) {
+        const t = colaFondo.shift();
+        if (tieneMemoria(t.funcion, t.args)) continue;
+        enFondo++;
+        const fin = function () { enFondo--; siguienteFondo(); };
+        pedirCon(false, t.funcion, t.args).then(function (d) {
+          fin();
+          if (t.alLlegar) t.alLlegar(d);
+        }, fin);
+      }
+    }
+
+    function periodoInforme() {
+      return {
+        desde: app.init.inicioCurso || app.init.hoy.substring(0, 4) + '-01-01',
+        hasta: app.init.hoy
+      };
+    }
+
+    /** Pases de lista que se abrirán desde Inicio: pendientes y grupos del día. */
+    function precargarSesiones(d) {
+      d.grupos.slice().reverse().forEach(function (g) { enCola('api_sesion', [g.grupo_id, d.fecha], true); });
+      d.pendientes.slice().reverse().forEach(function (p) { enCola('api_sesion', [p.grupo_id, p.fecha], true); });
+    }
+
+    /** Pide en segundo plano lo que necesitan las secciones y aún no está en memoria. Primero Inicio y sus pases de lista. */
+    function precargar() {
+      pedirCon(false, 'api_inicio', [app.fecha]).then(function (d) {
+        precargarSesiones(d);
+        precargarResto();
+      }, precargarResto);
+    }
+    function precargarResto() {
+      const grupos = app.init.grupos;
+      const mes = app.init.hoy.substring(0, 7);
+      if (app.hist.grupo_id && app.hist.mes) enCola('api_historial', [app.hist.grupo_id, app.hist.mes]);
+      grupos.forEach(function (g) { enCola('api_historial', [g.grupo_id, mes]); });
+      const p = periodoInforme();
+      enCola('api_informe', [p.desde, p.hasta, '']);
+      if (app.inf.desde && (app.inf.desde !== p.desde || app.inf.hasta !== p.hasta || app.inf.taller_id)) {
+        enCola('api_informe', [app.inf.desde, app.inf.hasta, app.inf.taller_id]);
+      }
+      if (esAdmin()) {
+        enCola('api_gestion', [], false, function (d) { app.gest = d; });
+        enCola('api_usuariosGestion', ['']);
+      }
+      grupos.forEach(function (g) { enCola('api_grupo', [g.grupo_id]); });
+    }
+
+    /** Tras un rato sin usar la app, lo vuelve a pedir todo (por si se ha tocado la hoja a mano). */
+    function refrescarTodo() {
+      memoriaDesde = Date.now();
+      llamarSinCarga(false, 'api_init', []).then(function (d) {
+        if (app.fecha === app.init.hoy) app.fecha = d.hoy;
+        app.init = d;
+        olvidarTodo();
+        precargar();
+      }).catch(function () { /* sin conexión: se seguirá con lo que hay */ });
+    }
+
     let temporizadorAviso = null;
     function aviso(texto, esError) {
       const a = $('aviso');
@@ -249,7 +396,7 @@
     function irSeccion(destino) {
       if (destino === 'historial') irHistorial();
       else if (destino === 'informe') irInforme();
-      else if (destino === 'gestion') irGestion(false);
+      else if (destino === 'gestion') irGestion();
       else irInicio();
     }
 
@@ -262,7 +409,10 @@
 
     function irInicio() {
       pantallaPrincipal('inicio', 'Hola, ' + app.init.monitora.nombre, app.init.curso ? 'Curso ' + app.init.curso : '');
-      llamar('api_inicio', app.fecha).then(pintarInicio).catch(function (e) {
+      pedir('api_inicio', app.fecha).then(function (d) {
+        pintarInicio(d);
+        precargarSesiones(d);
+      }).catch(function (e) {
         $('vista').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>';
       });
     }
@@ -342,7 +492,7 @@
 
     /** volver: función para regresar a la pantalla de origen (Inicio por defecto). */
     function abrirPase(grupoId, fecha, volver) {
-      llamar('api_sesion', grupoId, fecha).then(function (d) {
+      pedir('api_sesion', grupoId, fecha).then(function (d) {
         d.nota = d.sesion ? (d.sesion.nota || '') : '';
         d.borradorRecuperado = false;
         d.volver = volver || irInicio;
@@ -474,8 +624,10 @@
       };
       llamar('api_guardarSesion', payload).then(function () {
         borrarBorrador(p.grupo.grupo_id, p.fecha);
+        anticuar('sesion', p.grupo.grupo_id, p.fecha);
         aviso('Lista guardada.');
         p.volver();
+        precargar();
       }).catch(function (e) {
         aviso(e.message, true);
         const b = $('btnConfirmarGuardar');
@@ -495,15 +647,17 @@
       const p = app.pase;
       llamar('api_cancelarSesion', p.grupo.grupo_id, p.fecha, $('motivoCancelar').value.trim()).then(function () {
         borrarBorrador(p.grupo.grupo_id, p.fecha);
+        anticuar('sesion', p.grupo.grupo_id, p.fecha);
         aviso('Sesión marcada como cancelada.');
         p.volver();
+        precargar();
       }).catch(avisoError);
     }
 
     // ---------- Altas y bajas de un grupo ----------
 
     function abrirGrupo(grupoId, pestana, volver) {
-      llamar('api_grupo', grupoId).then(function (d) {
+      pedir('api_grupo', grupoId).then(function (d) {
         d.volver = volver || (app.grupo && app.grupo.grupo.grupo_id === grupoId ? app.grupo.volver : irInicio);
         app.grupo = d;
         app.pestana = pestana || 'lista';
@@ -606,8 +760,10 @@
     function inscribir(datos) {
       datos.fecha_alta = $('fechaAlta').value;
       llamar('api_altaUsuario', app.grupo.grupo.grupo_id, datos).then(function (r) {
+        anticuar('inscripciones');
         aviso((r.creado ? 'Usuario creado e inscrito: ' : 'Inscrito/a: ') + r.nombre);
         abrirGrupo(app.grupo.grupo.grupo_id, 'alta');
+        precargar();
       }).catch(avisoError);
     }
 
@@ -646,8 +802,10 @@
     function accionGrupo(promesa, mensaje) {
       const grupoId = app.grupo.grupo.grupo_id;
       promesa.then(function () {
+        anticuar('inscripciones');
         aviso(mensaje);
         abrirGrupo(grupoId, 'lista');
+        precargar();
       }).catch(function (e) { cerrarPanel(); avisoError(e); });
     }
 
@@ -663,8 +821,10 @@
     }
 
     function cargarHistorial() {
-      llamar('api_historial', app.hist.grupo_id, app.hist.mes).then(function (d) {
-        if (app.vista === 'historial') pintarHistorial(d);
+      const grupoId = app.hist.grupo_id;
+      const mes = app.hist.mes;
+      pedir('api_historial', grupoId, mes).then(function (d) {
+        if (app.vista === 'historial' && app.hist.grupo_id === grupoId && app.hist.mes === mes) pintarHistorial(d);
       }).catch(function (e) { pintarHistorial(null); avisoError(e); });
     }
 
@@ -753,9 +913,12 @@
     function irInforme() {
       pantallaPrincipal('informe', 'Informe', 'Datos para la memoria');
       const inf = app.inf;
-      if (!inf.desde) inf.desde = app.init.inicioCurso || app.init.hoy.substring(0, 4) + '-01-01';
-      if (!inf.hasta) inf.hasta = app.init.hoy;
+      const p = periodoInforme();
+      if (!inf.desde) inf.desde = p.desde;
+      if (!inf.hasta) inf.hasta = p.hasta;
+      inf.datos = null;
       pintarInforme();
+      cargarInforme();
     }
 
     function pintarInforme() {
@@ -833,7 +996,13 @@
       inf.taller_id = valor('infTaller');
       if (!inf.desde || !inf.hasta) return aviso('Indica las dos fechas.', true);
       inf.enlace = null;
-      llamar('api_informe', inf.desde, inf.hasta, inf.taller_id).then(function (d) {
+      cargarInforme();
+    }
+
+    /** Pide el informe del periodo y taller elegidos (al momento si ya está en memoria). */
+    function cargarInforme() {
+      const inf = app.inf;
+      pedir('api_informe', inf.desde, inf.hasta, inf.taller_id).then(function (d) {
         inf.datos = d;
         if (app.vista === 'informe') pintarInforme();
       }).catch(avisoError);
@@ -850,20 +1019,23 @@
 
     // ---------- Gestión ----------
 
-    /** Vuelve a pedir los datos de Gestión y de la app (grupos, estados…) tras un cambio. */
-    function recargarDatos() {
-      return Promise.all([llamar('api_gestion'), llamar('api_init')]).then(function (r) {
+    /** Tras un cambio en Gestión: olvida lo anticuado y vuelve a pedir los datos de Gestión y de la app (grupos, estados…). */
+    function recargarDatos(cambio) {
+      anticuar(cambio);
+      return Promise.all([pedir('api_gestion'), llamar('api_init')]).then(function (r) {
         app.gest = r[0];
         app.init = r[1];
+        precargar();
       });
     }
 
-    function irGestion(recargar) {
+    function irGestion() {
       if (!esAdmin()) { irInicio(); return; }
       pantallaPrincipal('gestion', 'Gestión', 'Grupos, usuarios y ajustes');
-      const seguir = function () { if (app.vista === 'gestion') pintarGestion(); };
-      if (app.gest && !recargar) { seguir(); return; }
-      llamar('api_gestion').then(function (d) { app.gest = d; seguir(); }).catch(avisoError);
+      pedir('api_gestion').then(function (d) {
+        app.gest = d;
+        if (app.vista === 'gestion') pintarGestion();
+      }).catch(avisoError);
     }
 
     function pintarGestion() {
@@ -886,7 +1058,7 @@
       );
     }
 
-    function volverGestion() { irGestion(false); }
+    function volverGestion() { irGestion(); }
 
     // --- Grupos ---
 
@@ -951,7 +1123,7 @@
       if (taller === '__nuevo__' && !datos.taller_nuevo) return aviso('Escribe el nombre del taller nuevo.', true);
       llamar('api_guardarGrupo', datos).then(function () {
         aviso(grupoId ? 'Grupo guardado.' : 'Grupo creado.');
-        return recargarDatos();
+        return recargarDatos('gestion');
       }).then(irGrupos).catch(avisoError);
     }
 
@@ -971,7 +1143,7 @@
       if (!caja) return;
       app.usuarios.texto = caja.value.trim();
       const numero = ++app.busqueda;
-      llamarSinCarga(false, 'api_usuariosGestion', [app.usuarios.texto]).then(function (r) {
+      pedirCon(false, 'api_usuariosGestion', [app.usuarios.texto]).then(function (r) {
         if (numero !== app.busqueda || !$('gListaUsuarios')) return;
         $('gListaUsuarios').innerHTML = (r.encontrados > r.usuarios.length
           ? '<p class="ayuda">Se muestran ' + r.usuarios.length + ' de ' + r.encontrados + '. Escribe para afinar la búsqueda.</p>' : '') +
@@ -998,14 +1170,16 @@
     function crearUsuario() {
       const datos = { usuario_id: valor('uId'), nombre: valor('uNombre'), telefono: valor('uTelefono') };
       llamar('api_guardarUsuario', datos, true).then(function (r) {
+        anticuar('usuario-nuevo');
         aviso('Usuario creado: ' + r.nombre);
         app.gest.totalUsuarios++;
         abrirFicha(r.usuario_id, irUsuarios);
+        precargar();
       }).catch(avisoError);
     }
 
     function abrirFicha(usuarioId, volver) {
-      llamar('api_usuario', usuarioId).then(function (d) {
+      pedir('api_usuario', usuarioId).then(function (d) {
         d.volver = volver || irUsuarios;
         app.ficha = d;
         pintarFicha();
@@ -1055,16 +1229,20 @@
       const u = app.ficha.usuario;
       const datos = { usuario_id: u.usuario_id, nombre: valor('uNombre'), telefono: valor('uTelefono'), activo: marcado('uActivo') };
       llamar('api_guardarUsuario', datos, false).then(function () {
+        anticuar('usuario');
         aviso('Datos guardados.');
         abrirFicha(u.usuario_id, app.ficha.volver);
+        precargar();
       }).catch(avisoError);
     }
 
     function inscribirDesdeFicha() {
       const u = app.ficha.usuario;
       llamar('api_altaUsuario', valor('uGrupo'), { usuario_id: u.usuario_id, fecha_alta: valor('uFechaAlta') }).then(function () {
+        anticuar('inscripciones');
         aviso('Inscrito/a en el grupo.');
         abrirFicha(u.usuario_id, app.ficha.volver);
+        precargar();
       }).catch(avisoError);
     }
 
@@ -1106,7 +1284,7 @@
       const datos = { desde: valor('dDesde'), hasta: valor('dHasta'), tipo: valor('dTipo'), descripcion: valor('dDescripcion'), grupo_id: valor('dGrupo') };
       llamar('api_guardarDiaEspecial', datos).then(function (r) {
         aviso(r.dias === 1 ? 'Día apuntado.' : r.dias + ' días apuntados.');
-        return recargarDatos();
+        return recargarDatos('dias');
       }).then(irDias).catch(avisoError);
     }
 
@@ -1114,7 +1292,7 @@
       confirmar('¿Quitar este día sin clase?', esc(fechaLarga(fecha)) + ' · ' + esc(nombreGrupoGestion(grupoId)), 'Sí, quitar', true, function () {
         llamar('api_borrarDiaEspecial', fecha, grupoId).then(function () {
           aviso('Día quitado.');
-          return recargarDatos();
+          return recargarDatos('dias');
         }).then(irDias).catch(function (e) { cerrarPanel(); avisoError(e); });
       });
     }
@@ -1155,7 +1333,7 @@
       };
       llamar('api_guardarEstado', datos, nuevo).then(function () {
         aviso(nuevo ? 'Estado creado.' : 'Estado guardado.');
-        return recargarDatos();
+        return recargarDatos('gestion');
       }).then(irEstados).catch(avisoError);
     }
 
@@ -1178,7 +1356,7 @@
       const datos = { curso: valor('cCurso'), inicio: valor('cInicio'), fin: valor('cFin'), diasPendientes: valor('cPendientes') };
       llamar('api_guardarConfig', datos).then(function () {
         aviso('Curso guardado.');
-        return recargarDatos();
+        return recargarDatos('gestion');
       }).then(volverGestion).catch(avisoError);
     }
 
@@ -1200,7 +1378,7 @@
       const valores = $(campo).value.split('\n').map(function (v) { return v.trim(); }).filter(Boolean);
       llamar('api_guardarLista', lista, valores).then(function () {
         aviso('Lista guardada.');
-        return recargarDatos();
+        return recargarDatos('lista');
       }).then(irListas).catch(avisoError);
     }
 
@@ -1311,12 +1489,19 @@
       if (app.alVolver) app.alVolver();
     });
 
+    // Al volver a la app tras un rato sin usarla, se refrescan los datos en segundo plano.
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && app.init && Date.now() - memoriaDesde > REFRESCO_MS) refrescarTodo();
+    });
+
     // ---------- Arranque ----------
 
     llamar('api_init').then(function (d) {
       app.init = d;
       app.fecha = d.hoy;
+      memoriaDesde = Date.now();
       irInicio();
+      precargar();
     }).catch(function (e) {
       barra('Asistencia', '', null);
       $('vista').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>';
