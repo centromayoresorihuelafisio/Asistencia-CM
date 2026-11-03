@@ -455,6 +455,18 @@
     min-width: 96px;
     text-align: center;
   }
+  /* Color de los estados (chips, botones del panel y celdas del historial): llega en línea como --estado
+     (el de la hoja Estados) y aquí se suaviza: se le quita saturación mezclándolo con gris, el fondo es un
+     tono claro y la letra el mismo color oscurecido. Si el navegador no sabe mezclar colores, se usa tal cual. */
+  [style*="--estado"] { background: var(--estado); color: var(--estado-texto); }
+  @supports (color: color-mix(in oklab, red, blue)) {
+    [style*="--estado"] {
+      --estado-suave: color-mix(in oklab, var(--estado) 70%, var(--md-on-surface-low));
+      background: color-mix(in oklab, var(--estado-suave) 32%, var(--md-surface));
+      color: color-mix(in oklab, var(--estado) 62%, black);
+      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--estado-suave) 40%, transparent);
+    }
+  }
   .llamar {
     position: relative;
     z-index: var(--z-base);

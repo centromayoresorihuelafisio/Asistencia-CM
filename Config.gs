@@ -128,8 +128,8 @@ const IMPORTAR_CABECERA_TELEFONO = ['TELEFONO', 'TFNO', 'TLF'];
 // Datos que crea setup() la primera vez (solo si la hoja está vacía).
 const DATOS_INICIALES = {
   estados: [
-    { codigo: 'ASI', etiqueta: 'Asistió', tipo: TIPO_ESTADO.PRESENTE, color: '#2e7d32', activo: SI, letra: 'X' },
-    { codigo: 'NOJ', etiqueta: 'No asistió', tipo: TIPO_ESTADO.AUSENTE, color: '#c62828', activo: SI, letra: 'F' },
+    { codigo: 'ASI', etiqueta: 'Asistido', tipo: TIPO_ESTADO.PRESENTE, color: '#2e7d32', activo: SI, letra: 'X' },
+    { codigo: 'NOJ', etiqueta: 'Falta', tipo: TIPO_ESTADO.AUSENTE, color: '#c62828', activo: SI, letra: 'F' },
     { codigo: 'JUS', etiqueta: 'Justificada', tipo: TIPO_ESTADO.AUSENTE, color: '#f9a825', activo: SI, letra: 'J' },
     { codigo: 'EVE', etiqueta: 'Evento', tipo: TIPO_ESTADO.NEUTRO, color: '#1565c0', activo: SI, letra: 'E' }
   ],

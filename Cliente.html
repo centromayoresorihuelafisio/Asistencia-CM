@@ -87,8 +87,9 @@
       const e = (lista || app.init.estados || []).find(function (x) { return x.codigo === codigo; });
       return e || { codigo: codigo, etiqueta: codigo, color: '#9e9e9e', letra: String(codigo).charAt(0) };
     }
+    /** Pasa el color del estado al CSS (--estado), que lo suaviza; --estado-texto sirve si el navegador no sabe mezclar colores. */
     function estiloColor(color) {
-      return 'background:' + esc(color) + ';color:' + colorTexto(color);
+      return '--estado:' + esc(color) + ';--estado-texto:' + colorTexto(color);
     }
     function estiloEstado(codigo, lista) {
       return estiloColor(estadoInfo(codigo, lista).color);

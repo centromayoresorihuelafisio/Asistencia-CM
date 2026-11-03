@@ -34,7 +34,7 @@ Este documento es la especificación completa del proyecto. Léelo entero antes 
 - **Usuario**: persona que asiste a los talleres.
 - **Inscripción**: pertenencia de un usuario a un grupo entre una fecha de alta y, opcionalmente, una fecha de baja. Un usuario puede tener varias inscripciones a la vez.
 - **Sesión**: una clase concreta de un grupo en una fecha.
-- **Estado**: resultado de un usuario en una sesión (Asistió, Justificada…).
+- **Estado**: resultado de un usuario en una sesión (Asistido, Falta, Justificada…).
 
 ## 4. Arquitectura
 
@@ -149,8 +149,8 @@ Columnas: `codigo`, `etiqueta`, `tipo`, `color` (`#rrggbb`), `activo` (`SI`/`NO`
 
 | codigo | etiqueta | tipo | color (ejemplo) |
 |---|---|---|---|
-| ASI | Asistió (antes «X») | presente | verde |
-| NOJ | No asistió (antes, casilla en blanco) | ausente | rojo |
+| ASI | Asistido (antes «X») | presente | verde |
+| NOJ | Falta (antes, casilla en blanco) | ausente | rojo |
 | JUS | Justificada (antes «J») | ausente | amarillo |
 | EVE | Evento (antes «E») | neutro | azul |
 
@@ -399,4 +399,5 @@ Implementado en `Informes.gs` (pestaña Informe de la app y exportación a una h
 - **2-nov-2026** — El dueño hizo `clasp push`, «Configuración inicial» y la implementación de la web app.
 - **3-nov-2026 — Fase 2 escrita**: barra inferior, Historial, Informe con exportación y Gestión (`Admin.gs`, `Informes.gs`). Probada con la simulación de hojas y en el navegador con datos de prueba. **Falta probarla en Google**: tras `clasp push`, volver a ejecutar «Configuración inicial» (añade la columna `letra` en Estados) y crear una versión nueva de la implementación. La primera exportación pedirá permiso para crear hojas de cálculo.
 - **3-nov-2026 — Rediseño visual** (solo `Estilos.html`; `Index.html`, `Cliente.html` y los `.gs` no cambian): mismo sistema que la app de fisio. Todas las medidas salen de variables en `:root` con los nombres de fisio (`--md-*` para colores, esquinas, sombras; `--fs-*`, `--dur-*`, `--z-*`); no se escriben colores, esquinas, sombras ni `z-index` sueltos, salvo los colores de cada estado, que vienen de la hoja Estados. Cabecera blanca, botones en pastilla (acción principal tonal azul claro; acción de riesgo con letra roja y borde; confirmación de borrar en rojo lleno), campos con borde y etiqueta encima, panel inferior con esquinas de 28 px y asa, pestañas segmentadas, barra inferior con indicador en pastilla, tablas como `.md-tabla`, avisos oscuros arriba (como los de fisio, pero arriba para no tapar el pie) y barra de carga fina arriba. Revisado en el navegador en tamaño móvil con datos de prueba (todas las pantallas). **Falta probarlo en Google**: `clasp push` y abrir `/dev` en el móvil.
+- **3-nov-2026 — Estados más suaves y nombres nuevos**: los colores de los estados se dibujan suavizados (`Estilos.html`, regla `[style*="--estado"]`: color de la hoja mezclado con gris, fondo claro y letra del mismo color oscurecida); `estiloColor` de `Cliente.html` solo pasa el color como `--estado`. La hoja Estados guarda el color original. Nombres iniciales en `Config.gs`: «Asistido» y «Falta» (antes «Asistió» y «No asistió»); en una hoja ya creada se cambian en Gestión › Estados.
 - Pendiente: renovar grupos de un trimestre o curso a otro (Fase 3).
