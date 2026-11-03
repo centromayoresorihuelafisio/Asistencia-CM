@@ -22,6 +22,96 @@ function sinTildes_(texto) {
   return String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
 }
 
+// ---------- Nombres parecidos (posibles duplicados) ----------
+
+/** Palabras de un nombre para comparar: sin tildes ni signos y sin «DE», «LA»… */
+function palabrasNombre_(nombre) {
+  return sinTildes_(nombre).replace(/[^A-Z0-9]+/g, ' ').trim().split(' ')
+    .filter(function (p) { return p && NOMBRE_PALABRAS_IGNORADAS.indexOf(p) < 0; });
+}
+
+/** Distancia de edición entre dos palabras (letras que hay que cambiar, quitar o poner). */
+function distanciaPalabras_(a, b) {
+  let anterior = [];
+  for (let j = 0; j <= b.length; j++) anterior.push(j);
+  for (let i = 1; i <= a.length; i++) {
+    const actual = [i];
+    for (let j = 1; j <= b.length; j++) {
+      actual.push(Math.min(anterior[j] + 1, actual[j - 1] + 1, anterior[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)));
+    }
+    anterior = actual;
+  }
+  return anterior[b.length];
+}
+
+function palabrasParecidas_(a, b) {
+  if (a === b) return true;
+  return Math.min(a.length, b.length) >= NOMBRE_LONGITUD_ERRATA && Math.abs(a.length - b.length) <= 1 &&
+    distanciaPalabras_(a, b) <= 1;
+}
+
+/**
+ * Dos nombres se parecen si todas las palabras del más corto (al menos dos) están en el otro,
+ * en cualquier orden y admitiendo una errata por palabra. Así se detectan el orden cambiado
+ * («MARIA GARCIA LOPEZ»), la falta de un apellido («GARCIA MARIA») y las tildes o erratas.
+ */
+function nombresParecidos_(pa, pb) {
+  const corto = pa.length <= pb.length ? pa : pb;
+  const largo = corto === pa ? pb : pa;
+  if (corto.length < 2) return false;
+  const usadas = [];
+  return corto.every(function (p) {
+    for (let k = 0; k < largo.length; k++) {
+      if (!usadas[k] && palabrasParecidas_(p, largo[k])) { usadas[k] = true; return true; }
+    }
+    return false;
+  });
+}
+
+/** Índice de nombres por palabra, para no comparar cada nombre con todos los demás. */
+function nuevoIndiceNombres_() {
+  return {};
+}
+
+function anadirAIndiceNombres_(indice, usuario) {
+  const palabras = palabrasNombre_(usuario.nombre);
+  const entrada = { usuario_id: normalizarId_(usuario.usuario_id), nombre: usuario.nombre, activo: usuario.activo !== NO, palabras: palabras };
+  palabras.forEach(function (p) {
+    const lista = indice[p] = indice[p] || [];
+    if (lista[lista.length - 1] !== entrada) lista.push(entrada);
+  });
+}
+
+/**
+ * Usuarios del índice con un nombre parecido y otro ID. Solo compara con los que comparten
+ * al menos una palabra exacta. Devuelve [{ usuario_id, nombre, activo }].
+ */
+function parecidosEnIndice_(indice, usuarioId, nombre) {
+  const palabras = palabrasNombre_(nombre);
+  const id = normalizarId_(usuarioId);
+  const vistos = {};
+  const parecidos = [];
+  palabras.forEach(function (p) {
+    (indice[p] || []).forEach(function (e) {
+      if (vistos[e.usuario_id] || e.usuario_id === id) return;
+      vistos[e.usuario_id] = true;
+      if (nombresParecidos_(palabras, e.palabras)) parecidos.push({ usuario_id: e.usuario_id, nombre: e.nombre, activo: e.activo });
+    });
+  });
+  return parecidos.sort(compararNombres_);
+}
+
+/** Usuarios ya guardados con un nombre parecido a este y otro ID (como mucho MAX_PARECIDOS). */
+function usuariosParecidos_(usuarioId, nombre) {
+  const indice = nuevoIndiceNombres_();
+  leerTabla_(HOJAS.USUARIOS).forEach(function (u) { if (u.usuario_id) anadirAIndiceNombres_(indice, u); });
+  return parecidosEnIndice_(indice, usuarioId, nombre).slice(0, MAX_PARECIDOS);
+}
+
+function textoParecidos_(parecidos) {
+  return parecidos.map(function (p) { return '«' + p.nombre + '» (ID ' + p.usuario_id + ')'; }).join(', ');
+}
+
 function comprobarFecha_(texto, queFecha) {
   if (!esFechaValida_(texto)) throw errorApp_('La fecha ' + queFecha + ' no es válida.');
 }
@@ -415,6 +505,11 @@ function altaUsuario_(monitora, grupoId, datos) {
     if (!nombre) throw errorApp_('No existe ningún usuario con el ID ' + id + '. Escribe su nombre para crearlo.');
     if (existente && haySolape_(id, grupoId, fechaAlta, null)) {
       throw errorApp_(nombre + ' ya está inscrito/a en este grupo en esas fechas.');
+    }
+    // Usuario nuevo con un nombre parecido a otro: no se crea hasta que la monitora lo confirme.
+    if (creado && !datos.crear_aunque_parecido) {
+      const parecidos = usuariosParecidos_(id, nombre);
+      if (parecidos.length) return { parecidos: parecidos };
     }
 
     if (creado) {

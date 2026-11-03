@@ -183,12 +183,19 @@ function validarDatos() {
   });
 
   const usuarios = {};
+  const indiceNombres = nuevoIndiceNombres_();
   leerTabla_(HOJAS.USUARIOS).forEach(function (u) {
     const id = normalizarId_(u.usuario_id);
     if (!id) avisos.push('Usuarios: hay un usuario sin ID' + fila(u));
     else if (usuarios[id]) avisos.push('Usuarios: el ID ' + id + ' está repetido' + fila(u));
     usuarios[id] = true;
     if (u.nombre !== normalizarNombre_(u.nombre)) avisos.push('Usuarios: el nombre del ID ' + id + ' tiene minúsculas o espacios de más' + fila(u));
+    if (!id) return;
+    const parecidos = parecidosEnIndice_(indiceNombres, id, u.nombre);
+    if (parecidos.length) {
+      avisos.push('Usuarios: ¿duplicado? «' + u.nombre + '» (ID ' + id + ') se parece a ' + textoParecidos_(parecidos.slice(0, MAX_PARECIDOS)) + fila(u));
+    }
+    anadirAIndiceNombres_(indiceNombres, u);
   });
 
   const porUsuarioGrupo = {};

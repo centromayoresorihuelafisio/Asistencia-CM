@@ -182,6 +182,7 @@ Columnas `fecha`, `tipo` (lista `tipo_dia`: Festivo, Asunto propio, Vacaciones, 
    - `usuario_id` único, comparado como texto y sin espacios.
    - El nombre se normaliza: mayúsculas, espacios recortados y sin dobles espacios.
    - Si se da de alta un ID que ya existe, **no se crea nada nuevo**: solo se inscribe al usuario existente.
+   - **Posibles duplicados** (3-nov-2026): al crear un usuario con un ID nuevo, si ya hay otro con un nombre parecido, no se crea y se devuelve `{ parecidos: [...] }`; la app pregunta «¿Es la misma persona?» (usar el existente o «Es otra persona: crear», que repite la llamada con `crear_aunque_parecido: true`). Parecido = todas las palabras del nombre más corto (al menos dos) están en el otro, en cualquier orden, sin tildes, sin «DE», «LA»… y con una errata por palabra de 4 letras o más. Las importaciones crean igualmente y lo anotan en los avisos; «Validar datos» lista los pares parecidos que ya hay.
 7. **Inscripciones**:
    - `fecha_baja ≥ fecha_alta`.
    - No puede haber dos inscripciones solapadas del mismo usuario en el mismo grupo.
@@ -248,7 +249,7 @@ Todas devuelven `{ ok: true, data: ... }` o `{ ok: false, error: "mensaje en esp
 | `api_cancelarSesion(grupo_id, fecha, nota)` | Cancela la sesión (regla 5). `nota` (motivo) es opcional |
 | `api_grupo(grupo_id)` | Inscripciones activas del grupo |
 | `api_buscarUsuarios(texto, grupo_id)` | Búsqueda por ID o nombre; marca quién ya está en el grupo |
-| `api_altaUsuario(grupo_id, datos)` | Crea el usuario si no existe e inscribe |
+| `api_altaUsuario(grupo_id, datos)` | Crea el usuario si no existe e inscribe. Con un nombre parecido a otro devuelve `{ parecidos }` sin crear, salvo `datos.crear_aunque_parecido` |
 | `api_baja(inscripcion_id, fecha_baja, motivo)` | Da de baja |
 | `api_cambiarGrupo(inscripcion_id, grupo_destino, fecha)` | Cambio de grupo (regla 8) |
 | `api_historial(grupo_id, mes)` | Cuadrícula del grupo en el mes `yyyy-MM` (7.4) |
@@ -258,7 +259,7 @@ Todas devuelven `{ ok: true, data: ... }` o `{ ok: false, error: "mensaje en esp
 | `api_guardarGrupo(datos)` | Admin. Crea (sin `grupo_id`) o modifica un grupo; `taller_nuevo` crea el taller |
 | `api_usuariosGestion(texto)` | Admin. Busca usuarios (máx. 100) |
 | `api_usuario(usuario_id)` | Admin. Ficha: datos, inscripciones y asistencia del curso |
-| `api_guardarUsuario(datos, nuevo)` | Admin. Crea o modifica un usuario |
+| `api_guardarUsuario(datos, nuevo)` | Admin. Crea o modifica un usuario. Al crear, igual que `api_altaUsuario` con los parecidos |
 | `api_guardarDiaEspecial(datos)` / `api_borrarDiaEspecial(fecha, grupo_id)` | Admin. Días sin clase |
 | `api_guardarEstado(datos, nuevo)` | Admin. Crea o modifica un estado |
 | `api_guardarConfig(datos)` | Admin. Curso, fechas y días de pendientes |
@@ -415,4 +416,5 @@ Implementado en `Informes.gs` (pestaña Informe de la app y exportación a una h
 - **3-nov-2026 — Estados más suaves y nombres nuevos**: los colores de los estados se dibujan suavizados (`Estilos.html`, regla `[style*="--estado"]`: color de la hoja mezclado con gris, fondo claro y letra del mismo color oscurecida); `estiloColor` de `Cliente.html` solo pasa el color como `--estado`. La hoja Estados guarda el color original. Nombres iniciales en `Config.gs`: «Asistido» y «Falta» (antes «Asistió» y «No asistió»); en una hoja ya creada se cambian en Gestión › Estados.
 - **3-nov-2026 — Navegación instantánea** (solo `Cliente.html`): memoria de lecturas en el cliente, precarga escalonada tras `api_init` y olvido selectivo tras cada escritura (sección 4). El Informe muestra al entrar el del curso hasta hoy, sin pulsar «Ver informe». Probado con la simulación de hojas (respuestas de 1,5 s) en tamaño móvil: tras la precarga, Inicio, Historial, Informe, Gestión, pases de lista y altas y bajas se abren sin llamar al servidor; tras guardar o cancelar un pase, dar de baja, crear un usuario o cambiar el curso se ven los datos nuevos. **Falta probarlo en Google**: `clasp push`, versión nueva de la implementación y abrir `/dev` en el móvil.
 - **3-nov-2026 — Importación del documento del centro** (`Importar.gs`, `Config.gs`, `Main.gs`; sección 10): activos, lista de espera o los dos, con filtro por taller y localidad. La parte que escribe en Usuarios se comparte con la importación de antes, que funciona igual. Probada con una simulación de las hojas y el Excel real (1.054 activos y 264 más de la lista de espera, sin duplicados al repetir). **Falta probarla en Google**: `clasp push`, recargar la hoja para ver la opción nueva del menú y convertir el Excel a hoja de cálculo de Google.
+- **3-nov-2026 — Aviso de posibles duplicados** (`Config.gs`, `Servicio.gs`, `Admin.gs`, `Importar.gs`, `Setup.gs`, `Cliente.html`; regla 6): al crear un usuario (Altas y bajas o Gestión › Usuarios), en las dos importaciones y en «Validar datos». Probada la detección en Node (tildes, orden, falta de apellido, erratas, partículas; no salta con nombres distintos). **Falta probarlo en Google y ver el panel en el móvil.**
 - Pendiente: renovar grupos de un trimestre o curso a otro (Fase 3).

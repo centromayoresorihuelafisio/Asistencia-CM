@@ -335,6 +335,24 @@
         esc(botonSi) + '</button></div></div>');
     }
 
+    /**
+     * Panel de posibles duplicados: al crear un usuario, el servidor devuelve { parecidos } en vez de crearlo.
+     * alUsar(usuario_id): se elige uno de los que ya existen. alCrear(): es otra persona, se crea igualmente.
+     */
+    let parecidosPendiente = null;
+    function avisarParecidos(nombre, parecidos, textoUsar, alUsar, alCrear) {
+      parecidosPendiente = { usar: alUsar, crear: alCrear };
+      abrirPanel('<div><h3>¿Es la misma persona?</h3>' +
+        '<p>Ya hay ' + (parecidos.length === 1 ? 'un usuario' : 'usuarios') + ' con un nombre parecido a <strong>' + esc(nombre) + '</strong>:</p>' +
+        parecidos.map(function (u) {
+          return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(u.nombre) + '</strong></div>' +
+            '<div class="sub">ID ' + esc(u.usuario_id) + (u.activo ? '' : ' · inactivo') + '</div></div>' +
+            '<button type="button" class="boton primario" data-accion="parecido-usar" data-usuario="' + esc(u.usuario_id) + '">' + esc(textoUsar) + '</button></div>';
+        }).join('') +
+        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
+        '<button type="button" class="boton" data-accion="parecido-crear">Es otra persona: crear</button></div></div>');
+    }
+
     // ---------- Barra, pie y navegación ----------
 
     /** alVolver: función del botón «Volver», o null para ocultarlo. */
@@ -760,6 +778,12 @@
     function inscribir(datos) {
       datos.fecha_alta = $('fechaAlta').value;
       llamar('api_altaUsuario', app.grupo.grupo.grupo_id, datos).then(function (r) {
+        if (r.parecidos) {
+          avisarParecidos(String(datos.nombre).toUpperCase(), r.parecidos, 'Inscribir a este',
+            function (id) { inscribir({ usuario_id: id }); },
+            function () { datos.crear_aunque_parecido = true; inscribir(datos); });
+          return;
+        }
         anticuar('inscripciones');
         aviso((r.creado ? 'Usuario creado e inscrito: ' : 'Inscrito/a: ') + r.nombre);
         abrirGrupo(app.grupo.grupo.grupo_id, 'alta');
@@ -1167,9 +1191,15 @@
         '<button type="button" class="boton primario ancho" data-accion="g-crear-usuario">Crear usuario</button></div>');
     }
 
-    function crearUsuario() {
-      const datos = { usuario_id: valor('uId'), nombre: valor('uNombre'), telefono: valor('uTelefono') };
+    function crearUsuario(aunqueParecido) {
+      const datos = { usuario_id: valor('uId'), nombre: valor('uNombre'), telefono: valor('uTelefono'), crear_aunque_parecido: !!aunqueParecido };
       llamar('api_guardarUsuario', datos, true).then(function (r) {
+        if (r.parecidos) {
+          avisarParecidos(datos.nombre.toUpperCase(), r.parecidos, 'Ver ficha',
+            function (id) { abrirFicha(id, irUsuarios); },
+            function () { crearUsuario(true); });
+          return;
+        }
         anticuar('usuario-nuevo');
         aviso('Usuario creado: ' + r.nombre);
         app.gest.totalUsuarios++;
@@ -1416,6 +1446,8 @@
         case 'confirmar-cancelar': cancelarPase(); break;
         case 'cerrar-panel': cerrarPanel(); break;
         case 'confirmar-si': if (confirmacionPendiente) confirmacionPendiente(); break;
+        case 'parecido-usar': cerrarPanel(); if (parecidosPendiente) parecidosPendiente.usar(dato('usuario')); break;
+        case 'parecido-crear': cerrarPanel(); if (parecidosPendiente) parecidosPendiente.crear(); break;
         case 'pestana': app.pestana = dato('pestana'); pintarGrupo(); break;
         case 'inscribir': inscribir({ usuario_id: dato('usuario') }); break;
         case 'crear-usuario': {

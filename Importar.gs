@@ -133,22 +133,32 @@ function anotarLeido_(lectura, donde, id, nombre, telefono) {
 /**
  * Crea los usuarios que no existen, añade el teléfono a los que no tenían y, si hay grupo, los inscribe.
  * Nunca sobrescribe el nombre de un usuario que ya existe: lo anota en los avisos.
+ * Si un usuario nuevo tiene un nombre parecido a otro con distinto ID, se crea igualmente y se avisa.
  */
 function guardarImportacion_(lectura, grupoId, alta) {
   const leidos = lectura.leidos;
   const avisos = lectura.avisos;
   return conBloqueo_(function () {
     const existentes = usuariosPorId_();
+    const indice = nuevoIndiceNombres_();
+    Object.keys(existentes).forEach(function (id) { if (id) anadirAIndiceNombres_(indice, existentes[id]); });
     const nuevosUsuarios = [];
     const telefonosAnadidos = [];
     const nuevasInscripciones = [];
-    let yaExistian = 0, yaInscritos = 0;
+    let yaExistian = 0, yaInscritos = 0, parecidos = 0;
 
     lectura.orden.forEach(function (id) {
       const d = leidos[id];
       const u = existentes[id];
       if (!u) {
-        nuevosUsuarios.push({ usuario_id: id, nombre: d.nombre, telefono: d.telefono, activo: SI });
+        const nuevo = { usuario_id: id, nombre: d.nombre, telefono: d.telefono, activo: SI };
+        const lista = parecidosEnIndice_(indice, id, d.nombre);
+        if (lista.length) {
+          parecidos++;
+          avisos.push('¿Duplicado? El ID ' + id + ' «' + d.nombre + '» se parece a ' + textoParecidos_(lista.slice(0, MAX_PARECIDOS)) + '. Se ha creado igualmente.');
+        }
+        anadirAIndiceNombres_(indice, nuevo);
+        nuevosUsuarios.push(nuevo);
       } else {
         yaExistian++;
         if (u.nombre !== d.nombre) avisos.push('El ID ' + id + ' ya existe como «' + u.nombre + '» y en el documento pone «' + d.nombre + '». No se ha cambiado.');
@@ -170,6 +180,7 @@ function guardarImportacion_(lectura, grupoId, alta) {
     return {
       leidos: lectura.orden.length,
       creados: nuevosUsuarios.length,
+      parecidos: parecidos,
       existentes: yaExistian,
       telefonosAnadidos: telefonosAnadidos.length,
       inscripciones: nuevasInscripciones.length,
@@ -184,6 +195,7 @@ function resumenImportacion_(r) {
   const lineas = (r.filtros || []).concat([
     'Usuarios leídos: ' + r.leidos,
     'Usuarios nuevos creados: ' + r.creados,
+    'De ellos, con un nombre parecido a otro usuario (revísalos en los avisos): ' + r.parecidos,
     'Usuarios que ya existían: ' + r.existentes,
     'Teléfonos añadidos a usuarios que no tenían: ' + r.telefonosAnadidos
   ]);

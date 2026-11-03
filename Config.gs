@@ -120,6 +120,14 @@ const CLAVES_CONFIG = {
 
 const DIAS_PENDIENTES_POR_DEFECTO = 14;
 
+// Aviso de posibles usuarios duplicados (nombres parecidos con otro ID).
+// Palabras que no cuentan al comparar nombres («GARCIA DE LA TORRE» = «GARCIA TORRE»).
+const NOMBRE_PALABRAS_IGNORADAS = ['DE', 'DEL', 'LA', 'LAS', 'LOS', 'Y', 'I'];
+// Una palabra de al menos esta longitud se da por igual con una letra de diferencia (GONZALEZ / GONZALES).
+const NOMBRE_LONGITUD_ERRATA = 4;
+// Máximo de usuarios parecidos que se enseñan al crear uno.
+const MAX_PARECIDOS = 5;
+
 // Cabeceras que se reconocen al importar (comparadas en mayúsculas y sin tildes).
 const IMPORTAR_CABECERA_ID = ['ID'];
 const IMPORTAR_CABECERA_NOMBRE = ['USUARIO', 'NOMBRE', 'APELLIDOS NOMBRE', 'APELLIDO APELLIDO NOMBRE'];

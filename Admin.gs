@@ -202,6 +202,10 @@ function guardarUsuario_(monitora, datos, nuevo) {
     const existente = usuariosPorId_()[id];
     if (nuevo) {
       if (existente) throw errorApp_('Ya existe un usuario con el ID ' + id + ': ' + existente.nombre + '.');
+      if (!datos.crear_aunque_parecido) {
+        const parecidos = usuariosParecidos_(id, nombre);
+        if (parecidos.length) return { parecidos: parecidos };
+      }
       anadirFilas_(HOJAS.USUARIOS, [Object.assign({ usuario_id: id }, campos)]);
     } else {
       if (!existente) throw errorApp_('No se encuentra el usuario. Vuelve a abrir la pantalla.');
