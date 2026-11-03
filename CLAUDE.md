@@ -144,7 +144,7 @@ Las columnas `taller`, `grupo` y `mes` se escriben al guardar para que las tabla
 
 ### Estados (editable por el admin)
 
-Columnas: `codigo`, `etiqueta`, `tipo`, `color` (`#rrggbb`) y `activo` (`SI`/`NO`). Un estado que deja de usarse se pone `activo = NO` en vez de borrarlo, para no romper el histórico. Datos iniciales (las letras son las que usaban las monitoras en sus Excel):
+Columnas: `codigo`, `etiqueta`, `tipo`, `color` (`#rrggbb`), `activo` (`SI`/`NO`) y `letra` (la del historial; añadida el 3-nov-2026 al final: «Configuración inicial» la crea en hojas antiguas y la rellena: X, F, J, E). Un estado que deja de usarse se pone `activo = NO` en vez de borrarlo, para no romper el histórico. Datos iniciales (las letras son las que usaban las monitoras en sus Excel):
 
 | codigo | etiqueta | tipo | color (ejemplo) |
 |---|---|---|---|
@@ -215,11 +215,23 @@ Pestañas:
 - **Alta**: buscador por ID o por nombre (sin distinguir mayúsculas ni tildes). Si el usuario existe, se muestra su nombre y se inscribe con un toque. Si no existe, se ofrece «Crear usuario nuevo» (ID, nombre, teléfono opcional). La fecha de alta es hoy por defecto y editable.
 - **Baja**: elegir usuario, fecha de baja (hoy por defecto, editable) y motivo (lista cerrada). Incluye la acción **Cambiar de grupo**, con cualquier grupo activo del curso como destino.
 
-### 7.4 Historial (Fase 2)
-Sesiones pasadas de un grupo con sus contadores. Se pueden abrir y corregir con el mismo pase de lista.
+### 7.0 Navegación (3-nov-2026)
+Barra inferior fija con **Inicio**, **Historial**, **Informe** y **Gestión** (esta última solo admin). Las pantallas secundarias (pase de lista, altas y bajas, formularios) ocultan la barra y tienen botón «Volver», que regresa a la pantalla de donde se vino (por ejemplo, del pase de lista abierto desde el Historial se vuelve al Historial).
 
-### 7.5 Resumen (Fase 2)
-Por grupo: porcentaje de asistencia y número de sesiones realizadas y canceladas.
+### 7.4 Historial (hecho el 3-nov-2026)
+Elegir grupo y mes (‹ ›). Cuadrícula como la de los Excel antiguos: una fila por usuario inscrito algún día del mes, una columna por día con clase hasta hoy, y en cada celda la **letra** y el color del estado. Columnas de sesión cancelada (C, gris), sin pasar lista (rojo claro) y día sin clase (amarillo claro); «·» = no estaba inscrito. Última columna: % de asistencia del usuario en el mes; fila final: cuántos asistieron cada día. Arriba, contadores del mes. Tocar un día abre su pase de lista para corregirlo; tocar un nombre abre la ficha del usuario (admin).
+
+### 7.5 Informe (hecho el 3-nov-2026)
+Periodo (por defecto, del inicio de curso a hoy) y taller (o todos). Muestra: usuarios distintos atendidos, sesiones realizadas y canceladas, % de asistencia, altas y bajas; tablas por taller, por grupo y por mes; registros por estado; altas y bajas por mes; motivos de baja. Botón (admin) **«Crear hoja de cálculo con el informe»**: crea en el Drive de quien despliega una hoja nueva con las pestañas Resumen, Por taller, Por grupo, Por mes, Por estado, Altas y bajas, Motivos de baja y Detalle (un registro por fila, con el nombre del usuario), y muestra el enlace.
+
+### 7.6 Gestión (solo admin, hecho el 3-nov-2026)
+Para no tener que tocar la hoja de cálculo:
+- **Grupos y talleres**: lista por taller; crear y editar grupo (taller existente o nuevo, nombre, días con botones, hora, correo de monitora/s, activo). El `grupo_id` y el `taller_id` se generan solos a partir del nombre («Yoga silla» → `YOGA-SILLA`). Un grupo desactivado deja de salir para pasar lista, pero conserva su historial. Desde el grupo se llega a «Altas y bajas» (7.3).
+- **Usuarios**: buscar por ID, nombre o teléfono; crear usuario sin grupo; ficha con datos editables (el ID no se cambia), grupos (altas y bajas), inscribir en un grupo y resumen de asistencia del curso.
+- **Días sin clase**: añadir un día o un intervalo (vacaciones: se apuntan solo los días en que algún grupo afectado tiene clase), tipo, descripción y grupo (o todos); lista de próximos y pasados con «Quitar».
+- **Estados de asistencia**: editar nombre, letra, color, cómo cuenta y activo; crear estados nuevos (el código no se cambia después). `ASI` no se puede desactivar.
+- **Curso**: nombre, primer y último día de clase, días de pendientes.
+- **Listas**: motivos de baja («Cambio de grupo» se mantiene siempre) y tipos de día sin clase.
 
 ## 8. API (funciones llamadas desde el cliente con `google.script.run`)
 
@@ -237,6 +249,18 @@ Todas devuelven `{ ok: true, data: ... }` o `{ ok: false, error: "mensaje en esp
 | `api_altaUsuario(grupo_id, datos)` | Crea el usuario si no existe e inscribe |
 | `api_baja(inscripcion_id, fecha_baja, motivo)` | Da de baja |
 | `api_cambiarGrupo(inscripcion_id, grupo_destino, fecha)` | Cambio de grupo (regla 8) |
+| `api_historial(grupo_id, mes)` | Cuadrícula del grupo en el mes `yyyy-MM` (7.4) |
+| `api_informe(desde, hasta, taller_id)` | Tablas del informe (7.5); solo grupos visibles para la monitora |
+| `api_exportarInforme(desde, hasta, taller_id)` | Admin. Crea la hoja del informe y devuelve `{ url, nombre }` |
+| `api_gestion()` | Admin. Grupos, talleres, estados, config, listas y días sin clase |
+| `api_guardarGrupo(datos)` | Admin. Crea (sin `grupo_id`) o modifica un grupo; `taller_nuevo` crea el taller |
+| `api_usuariosGestion(texto)` | Admin. Busca usuarios (máx. 100) |
+| `api_usuario(usuario_id)` | Admin. Ficha: datos, inscripciones y asistencia del curso |
+| `api_guardarUsuario(datos, nuevo)` | Admin. Crea o modifica un usuario |
+| `api_guardarDiaEspecial(datos)` / `api_borrarDiaEspecial(fecha, grupo_id)` | Admin. Días sin clase |
+| `api_guardarEstado(datos, nuevo)` | Admin. Crea o modifica un estado |
+| `api_guardarConfig(datos)` | Admin. Curso, fechas y días de pendientes |
+| `api_guardarLista(lista, valores)` | Admin. Sustituye los valores de `motivo_baja` o `tipo_dia` |
 
 Contrato del payload de guardado:
 
@@ -268,6 +292,8 @@ Repo.gs               ← acceso a hojas, conversión de fechas, bloqueos, cach�
 Servicio.gs           ← reglas de negocio
 Api.gs                ← funciones api_* expuestas al cliente
 Importar.gs           ← importación de usuarios desde las hojas actuales
+Admin.gs              ← pestaña Gestión (grupos, usuarios, días sin clase, estados, curso, listas)
+Informes.gs           ← historial por grupo y mes, informe y exportación a una hoja nueva
 Index.html            ← estructura de la app
 Estilos.html          ← CSS (dentro de <style>)
 Cliente.html          ← JS del cliente (dentro de <script>)
@@ -323,10 +349,10 @@ Se considera completa cuando:
 - La importación desde una hoja con el formato descrito crea usuarios e inscripciones sin duplicados y sin tocar asistencias.
 - La app es usable en un móvil con una mano.
 
-### Fase 2
-- Historial y corrección de sesiones pasadas.
-- Resumen por grupo.
-- Hoja **Informe** para la memoria (ver sección 14).
+### Fase 2 (escrita el 3-nov-2026)
+- Historial y corrección de sesiones pasadas (7.4).
+- Resumen por grupo e informe para la memoria, con exportación a una hoja nueva (7.5 y sección 14).
+- Gestión desde la app de grupos, talleres, usuarios, días sin clase, estados, curso y listas (7.6).
 
 ### Fase 3 (opcional)
 - Renovar curso (crear grupos nuevos y renovar inscripciones).
@@ -342,11 +368,11 @@ Se considera completa cuando:
    - Si son cuentas Gmail personales, con la app ejecutándose como propietario Google no entrega el correo del visitante. Alternativas: ejecutar como el usuario que accede (obliga a compartir la hoja con cada monitora como editora) o usar un PIN por monitora.
    - Por eso la identificación está **aislada en `Auth.gs` (`identificarMonitora_()`)**: cambiar el sistema no debe afectar al resto del código.
 2. Si **«Justificada»** cuenta como `ausente` (valor por defecto) o `neutro`. Se cambia en la hoja Estados, sin tocar código.
-3. Los talleres y grupos iniciales y los festivos los introduce el admin en las hojas.
+3. Los talleres, grupos y festivos los introduce el admin desde la pestaña Gestión de la app (desde el 3-nov-2026); la hoja solo hace falta para «Configuración inicial», «Importar usuarios» y «Validar datos».
 
 ## 14. Estadísticas para la memoria (Fase 2)
 
-Hoja **Informe**, con tablas dinámicas o fórmulas sobre Asistencia, Sesiones e Inscripciones:
+Implementado en `Informes.gs` (pestaña Informe de la app y exportación a una hoja nueva en vez de una hoja «Informe» fija). Contenido:
 
 - **% de asistencia** = registros de tipo `presente` ÷ (registros `presente` + `ausente`), por grupo, taller y mes. Los estados `neutro` no entran en el cálculo.
 - **Usuarios distintos atendidos**: IDs distintos con al menos un registro `presente`, en total y por taller.
@@ -369,4 +395,6 @@ Hoja **Informe**, con tablas dinámicas o fórmulas sobre Asistencia, Sesiones e
 ## 16. Estado del trabajo
 
 - **2-nov-2026 — Fase 1 escrita** (todos los archivos de la sección 9). Probada en el ordenador con una simulación de las hojas: altas, pase de lista, guardar dos veces sin duplicar, cancelar, días especiales, bajas, cambio de grupo e importación con el Excel real de Yoga. **Falta probarla en Google**: `clasp push`, «Configuración inicial» desde el menú de la hoja y abrir la URL `/dev`.
-- Pendiente: Fase 2 (historial, resumen, hoja Informe) y renovar grupos de un trimestre o curso a otro (Fase 3).
+- **2-nov-2026** — El dueño hizo `clasp push`, «Configuración inicial» y la implementación de la web app.
+- **3-nov-2026 — Fase 2 escrita**: barra inferior, Historial, Informe con exportación y Gestión (`Admin.gs`, `Informes.gs`). Probada con la simulación de hojas y en el navegador con datos de prueba. **Falta probarla en Google**: tras `clasp push`, volver a ejecutar «Configuración inicial» (añade la columna `letra` en Estados) y crear una versión nueva de la implementación. La primera exportación pedirá permiso para crear hojas de cálculo.
+- Pendiente: renovar grupos de un trimestre o curso a otro (Fase 3).

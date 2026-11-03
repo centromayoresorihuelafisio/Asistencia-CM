@@ -57,3 +57,59 @@ function api_baja(inscripcion_id, fecha_baja, motivo) {
 function api_cambiarGrupo(inscripcion_id, grupo_destino, fecha) {
   return responder_(function (m) { return cambiarGrupo_(m, inscripcion_id, grupo_destino, fecha); });
 }
+
+// ---------- Historial e informe ----------
+
+function api_historial(grupo_id, mes) {
+  return responder_(function (m) { return historialGrupo_(m, grupo_id, mes); });
+}
+
+function api_informe(desde, hasta, taller_id) {
+  return responder_(function (m) { return informeParaCliente_(m, desde, hasta, taller_id); });
+}
+
+function api_exportarInforme(desde, hasta, taller_id) {
+  return responder_(function (m) { return exportarInforme_(m, desde, hasta, taller_id); });
+}
+
+// ---------- Gestión (solo admin) ----------
+
+function api_gestion() {
+  return responder_(function (m) { return datosGestion_(m); });
+}
+
+function api_guardarGrupo(datos) {
+  return responder_(function (m) { return guardarGrupo_(m, datos); });
+}
+
+function api_usuariosGestion(texto) {
+  return responder_(function (m) { return usuariosGestion_(m, texto); });
+}
+
+function api_usuario(usuario_id) {
+  return responder_(function (m) { return fichaUsuario_(m, usuario_id); });
+}
+
+function api_guardarUsuario(datos, nuevo) {
+  return responder_(function (m) { return guardarUsuario_(m, datos, !!nuevo); });
+}
+
+function api_guardarDiaEspecial(datos) {
+  return responder_(function (m) { return guardarDiaEspecial_(m, datos); });
+}
+
+function api_borrarDiaEspecial(fecha, grupo_id) {
+  return responder_(function (m) { return borrarDiaEspecial_(m, fecha, grupo_id); });
+}
+
+function api_guardarEstado(datos, nuevo) {
+  return responder_(function (m) { return guardarEstado_(m, datos, !!nuevo); });
+}
+
+function api_guardarConfig(datos) {
+  return responder_(function (m) { return guardarConfig_(m, datos); });
+}
+
+function api_guardarLista(lista, valores) {
+  return responder_(function (m) { return guardarLista_(m, lista, valores); });
+}

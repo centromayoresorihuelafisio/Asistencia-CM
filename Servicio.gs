@@ -46,7 +46,18 @@ function config_() {
 function estados_() {
   return leerTabla_(HOJAS.ESTADOS)
     .filter(function (e) { return e.codigo && e.activo !== NO; })
-    .map(function (e) { return { codigo: e.codigo, etiqueta: e.etiqueta || e.codigo, tipo: e.tipo, color: e.color }; });
+    .map(estadoParaCliente_);
+}
+
+function estadoParaCliente_(e) {
+  return {
+    codigo: e.codigo,
+    etiqueta: e.etiqueta || e.codigo,
+    tipo: e.tipo,
+    color: e.color,
+    letra: e.letra || String(e.etiqueta || e.codigo).charAt(0).toUpperCase(),
+    activo: e.activo !== NO
+  };
 }
 
 function valoresLista_(lista) {
@@ -150,6 +161,8 @@ function datosIniciales_(monitora) {
     monitora: monitora,
     hoy: hoy_(),
     curso: cfg.curso,
+    inicioCurso: cfg.inicio,
+    finCurso: cfg.fin,
     estados: estados_(),
     estadoPorDefecto: ESTADO_POR_DEFECTO,
     motivosBaja: valoresLista_(LISTA_MOTIVO_BAJA).filter(function (m) { return m !== MOTIVO_CAMBIO_GRUPO; }),

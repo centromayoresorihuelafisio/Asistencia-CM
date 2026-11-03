@@ -62,8 +62,9 @@ const ESQUEMA = {
     fechaHora: ['timestamp']
   },
   [HOJAS.ESTADOS]: {
-    columnas: ['codigo', 'etiqueta', 'tipo', 'color', 'activo'],
-    texto: ['codigo', 'color']
+    // letra: abreviatura que se ve en el historial (X, J, E…). Se añadió el 3-nov-2026 al final para no mover columnas.
+    columnas: ['codigo', 'etiqueta', 'tipo', 'color', 'activo', 'letra'],
+    texto: ['codigo', 'color', 'letra']
   },
   [HOJAS.LISTAS]: {
     columnas: ['lista', 'valor'],
@@ -101,6 +102,14 @@ const MOTIVO_CAMBIO_GRUPO = 'Cambio de grupo';
 
 // Letra de cada día de la semana. El índice es el de Date.getDay() (0 = domingo).
 const LETRAS_DIAS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+// Orden en que se muestran y guardan los días de un grupo.
+const ORDEN_DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+// Listas que se pueden editar desde la app (Gestión › Listas).
+const LISTAS_EDITABLES = [LISTA_MOTIVO_BAJA, LISTA_TIPO_DIA];
+
+// Máximo de días que se apuntan de una vez como «día sin clase» (un intervalo de vacaciones).
+const MAX_DIAS_INTERVALO = 120;
 
 const CLAVES_CONFIG = {
   CURSO: 'curso_activo',
@@ -119,10 +128,10 @@ const IMPORTAR_CABECERA_TELEFONO = ['TELEFONO', 'TFNO', 'TLF'];
 // Datos que crea setup() la primera vez (solo si la hoja está vacía).
 const DATOS_INICIALES = {
   estados: [
-    { codigo: 'ASI', etiqueta: 'Asistió', tipo: TIPO_ESTADO.PRESENTE, color: '#2e7d32', activo: SI },
-    { codigo: 'NOJ', etiqueta: 'No asistió', tipo: TIPO_ESTADO.AUSENTE, color: '#c62828', activo: SI },
-    { codigo: 'JUS', etiqueta: 'Justificada', tipo: TIPO_ESTADO.AUSENTE, color: '#f9a825', activo: SI },
-    { codigo: 'EVE', etiqueta: 'Evento', tipo: TIPO_ESTADO.NEUTRO, color: '#1565c0', activo: SI }
+    { codigo: 'ASI', etiqueta: 'Asistió', tipo: TIPO_ESTADO.PRESENTE, color: '#2e7d32', activo: SI, letra: 'X' },
+    { codigo: 'NOJ', etiqueta: 'No asistió', tipo: TIPO_ESTADO.AUSENTE, color: '#c62828', activo: SI, letra: 'F' },
+    { codigo: 'JUS', etiqueta: 'Justificada', tipo: TIPO_ESTADO.AUSENTE, color: '#f9a825', activo: SI, letra: 'J' },
+    { codigo: 'EVE', etiqueta: 'Evento', tipo: TIPO_ESTADO.NEUTRO, color: '#1565c0', activo: SI, letra: 'E' }
   ],
   listas: [
     { lista: LISTA_MOTIVO_BAJA, valor: MOTIVO_CAMBIO_GRUPO },

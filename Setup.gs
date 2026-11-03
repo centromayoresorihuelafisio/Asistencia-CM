@@ -26,6 +26,7 @@ function setup() {
     curso: DATOS_INICIALES.config[0].valor
   });
   sembrar_(HOJAS.GRUPOS, [grupo], informe);
+  completarLetras_(informe);
 
   aplicarValidaciones_(libro);
   invalidarTodo_();
@@ -44,7 +45,7 @@ function prepararHoja_(libro, nombre) {
   const vacia = actual.every(function (v) { return v === ''; });
   if (vacia) {
     h.getRange(1, 1, 1, ancho).setValues([esquema.columnas]).setFontWeight('bold');
-  } else if (actual.join('|') !== esquema.columnas.join('|')) {
+  } else if (!completarCabeceras_(h, nombre)) {
     return 'AVISO: la hoja «' + nombre + '» tiene otras cabeceras. No se ha modificado; revísala a mano.';
   }
   h.setFrozenRows(1);
@@ -57,6 +58,32 @@ function prepararHoja_(libro, nombre) {
     else if ((esquema.fechaHora || []).indexOf(c) >= 0) rango.setNumberFormat('dd/mm/yyyy hh:mm:ss');
   });
   return (nueva ? 'Creada' : 'Revisada') + ' la hoja «' + nombre + '».';
+}
+
+/**
+ * Si una hoja tiene las cabeceras de una versión anterior (las primeras columnas iguales y el resto vacío),
+ * añade las columnas nuevas al final. Devuelve false si las cabeceras no cuadran.
+ */
+function completarCabeceras_(h, nombre) {
+  const columnas = ESQUEMA[nombre].columnas;
+  const actual = h.getRange(1, 1, 1, columnas.length).getValues()[0].map(function (v) { return String(v).trim(); });
+  for (let i = 0; i < columnas.length; i++) {
+    if (actual[i] === columnas[i]) continue;
+    if (actual.slice(i).some(function (v) { return v !== ''; })) return false;
+    h.getRange(1, i + 1, 1, columnas.length - i).setValues([columnas.slice(i)]).setFontWeight('bold');
+    return true;
+  }
+  return true;
+}
+
+/** Rellena la letra de los estados iniciales que no la tengan (hojas creadas antes del 3-nov-2026). */
+function completarLetras_(informe) {
+  const porCodigo = {};
+  DATOS_INICIALES.estados.forEach(function (e) { porCodigo[e.codigo] = e.letra; });
+  const cambiar = leerHoja_(HOJAS.ESTADOS).filter(function (e) { return !e.letra && porCodigo[e.codigo]; });
+  cambiar.forEach(function (e) { e.letra = porCodigo[e.codigo]; });
+  actualizarFilas_(HOJAS.ESTADOS, cambiar);
+  if (cambiar.length) informe.push('Añadida la letra del historial a ' + cambiar.length + ' estados.');
 }
 
 /** Añade filas iniciales solo si la hoja no tiene datos. */
@@ -99,14 +126,22 @@ function aplicarValidaciones_(libro) {
     lista([ESTADO_SESION.REALIZADA, ESTADO_SESION.CANCELADA]));
   rangoColumna_(libro, HOJAS.ASISTENCIA, 'estado').setDataValidation(enRango(HOJAS.ESTADOS, 'codigo'));
 
+  aplicarValidacionesListas_(libro);
+  rangoColumna_(libro, HOJAS.DIAS_ESPECIALES, 'grupo_id').setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInRange(
+      rangoColumna_(libro, HOJAS.GRUPOS, 'grupo_id'), true).setAllowInvalid(false).build());
+}
+
+/** Validaciones de las columnas que dependen de la hoja Listas. Se repiten cada vez que cambia una lista. */
+function aplicarValidacionesListas_(libro) {
+  const lista = function (valores) {
+    return SpreadsheetApp.newDataValidation().requireValueInList(valores, true).setAllowInvalid(false).build();
+  };
   invalidar_(HOJAS.LISTAS);
   const motivos = valoresLista_(LISTA_MOTIVO_BAJA);
   if (motivos.length) rangoColumna_(libro, HOJAS.INSCRIPCIONES, 'motivo_baja').setDataValidation(lista(motivos));
   const tiposDia = valoresLista_(LISTA_TIPO_DIA);
   if (tiposDia.length) rangoColumna_(libro, HOJAS.DIAS_ESPECIALES, 'tipo').setDataValidation(lista(tiposDia));
-  rangoColumna_(libro, HOJAS.DIAS_ESPECIALES, 'grupo_id').setDataValidation(
-    SpreadsheetApp.newDataValidation().requireValueInRange(
-      rangoColumna_(libro, HOJAS.GRUPOS, 'grupo_id'), true).setAllowInvalid(false).build());
 }
 
 /** Revisa la coherencia de los datos. Devuelve una lista de avisos en español. */
