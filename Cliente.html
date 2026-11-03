@@ -15,7 +15,10 @@
       hist: { grupo_id: '', mes: '' },
       inf: { desde: '', hasta: '', taller_id: '', datos: null, enlace: null },
       gest: null,        // datos de api_gestion
-      usuarios: { texto: '' }
+      usuarios: { texto: '' },
+      guardando: {},     // pases de lista guardándose en segundo plano: 'grupo|fecha' → 'guardando' o 'error'
+      hechos: {},        // pases guardados o cancelados en esta visita: 'grupo|fecha' → true
+      ultimoInicio: null // últimos datos de api_inicio recibidos (para el siguiente pase mientras se vuelven a pedir)
     };
 
     const $ = function (id) { return document.getElementById(id); };
@@ -268,6 +271,7 @@
     /** Pide en segundo plano lo que necesitan las secciones y aún no está en memoria. Primero Inicio y sus pases de lista. */
     function precargar() {
       pedirCon(false, 'api_inicio', [app.fecha]).then(function (d) {
+        app.ultimoInicio = d;
         precargarSesiones(d);
         precargarResto();
       }, precargarResto);
@@ -435,7 +439,17 @@
       });
     }
 
-    function etiquetaSesion(g) {
+    /** Etiqueta de un pase de lista que se está guardando en segundo plano o cuyo guardado ha fallado. */
+    function etiquetaGuardado(grupoId, fecha) {
+      const estado = app.guardando[claveBorrador(grupoId, fecha)];
+      if (estado === 'guardando') return '<span class="etiqueta guardando">Guardando…</span>';
+      if (estado === 'error') return '<span class="etiqueta sin-guardar">Sin guardar</span>';
+      return '';
+    }
+
+    function etiquetaSesion(g, fecha) {
+      const guardado = etiquetaGuardado(g.grupo_id, fecha);
+      if (guardado) return guardado;
       if (g.estadoSesion === 'realizada') return '<span class="etiqueta realizada">Lista pasada</span>';
       if (g.estadoSesion === 'cancelada') return '<span class="etiqueta cancelada">Cancelada</span>';
       if (g.diaEspecial) return '<span class="etiqueta especial">' + esc(g.diaEspecial.tipo || 'Sin clase') + '</span>';
@@ -443,6 +457,7 @@
     }
 
     function pintarInicio(d) {
+      app.ultimoInicio = d;
       if (app.vista !== 'inicio') return;
       let html = '<div class="selector-fecha"><label for="fechaInicio">Fecha</label>' +
         '<input type="date" id="fechaInicio" value="' + esc(app.fecha) + '" max="' + esc(d.hoy) + '"></div>';
@@ -452,7 +467,8 @@
         d.pendientes.forEach(function (p) {
           html += '<button type="button" class="tarjeta pendiente" data-accion="pase" data-grupo="' + esc(p.grupo_id) +
             '" data-fecha="' + esc(p.fecha) + '"><div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(p.nombre) +
-            '</div><div class="tarjeta-detalle">' + esc(p.taller) + ' · ' + esc(fechaCorta(p.fecha)) + '</div></div></button>';
+            '</div><div class="tarjeta-detalle">' + esc(p.taller) + ' · ' + esc(fechaCorta(p.fecha)) + '</div></div>' +
+            etiquetaGuardado(p.grupo_id, p.fecha) + '</button>';
         });
       }
 
@@ -469,7 +485,7 @@
           html += '<button type="button" class="tarjeta" data-accion="pase" data-grupo="' + esc(g.grupo_id) +
             '" data-fecha="' + esc(d.fecha) + '"><div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(g.nombre) +
             '</div><div class="tarjeta-detalle">' + (g.hora ? esc(g.hora) + ' · ' : '') + g.inscritos + ' usuarios</div></div>' +
-            etiquetaSesion(g) + '</button>';
+            etiquetaSesion(g, d.fecha) + '</button>';
         });
       }
 
@@ -494,6 +510,9 @@
 
     function leerBorrador(clave) {
       try { return JSON.parse(window.localStorage.getItem(clave) || 'null'); } catch (e) { return null; }
+    }
+    function leerBorradorTexto(clave) {
+      try { return window.localStorage.getItem(clave); } catch (e) { return null; }
     }
     function guardarBorrador() {
       const p = app.pase;
@@ -532,7 +551,10 @@
     function pintarPase() {
       const p = app.pase;
       let html = '<div class="avisos-sesion">';
-      if (p.borradorRecuperado) html += '<div class="banda info">Se han recuperado cambios sin guardar de la última vez.</div>';
+      const guardado = app.guardando[claveBorrador(p.grupo.grupo_id, p.fecha)];
+      if (guardado === 'guardando') html += '<div class="banda info">Se está guardando esta lista. Espera a que termine antes de cambiarla.</div>';
+      else if (guardado === 'error') html += '<div class="banda error">No se pudo guardar esta lista. Tus marcas se conservan: revísalas y pulsa Guardar otra vez.</div>';
+      else if (p.borradorRecuperado) html += '<div class="banda info">Se han recuperado cambios sin guardar de la última vez.</div>';
       if (p.diaEspecial) {
         html += '<div class="banda especial">Día sin clase: ' + esc(p.diaEspecial.tipo || '') +
           (p.diaEspecial.descripcion ? ' – ' + esc(p.diaEspecial.descripcion) : '') +
@@ -551,6 +573,11 @@
         html += '<p class="vacio">No hay usuarios inscritos en este grupo en esta fecha.</p>';
       } else {
         html += '<button type="button" class="boton ancho" data-accion="aplicar-todos" style="margin-bottom:10px">Aplicar un estado a todos…</button>';
+        const par = estadosAlternar();
+        if (par) {
+          html += '<p class="ayuda">Toca el estado para cambiar entre ' + esc(par.presente.etiqueta) + ' y ' + esc(par.falta.etiqueta) +
+            '. Toca el nombre para los demás estados y las observaciones.</p>';
+        }
         html += '<div id="listaUsuarios">' + p.usuarios.map(filaUsuario).join('') + '</div>';
       }
       html += '<div class="campo" style="margin-top:14px"><label for="notaSesion">Nota de la sesión (opcional)</label>' +
@@ -563,8 +590,30 @@
       const e = estadoInfo(u.estado);
       return '<div class="fila-usuario" data-accion="usuario" data-indice="' + i + '" id="fila' + i + '">' +
         '<div class="nombre">' + esc(u.nombre) + (u.observaciones ? '<span class="obs">' + esc(u.observaciones) + '</span>' : '') + '</div>' +
-        '<span class="chip" style="' + estiloEstado(u.estado) + '">' + esc(e.etiqueta) + '</span>' +
+        '<button type="button" class="alternar" data-accion="alternar" data-indice="' + i + '" aria-label="' + esc(e.etiqueta) + '. Cambiar estado">' +
+        '<span class="chip" style="' + estiloEstado(u.estado) + '">' + esc(e.etiqueta) + '</span></button>' +
         enlaceLlamar(u.telefono) + '</div>';
+    }
+
+    /**
+     * Estados entre los que alterna el chip de cada fila con un toque: el estado por defecto (Asistido)
+     * y el primero de tipo «ausente» de la hoja Estados (Falta). null si falta alguno.
+     */
+    function estadosAlternar() {
+      const presente = app.init.estados.find(function (e) { return e.codigo === app.init.estadoPorDefecto; });
+      const falta = app.init.estados.find(function (e) { return e.tipo === 'ausente'; });
+      return presente && falta ? { presente: presente, falta: falta } : null;
+    }
+
+    /** Un toque en el chip: presente → falta; cualquier otro estado → presente. Sin pareja, abre el panel. */
+    function alternarEstado(i) {
+      const par = estadosAlternar();
+      if (!par) { abrirPanelUsuario(i); return; }
+      const u = app.pase.usuarios[i];
+      u.estado = u.estado === par.presente.codigo ? par.falta.codigo : par.presente.codigo;
+      $('fila' + i).outerHTML = filaUsuario(u, i);
+      pintarPiePase();
+      guardarBorrador();
     }
 
     function contadores() {
@@ -618,6 +667,39 @@
       guardarBorrador();
     }
 
+    /**
+     * Siguiente pase de lista por hacer, para encadenarlos sin pasar por Inicio: el primer pendiente y, si no hay,
+     * el primer grupo del día sin lista. Solo desde Inicio (desde el Historial se corrige un día suelto). null si no hay.
+     */
+    function siguientePase(p) {
+      if (p.volver !== irInicio) return null;
+      // Justo después de guardar, Inicio está olvidado y se está volviendo a pedir: se usan los últimos datos recibidos.
+      const e = memoria[claveMemoria('api_inicio', [app.fecha])];
+      const d = e && e.listo ? e.datos : app.ultimoInicio;
+      if (!d || d.fecha !== app.fecha) return null;
+      const libre = function (grupoId, fecha) {
+        const clave = claveBorrador(grupoId, fecha);
+        return !(grupoId === p.grupo.grupo_id && fecha === p.fecha) && !app.guardando[clave] && !app.hechos[clave];
+      };
+      const pendiente = d.pendientes.find(function (x) { return libre(x.grupo_id, x.fecha); });
+      if (pendiente) return { grupo_id: pendiente.grupo_id, fecha: pendiente.fecha, nombre: pendiente.nombre };
+      const delDia = d.grupos.find(function (g) { return g.estadoSesion === 'pendiente' && !g.diaEspecial && libre(g.grupo_id, d.fecha); });
+      return delDia ? { grupo_id: delDia.grupo_id, fecha: d.fecha, nombre: delDia.nombre } : null;
+    }
+
+    function botonSiguiente(accion, texto) {
+      const s = siguientePase(app.pase);
+      if (!s) return '';
+      return '<button type="button" class="boton ancho siguiente" data-accion="' + accion + '" data-siguiente="1">' + esc(texto) +
+        '<span class="sub">' + esc(s.nombre) + ' · ' + esc(fechaCorta(s.fecha)) + '</span></button>';
+    }
+
+    /** Tras guardar o cancelar: abre el siguiente pase s (si lo hay) o vuelve a la pantalla de origen. */
+    function seguirTrasPase(p, s) {
+      if (s) abrirPase(s.grupo_id, s.fecha, p.volver);
+      else p.volver();
+    }
+
     function abrirResumenGuardar() {
       const cuenta = contadores();
       let lista = '<ul class="resumen-lista">';
@@ -627,30 +709,67 @@
       lista += '<li><span>Total</span><strong>' + app.pase.usuarios.length + '</strong></li></ul>';
       abrirPanel('<div><h3>¿Guardar la lista?</h3><p>' + esc(app.pase.grupo.nombre) + ' · ' + esc(fechaLarga(app.pase.fecha)) + '</p>' +
         lista + '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
-        '<button type="button" class="boton primario" data-accion="confirmar-guardar" id="btnConfirmarGuardar">Sí, guardar</button></div></div>');
+        '<button type="button" class="boton primario" data-accion="confirmar-guardar">Sí, guardar</button></div>' +
+        botonSiguiente('confirmar-guardar', 'Guardar y pasar a la siguiente') + '</div>');
     }
 
-    function guardarPase() {
+    /**
+     * Guarda en segundo plano: vuelve (o abre el siguiente pase) sin esperar al servidor. Las marcas quedan en el
+     * borrador hasta que el servidor confirma; si falla, la tarjeta sale como «Sin guardar» y al reabrir se recuperan.
+     */
+    function guardarPase(conSiguiente) {
       const p = app.pase;
+      const grupoId = p.grupo.grupo_id;
+      const clave = claveBorrador(grupoId, p.fecha);
       const payload = {
-        grupo_id: p.grupo.grupo_id,
+        grupo_id: grupoId,
         fecha: p.fecha,
         nota: p.nota,
         registros: p.usuarios.map(function (u) {
           return { usuario_id: u.usuario_id, estado: u.estado, observaciones: u.observaciones };
         })
       };
-      llamar('api_guardarSesion', payload).then(function () {
-        borrarBorrador(p.grupo.grupo_id, p.fecha);
-        anticuar('sesion', p.grupo.grupo_id, p.fecha);
-        aviso('Lista guardada.');
-        p.volver();
+      guardarBorrador();
+      const borradorEnviado = leerBorradorTexto(clave);
+      const siguiente = conSiguiente ? siguientePase(p) : null;
+      app.guardando[clave] = 'guardando';
+      seguirTrasPase(p, siguiente);
+
+      llamarSinCarga(false, 'api_guardarSesion', [payload]).then(function () {
+        delete app.guardando[clave];
+        app.hechos[clave] = true;
+        // Si se ha vuelto a abrir y cambiar mientras se guardaba, se conserva el borrador nuevo.
+        if (leerBorradorTexto(clave) === borradorEnviado) borrarBorrador(grupoId, p.fecha);
+        anticuar('sesion', grupoId, p.fecha);
+        aviso('Lista guardada: ' + p.grupo.nombre + ', ' + fechaCorta(p.fecha) + '.');
+        trasGuardarEnFondo(clave);
         precargar();
       }).catch(function (e) {
-        aviso(e.message, true);
-        const b = $('btnConfirmarGuardar');
-        if (b) b.textContent = 'Reintentar';
+        app.guardando[clave] = 'error';
+        aviso('No se ha guardado ' + p.grupo.nombre + ' (' + fechaCorta(p.fecha) + '). ' + e.message, true);
+        trasGuardarEnFondo(clave);
       });
+    }
+
+    function trasGuardarEnFondo(clave) {
+      refrescarVista();
+      // Si se ha vuelto a abrir ese mismo pase mientras se guardaba, se quita o cambia su aviso.
+      if (app.vista === 'pase' && app.pase && claveBorrador(app.pase.grupo.grupo_id, app.pase.fecha) === clave) pintarPase();
+    }
+
+    /** Vuelve a pintar Inicio o el Historial, si son la pantalla abierta, sin mover la página. */
+    function refrescarVista() {
+      const y = window.scrollY;
+      const recolocar = function () { window.scrollTo(0, y); };
+      if (app.vista === 'inicio') {
+        pedirCon(false, 'api_inicio', [app.fecha]).then(function (d) { pintarInicio(d); recolocar(); }).catch(function () { /* se queda como está */ });
+      } else if (app.vista === 'historial') {
+        const grupoId = app.hist.grupo_id;
+        const mes = app.hist.mes;
+        pedirCon(false, 'api_historial', [grupoId, mes]).then(function (d) {
+          if (app.vista === 'historial' && app.hist.grupo_id === grupoId && app.hist.mes === mes) { pintarHistorial(d); recolocar(); }
+        }).catch(function () { /* se queda como está */ });
+      }
     }
 
     function abrirCancelarSesion() {
@@ -658,16 +777,20 @@
         '<p>No contará como clase realizada y se borrarán las marcas guardadas de este día.</p>' +
         '<div class="campo"><label for="motivoCancelar">Motivo (opcional)</label><textarea id="motivoCancelar" rows="2"></textarea></div>' +
         '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">No</button>' +
-        '<button type="button" class="boton peligro-lleno" data-accion="confirmar-cancelar">Sí, cancelar</button></div></div>');
+        '<button type="button" class="boton peligro-lleno" data-accion="confirmar-cancelar">Sí, cancelar</button></div>' +
+        botonSiguiente('confirmar-cancelar', 'Cancelar y pasar a la siguiente') + '</div>');
     }
 
-    function cancelarPase() {
+    function cancelarPase(conSiguiente) {
       const p = app.pase;
+      // Se busca antes de anticuar, que olvida los datos de Inicio de donde sale.
+      const siguiente = conSiguiente ? siguientePase(p) : null;
       llamar('api_cancelarSesion', p.grupo.grupo_id, p.fecha, $('motivoCancelar').value.trim()).then(function () {
+        app.hechos[claveBorrador(p.grupo.grupo_id, p.fecha)] = true;
         borrarBorrador(p.grupo.grupo_id, p.fecha);
         anticuar('sesion', p.grupo.grupo_id, p.fecha);
         aviso('Sesión marcada como cancelada.');
-        p.volver();
+        seguirTrasPase(p, siguiente);
         precargar();
       }).catch(avisoError);
     }
@@ -1427,6 +1550,7 @@
         case 'pase': abrirPase(dato('grupo'), dato('fecha'), irInicio); break;
         case 'grupo': abrirGrupo(dato('grupo'), 'lista', irInicio); break;
         case 'usuario': abrirPanelUsuario(Number(dato('indice'))); break;
+        case 'alternar': alternarEstado(Number(dato('indice'))); break;
         case 'elegir-estado': cerrarPanelUsuario(dato('estado')); break;
         case 'cerrar-usuario': cerrarPanelUsuario(null); break;
         case 'aplicar-todos':
@@ -1441,9 +1565,9 @@
           guardarBorrador();
           break;
         case 'guardar': abrirResumenGuardar(); break;
-        case 'confirmar-guardar': guardarPase(); break;
+        case 'confirmar-guardar': guardarPase(!!dato('siguiente')); break;
         case 'cancelar-sesion': abrirCancelarSesion(); break;
-        case 'confirmar-cancelar': cancelarPase(); break;
+        case 'confirmar-cancelar': cancelarPase(!!dato('siguiente')); break;
         case 'cerrar-panel': cerrarPanel(); break;
         case 'confirmar-si': if (confirmacionPendiente) confirmacionPendiente(); break;
         case 'parecido-usar': cerrarPanel(); if (parecidosPendiente) parecidosPendiente.usar(dato('usuario')); break;
@@ -1519,6 +1643,12 @@
     });
     $('btnVolver').addEventListener('click', function () {
       if (app.alVolver) app.alVolver();
+    });
+
+    // Si se intenta cerrar la app con una lista guardándose, el navegador pide confirmación.
+    window.addEventListener('beforeunload', function (ev) {
+      const pendiente = Object.keys(app.guardando).some(function (k) { return app.guardando[k] === 'guardando'; });
+      if (pendiente) { ev.preventDefault(); ev.returnValue = ''; }
     });
 
     // Al volver a la app tras un rato sin usarla, se refrescan los datos en segundo plano.

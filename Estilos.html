@@ -243,6 +243,8 @@
   .etiqueta.realizada::before { content: "\2713"; }
   .etiqueta.cancelada { background: var(--md-surface-variant); color: var(--md-on-surface-med); }
   .etiqueta.especial { background: var(--md-warning-bg); color: var(--md-warning-text); }
+  .etiqueta.guardando { background: var(--md-primary-light); color: var(--md-primary-dark); }
+  .etiqueta.sin-guardar { background: var(--md-error); color: var(--md-on-primary); }
 
   /* ---------- Campos (como .md-campo--compacto de fisio: etiqueta encima) ---------- */
   .selector-fecha {
@@ -370,6 +372,9 @@
   /* Confirmar algo que no se deshace (dentro del panel de confirmación) */
   .boton.peligro-lleno { background: var(--md-error); border-color: transparent; color: var(--md-on-primary); }
   .boton.ancho { width: 100%; }
+  /* «Guardar y pasar a la siguiente»: debajo de los botones del panel, con el grupo y la fecha en una segunda línea */
+  .boton.siguiente { flex-direction: column; gap: 2px; margin-top: 10px; }
+  .boton.siguiente .sub { font-size: var(--fs-sm); font-weight: 500; color: var(--md-on-surface-med); }
   .botones { display: flex; gap: 8px; }
   .botones > .boton { flex: 1; padding-left: 12px; padding-right: 12px; }
 
@@ -424,6 +429,7 @@
   .banda.cancelada { background: var(--md-surface-variant); color: var(--md-on-surface-med); }
   .banda.realizada { background: var(--md-success-bg); color: var(--md-success); }
   .banda.info { background: var(--md-primary-light); color: var(--md-primary-dark); }
+  .banda.error { background: var(--md-error-bg); color: var(--md-error); }
 
   .fila-usuario {
     position: relative;
@@ -440,6 +446,26 @@
   }
   .fila-usuario .nombre { flex: 1; min-width: 0; font-size: var(--fs-lg); font-weight: 600; line-height: 1.3; }
   .fila-usuario .obs { display: block; font-size: var(--fs-sm); font-weight: 400; color: var(--md-on-surface-med); }
+  /* Chip del estado como botón: un toque alterna Asistido/Falta. Ocupa todo el alto de la fila para acertar con el dedo. */
+  .alternar {
+    position: relative;
+    z-index: var(--z-base);
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    min-height: var(--alto-boton);
+    padding: 0 2px;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .alternar .chip { transition: transform var(--dur-1) var(--ease); }
+  .alternar:active .chip { transform: scale(.94); }
   /* Color de cada estado: viene de la hoja Estados (estilo en línea) */
   .chip {
     display: inline-flex;
