@@ -125,6 +125,17 @@ const IMPORTAR_CABECERA_ID = ['ID'];
 const IMPORTAR_CABECERA_NOMBRE = ['USUARIO', 'NOMBRE', 'APELLIDOS NOMBRE', 'APELLIDO APELLIDO NOMBRE'];
 const IMPORTAR_CABECERA_TELEFONO = ['TELEFONO', 'TFNO', 'TLF'];
 
+// Documento del centro «Usuarios Activos y Listas Espera» (sección 10).
+// Cada pestaña se reconoce por una palabra de su nombre (en mayúsculas y sin tildes).
+const CENTRO_PESTANAS = { ACTIVOS: 'ALTAS', ESPERA: 'ESPERA', BAJAS: 'BAJAS' };
+// Qué se importa: los activos, la lista de espera o las dos. Las bajas solo aportan teléfonos.
+const CENTRO_QUIEN = { ACTIVOS: ['ACTIVOS'], ESPERA: ['ESPERA'], TODOS: ['ACTIVOS', 'ESPERA'] };
+// El taller y la localidad no tienen título: son las dos columnas que siguen a la del ID.
+// Si la columna del ID tampoco tiene título (lista de espera), es la que sigue a la del nombre.
+const CENTRO_COLUMNAS_TRAS_ID = { TALLER: 1, LOCALIDAD: 2 };
+// La columna del teléfono es la primera cuya cabecera empieza por una de estas palabras (TELÉFONO, Tfno…).
+const CENTRO_CABECERA_TELEFONO = ['TEL', 'TFNO', 'TLF'];
+
 // Datos que crea setup() la primera vez (solo si la hoja está vacía).
 const DATOS_INICIALES = {
   estados: [

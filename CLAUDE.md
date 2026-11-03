@@ -303,7 +303,7 @@ Cliente.html          ← JS del cliente (dentro de <script>)
 
 `Index.html` incluye `Estilos.html` y `Cliente.html` con `<?!= include('...') ?>`.
 
-Menú personalizado de la hoja (`onOpen`), solo para admin: **Configuración inicial (setup)**, **Importar usuarios desde hoja…**, **Validar datos**.
+Menú personalizado de la hoja (`onOpen`), solo para admin: **Configuración inicial (setup)**, **Importar usuarios desde hoja…**, **Importar usuarios del documento del centro…**, **Validar datos**.
 
 ## 10. Importación de usuarios (Fase 1)
 
@@ -323,6 +323,18 @@ Comportamiento:
 El grupo debe existir antes en la hoja Grupos (lo crea el admin a mano). Cada pestaña de los Excel de las monitoras es un grupo (ej. «MARTES Y JUEVES ESTERILLA»).
 
 Ampliaciones (2-nov-2026): `grupo_id` vacío crea solo los usuarios, sin inscribirlos; la columna del nombre se reconoce como `USUARIO`, `NOMBRE` o `APELLIDOS NOMBRE` (sirve también para la pestaña «ALTAS TODAS» del Excel general); si un usuario existente no tiene teléfono y el documento sí, se le añade. Desde el menú se hace con «Importar usuarios desde hoja…» (cuatro preguntas). El documento de origen debe ser una hoja de cálculo de Google, no un Excel subido tal cual.
+
+### Documento del centro «Usuarios Activos y Listas Espera» (3-nov-2026)
+
+Función admin `importarUsuariosDelCentro(idArchivo, quien, talleres, localidades)`, en el menú «Importar usuarios del documento del centro…» (cuatro preguntas: enlace, a quién, talleres y localidades; las tres últimas muestran las opciones del documento con cuántas personas tiene cada una). **Solo crea usuarios**, no los inscribe: el documento dice el taller, no el grupo; cada persona se inscribe después desde «Altas y bajas».
+
+- Pestañas, reconocidas por una palabra de su nombre (`CENTRO_PESTANAS` en `Config.gs`): **ALTAS** (activos, una fila por persona y taller), **ESPERA** (lista de espera) y **BAJAS** (solo aporta teléfonos). `quien`: `ACTIVOS`, `ESPERA` o `TODOS`.
+- Columnas: el nombre por su cabecera (`NOMBRE`, `APELLIDOS NOMBRE`, `APELLIDO APELLIDO NOMBRE`); el ID por la cabecera `ID` o, si no tiene título (lista de espera), la columna que sigue al nombre; el **taller** y la **localidad** son las dos columnas sin título que siguen al ID; el teléfono, la primera cabecera que empieza por `TEL`, `TFNO` o `TLF`.
+- Se saltan las filas vacías (la pestaña ALTAS tiene muchas entre los datos). Un ID sin ningún número («NO ID») cuenta como sin ID y va a los avisos.
+- `talleres` y `localidades`: texto separado por comas, sin distinguir mayúsculas ni tildes; vacío = todos. Un valor que no existe en el documento da error con la lista de los válidos.
+- Teléfono: el primero de la celda («600… / 966…», «600… HIJA»; «NO TLF» = sin teléfono). Si la fila no tiene, se toma de otra pestaña con el **mismo ID y el mismo nombre** (así 441 de las 1.054 personas activas tienen teléfono).
+- Mismas reglas que la importación de arriba: no duplica, no cambia el nombre de un usuario existente (lo avisa) y solo le añade el teléfono si no tenía. El resumen dice pestañas y filtros, leídos, creados, ya existentes, teléfonos añadidos y avisos.
+- Uso: subir el Excel a Drive, abrirlo y hacer *Archivo › Guardar como Hoja de cálculo de Google*; copiar el enlace de la copia y lanzar la opción del menú.
 
 ## 11. Seguridad y privacidad
 
@@ -385,7 +397,7 @@ Implementado en `Informes.gs` (pestaña Informe de la app y exportación a una h
 ## 15. Convenciones de trabajo
 
 - No hacer commit, push ni `clasp push` salvo que el dueño lo pida. Todos los archivos en LF.
-- Las funciones internas acaban en `_` (así Apps Script no deja llamarlas desde el navegador). Las únicas públicas son las `api_*`, `doGet`, `include`, `onOpen`, las del menú (`menu*`), `setup`, `validarDatos` e `importarUsuariosDesdeHoja`; las tres últimas comprueban `soloAdmin_()`.
+- Las funciones internas acaban en `_` (así Apps Script no deja llamarlas desde el navegador). Las únicas públicas son las `api_*`, `doGet`, `include`, `onOpen`, las del menú (`menu*`), `setup`, `validarDatos`, `importarUsuariosDesdeHoja` e `importarUsuariosDelCentro`; las cuatro últimas comprueban `soloAdmin_()`.
 
 - Código y comentarios en español, con identificadores consistentes entre archivos. Antes de renombrar algo, buscar todos sus usos (servidor, cliente, hojas y `Config.gs`).
 - Sin dependencias externas ni librerías.
@@ -402,4 +414,5 @@ Implementado en `Informes.gs` (pestaña Informe de la app y exportación a una h
 - **3-nov-2026 — Rediseño visual** (solo `Estilos.html`; `Index.html`, `Cliente.html` y los `.gs` no cambian): mismo sistema que la app de fisio. Todas las medidas salen de variables en `:root` con los nombres de fisio (`--md-*` para colores, esquinas, sombras; `--fs-*`, `--dur-*`, `--z-*`); no se escriben colores, esquinas, sombras ni `z-index` sueltos, salvo los colores de cada estado, que vienen de la hoja Estados. Cabecera blanca, botones en pastilla (acción principal tonal azul claro; acción de riesgo con letra roja y borde; confirmación de borrar en rojo lleno), campos con borde y etiqueta encima, panel inferior con esquinas de 28 px y asa, pestañas segmentadas, barra inferior con indicador en pastilla, tablas como `.md-tabla`, avisos oscuros arriba (como los de fisio, pero arriba para no tapar el pie) y barra de carga fina arriba. Revisado en el navegador en tamaño móvil con datos de prueba (todas las pantallas). **Falta probarlo en Google**: `clasp push` y abrir `/dev` en el móvil.
 - **3-nov-2026 — Estados más suaves y nombres nuevos**: los colores de los estados se dibujan suavizados (`Estilos.html`, regla `[style*="--estado"]`: color de la hoja mezclado con gris, fondo claro y letra del mismo color oscurecida); `estiloColor` de `Cliente.html` solo pasa el color como `--estado`. La hoja Estados guarda el color original. Nombres iniciales en `Config.gs`: «Asistido» y «Falta» (antes «Asistió» y «No asistió»); en una hoja ya creada se cambian en Gestión › Estados.
 - **3-nov-2026 — Navegación instantánea** (solo `Cliente.html`): memoria de lecturas en el cliente, precarga escalonada tras `api_init` y olvido selectivo tras cada escritura (sección 4). El Informe muestra al entrar el del curso hasta hoy, sin pulsar «Ver informe». Probado con la simulación de hojas (respuestas de 1,5 s) en tamaño móvil: tras la precarga, Inicio, Historial, Informe, Gestión, pases de lista y altas y bajas se abren sin llamar al servidor; tras guardar o cancelar un pase, dar de baja, crear un usuario o cambiar el curso se ven los datos nuevos. **Falta probarlo en Google**: `clasp push`, versión nueva de la implementación y abrir `/dev` en el móvil.
+- **3-nov-2026 — Importación del documento del centro** (`Importar.gs`, `Config.gs`, `Main.gs`; sección 10): activos, lista de espera o los dos, con filtro por taller y localidad. La parte que escribe en Usuarios se comparte con la importación de antes, que funciona igual. Probada con una simulación de las hojas y el Excel real (1.054 activos y 264 más de la lista de espera, sin duplicados al repetir). **Falta probarla en Google**: `clasp push`, recargar la hoja para ver la opción nueva del menú y convertir el Excel a hoja de cálculo de Google.
 - Pendiente: renovar grupos de un trimestre o curso a otro (Fase 3).

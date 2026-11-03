@@ -16,6 +16,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('Asistencia')
     .addItem('Configuración inicial (setup)', 'menuSetup')
     .addItem('Importar usuarios desde hoja…', 'menuImportar')
+    .addItem('Importar usuarios del documento del centro…', 'menuImportarCentro')
     .addItem('Validar datos', 'menuValidar')
     .addToUi();
 }
