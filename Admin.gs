@@ -43,7 +43,8 @@ function datosGestion_(monitora) {
     config: config_(),
     listas: {
       motivo_baja: valoresLista_(LISTA_MOTIVO_BAJA),
-      tipo_dia: valoresLista_(LISTA_TIPO_DIA)
+      tipo_dia: valoresLista_(LISTA_TIPO_DIA),
+      obs_rapida: valoresLista_(LISTA_OBS_RAPIDA)
     },
     motivoReservado: MOTIVO_CAMBIO_GRUPO,
     diasEspeciales: leerTabla_(HOJAS.DIAS_ESPECIALES)
@@ -318,7 +319,7 @@ function guardarEstado_(monitora, datos, nuevo) {
 
 // ---------- Curso ----------
 
-/** datos: { curso, inicio, fin, diasPendientes } */
+/** datos: { curso, inicio, fin, diasPendientes, faltasSeguidas } */
 function guardarConfig_(monitora, datos) {
   comprobarAdmin_(monitora);
   datos = datos || {};
@@ -329,12 +330,15 @@ function guardarConfig_(monitora, datos) {
   if (datos.fin < datos.inicio) throw errorApp_('El fin de curso no puede ser anterior al inicio.');
   const dias = parseInt(datos.diasPendientes, 10);
   if (!(dias >= 1 && dias <= 60)) throw errorApp_('Los días de pendientes deben estar entre 1 y 60.');
+  const faltas = parseInt(datos.faltasSeguidas, 10);
+  if (!(faltas >= 2 && faltas <= 20)) throw errorApp_('Las faltas seguidas para avisar deben estar entre 2 y 20.');
 
   const valores = {};
   valores[CLAVES_CONFIG.CURSO] = curso;
   valores[CLAVES_CONFIG.INICIO] = textoAFecha_(datos.inicio);
   valores[CLAVES_CONFIG.FIN] = textoAFecha_(datos.fin);
   valores[CLAVES_CONFIG.DIAS_PENDIENTES] = String(dias);
+  valores[CLAVES_CONFIG.FALTAS_SEGUIDAS] = String(faltas);
 
   return conBloqueo_(function () {
     const filas = leerTabla_(HOJAS.CONFIG);

@@ -158,10 +158,10 @@ Columnas: `codigo`, `etiqueta`, `tipo`, `color` (`#rrggbb`), `activo` (`SI`/`NO`
 `tipo` (`presente` / `ausente` / `neutro`) define cómo cuenta cada estado en las estadísticas. El estado por defecto de un pase de lista nuevo es `ASI`. Añadir un estado nuevo en la hoja no debe requerir tocar código.
 
 ### Listas
-Columnas `lista` y `valor`. Inicialmente, la lista `motivo_baja` con: Cambio de grupo, Cambio de domicilio, Motivos de salud, Motivos personales, Otros. «Cambio de grupo» está reservado para la acción de cambiar de grupo.
+Columnas `lista` y `valor`. Inicialmente, la lista `motivo_baja` con: Cambio de grupo, Cambio de domicilio, Motivos de salud, Motivos personales, Otros. «Cambio de grupo» está reservado para la acción de cambiar de grupo. La lista `obs_rapida` (3-nov-2026) guarda los textos rápidos de observaciones del pase de lista: Avisó, Llegó tarde, Se fue antes, Enfermedad, Cita médica.
 
 ### Config
-Columnas `clave` y `valor`: `curso_activo`, `inicio_curso`, `fin_curso`, `dias_pendientes` (por defecto 14).
+Columnas `clave` y `valor`: `curso_activo`, `inicio_curso`, `fin_curso`, `dias_pendientes` (por defecto 14) y `faltas_seguidas` (por defecto 3; desde cuántas faltas seguidas se avisa en el pase de lista, 3-nov-2026). En hojas creadas antes, «Configuración inicial» añade las claves de Config que falten y la lista `obs_rapida` si no tiene valores.
 
 ### Dias especiales
 Columnas `fecha`, `tipo` (lista `tipo_dia`: Festivo, Asunto propio, Vacaciones, Otro), `descripcion` y `grupo_id` (vacío = afecta a todos los grupos). La rellena el admin a mano. Sustituye a las palabras escritas en vertical en los Excel antiguos («ASUNTO PROPIO»…). Un día especial no genera pendiente, y el pase de lista de ese día muestra un aviso (se puede pasar lista igualmente si hubo clase).
@@ -196,8 +196,8 @@ Columnas `fecha`, `tipo` (lista `tipo_dia`: Festivo, Asunto propio, Vacaciones, 
 Diseño pensado para el móvil y para uso con una mano: botones de al menos 52 px de alto, texto de al menos 17 px en los nombres, contraste alto, textos en español y mensajes de error comprensibles. Navegación sencilla (barra inferior o botón «Volver»). Indicador de carga cuando hay que esperar al servidor.
 
 ### 7.1 Inicio
-- Cabecera con el nombre de la monitora y selector de fecha (hoy por defecto).
-- **Pendientes** (en rojo, arriba): lista de pares grupo y fecha sin registrar. Un toque abre ese pase de lista.
+- Cabecera con el nombre de la monitora y selector de fecha (hoy por defecto), con flechas ‹ › para ir al día anterior o siguiente (› no pasa de hoy; el día anterior se precarga) (3-nov-2026).
+- **Pendientes** (en rojo, arriba): lista de pares grupo y fecha sin registrar. Un toque abre ese pase de lista. Cada tarjeta tiene además un botón **«No hubo clase»** (3-nov-2026) que, sin abrir el pase, pide confirmación con motivo opcional y cancela la sesión (regla 5); la tarjeta desaparece al momento.
 - **Hoy**: tarjetas de los grupos que tocan, agrupadas por taller (Yoga → Yoga suelo / Yoga silla). Cada tarjeta muestra hora, nº de usuarios inscritos y el estado de la sesión (pendiente, pasada lista o cancelada).
 - **Mis grupos**: todos los grupos activos de la monitora, plegable, para abrir cualquier fecha.
 
@@ -206,7 +206,8 @@ Diseño pensado para el móvil y para uso con una mano: botones de al menos 52 p
 - Si la sesión no existe, todos empiezan como `ASI`. Si existe, se muestran los estados guardados.
 - Cada fila: nombre, chip con el estado (color de la hoja Estados) y botón de **llamada** (`tel:`) si hay teléfono.
 - **Un toque en el chip** alterna entre el estado por defecto (`ASI`) y el primer estado de tipo `ausente` de la hoja Estados (Falta); desde cualquier otro estado vuelve a `ASI` (3-nov-2026).
-- Un toque en el resto de la fila abre un panel inferior con los estados disponibles como botones grandes y un campo de observaciones.
+- Un toque en el resto de la fila abre un panel inferior con los estados disponibles como botones grandes y un campo de observaciones, con **textos rápidos** que se añaden con un toque (lista `obs_rapida` de la hoja Listas, editable en Gestión › Listas) y el botón **«Dar de baja de este grupo…»** (fecha y motivo; al terminar se reabre el pase conservando las marcas) (3-nov-2026).
+- **Faltas seguidas** (3-nov-2026): bajo el nombre sale en rojo «N faltas seguidas» si el usuario lleva al menos `faltas_seguidas` (hoja Config, por defecto 3; editable en Gestión › Curso) registros de tipo `ausente` seguidos en ese grupo antes de esa fecha. Los `neutro` ni suman ni cortan la racha; un `presente` la corta. Lo calcula el servidor (`datosSesion_`).
 - Botón **«Aplicar a todos»** para asignar un estado a todo el grupo (ej. excursión) y luego ajustar casos individuales.
 - Pie fijo con contador por estado, botón **Guardar** y botón **Sesión cancelada** (con confirmación).
 - Antes de guardar se muestra un resumen con los contadores y una confirmación de un toque, para evitar guardar por inercia.
@@ -216,8 +217,8 @@ Diseño pensado para el móvil y para uso con una mano: botones de al menos 52 p
 
 ### 7.3 Gestión del grupo
 Pestañas:
-- **Lista**: usuarios inscritos actualmente, con su fecha de alta.
-- **Alta**: buscador por ID o por nombre (sin distinguir mayúsculas ni tildes). Si el usuario existe, se muestra su nombre y se inscribe con un toque. Si no existe, se ofrece «Crear usuario nuevo» (ID, nombre, teléfono opcional). La fecha de alta es hoy por defecto y editable.
+- **Lista**: usuarios inscritos actualmente, con su fecha de alta. Tocar a uno abre un panel con **Dar de baja**, **Cambiar de grupo** y **Llamar**, con el usuario ya elegido (mismas confirmaciones que la pestaña Baja) (3-nov-2026).
+- **Alta**: buscador por ID o por nombre (sin distinguir mayúsculas ni tildes). Desde el 3-nov-2026 busca **en el móvil** mientras se escribe, sobre la lista de todos los usuarios (`api_usuariosAlta`, solo ID y nombre, sin teléfonos), que se precarga (`api_buscarUsuarios` se quitó). Si el usuario existe, se muestra su nombre y se inscribe con un toque. Si no existe, se ofrece «Crear usuario nuevo» (ID, nombre, teléfono opcional). La fecha de alta es hoy por defecto y editable.
 - **Baja**: elegir usuario, fecha de baja (hoy por defecto, editable) y motivo (lista cerrada). Incluye la acción **Cambiar de grupo**, con cualquier grupo activo del curso como destino.
 
 ### 7.0 Navegación (3-nov-2026)
@@ -235,8 +236,8 @@ Para no tener que tocar la hoja de cálculo:
 - **Usuarios**: buscar por ID, nombre o teléfono; crear usuario sin grupo; ficha con datos editables (el ID no se cambia), grupos (altas y bajas), inscribir en un grupo y resumen de asistencia del curso.
 - **Días sin clase**: añadir un día o un intervalo (vacaciones: se apuntan solo los días en que algún grupo afectado tiene clase), tipo, descripción y grupo (o todos); lista de próximos y pasados con «Quitar».
 - **Estados de asistencia**: editar nombre, letra, color, cómo cuenta y activo; crear estados nuevos (el código no se cambia después). `ASI` no se puede desactivar.
-- **Curso**: nombre, primer y último día de clase, días de pendientes.
-- **Listas**: motivos de baja («Cambio de grupo» se mantiene siempre) y tipos de día sin clase.
+- **Curso**: nombre, primer y último día de clase, días de pendientes y faltas seguidas para avisar (entre 2 y 20).
+- **Listas**: motivos de baja («Cambio de grupo» se mantiene siempre), tipos de día sin clase y observaciones rápidas.
 
 ## 8. API (funciones llamadas desde el cliente con `google.script.run`)
 
@@ -244,13 +245,13 @@ Todas devuelven `{ ok: true, data: ... }` o `{ ok: false, error: "mensaje en esp
 
 | Función | Descripción |
 |---|---|
-| `api_init()` | Monitora (email, nombre, rol), fecha de hoy, estados, motivos de baja y grupos accesibles |
+| `api_init()` | Monitora (email, nombre, rol), fecha de hoy, estados, motivos de baja, observaciones rápidas (`obsRapidas`) y grupos accesibles |
 | `api_inicio(fecha)` | Pendientes y grupos de la fecha con el estado de su sesión |
-| `api_sesion(grupo_id, fecha)` | Usuarios inscritos en esa fecha y estados guardados (o por defecto) |
+| `api_sesion(grupo_id, fecha)` | Usuarios inscritos en esa fecha y estados guardados (o por defecto). Cada usuario lleva también `inscripcion_id`, `fecha_baja` y `faltasSeguidas` (0 si no llega al aviso) |
 | `api_guardarSesion(payload)` | Guarda la sesión (regla 4) |
 | `api_cancelarSesion(grupo_id, fecha, nota)` | Cancela la sesión (regla 5). `nota` (motivo) es opcional |
 | `api_grupo(grupo_id)` | Inscripciones activas del grupo |
-| `api_buscarUsuarios(texto, grupo_id)` | Búsqueda por ID o nombre; marca quién ya está en el grupo |
+| `api_usuariosAlta()` | Todos los usuarios, solo `{ usuario_id, nombre }` (sin teléfonos), para buscar en el móvil en la pestaña Alta |
 | `api_altaUsuario(grupo_id, datos)` | Crea el usuario si no existe e inscribe. Con un nombre parecido a otro devuelve `{ parecidos }` sin crear, salvo `datos.crear_aunque_parecido` |
 | `api_baja(inscripcion_id, fecha_baja, motivo)` | Da de baja |
 | `api_cambiarGrupo(inscripcion_id, grupo_destino, fecha)` | Cambio de grupo (regla 8) |
@@ -264,8 +265,8 @@ Todas devuelven `{ ok: true, data: ... }` o `{ ok: false, error: "mensaje en esp
 | `api_guardarUsuario(datos, nuevo)` | Admin. Crea o modifica un usuario. Al crear, igual que `api_altaUsuario` con los parecidos |
 | `api_guardarDiaEspecial(datos)` / `api_borrarDiaEspecial(fecha, grupo_id)` | Admin. Días sin clase |
 | `api_guardarEstado(datos, nuevo)` | Admin. Crea o modifica un estado |
-| `api_guardarConfig(datos)` | Admin. Curso, fechas y días de pendientes |
-| `api_guardarLista(lista, valores)` | Admin. Sustituye los valores de `motivo_baja` o `tipo_dia` |
+| `api_guardarConfig(datos)` | Admin. Curso, fechas, días de pendientes y faltas seguidas (`faltasSeguidas`) |
+| `api_guardarLista(lista, valores)` | Admin. Sustituye los valores de `motivo_baja`, `tipo_dia` u `obs_rapida` |
 
 Contrato del payload de guardado:
 
@@ -420,4 +421,6 @@ Implementado en `Informes.gs` (pestaña Informe de la app y exportación a una h
 - **3-nov-2026 — Importación del documento del centro** (`Importar.gs`, `Config.gs`, `Main.gs`; sección 10): activos, lista de espera o los dos, con filtro por taller y localidad. La parte que escribe en Usuarios se comparte con la importación de antes, que funciona igual. Probada con una simulación de las hojas y el Excel real (1.054 activos y 264 más de la lista de espera, sin duplicados al repetir). **Falta probarla en Google**: `clasp push`, recargar la hoja para ver la opción nueva del menú y convertir el Excel a hoja de cálculo de Google.
 - **3-nov-2026 — Aviso de posibles duplicados** (`Config.gs`, `Servicio.gs`, `Admin.gs`, `Importar.gs`, `Setup.gs`, `Cliente.html`; regla 6): al crear un usuario (Altas y bajas o Gestión › Usuarios), en las dos importaciones y en «Validar datos». Probada la detección en Node (tildes, orden, falta de apellido, erratas, partículas; no salta con nombres distintos). **Falta probarlo en Google y ver el panel en el móvil.**
 - **3-nov-2026 — Pase de lista más rápido** (`Cliente.html`, `Estilos.html`; sección 7.2): un toque en el chip alterna Asistido/Falta, el guardado va en segundo plano y se puede encadenar con el siguiente pase pendiente. Probado con una simulación (respuestas de 1,5 s) en tamaño móvil: alternar, panel de otros estados, guardar y pasar al siguiente (se abre al momento), fallo del servidor con «Sin guardar» y reintento con las marcas conservadas, cancelar y pasar al siguiente, y cinco pases seguidos sin pasar por Inicio. **Falta probarlo en Google**: `clasp push`, versión nueva de la implementación y abrir `/dev` en el móvil.
-- Pendiente: renovar grupos de un trimestre o curso a otro (Fase 3).
+- **3-nov-2026 — Más atajos en el flujo** (`Cliente.html`, `Estilos.html`, `Servicio.gs`, `Api.gs`, `Config.gs`; secciones 7.1, 7.2, 7.3 y 8): «No hubo clase» en cada pendiente de Inicio; búsqueda instantánea en Altas (`api_usuariosAlta`, nueva); baja y cambio de grupo tocando al usuario en la Lista, y baja desde el panel del usuario en el pase de lista; flechas ‹ › de día en Inicio; marca de faltas seguidas en el pase de lista; observaciones rápidas. Probado con una simulación (respuestas de 1,5 s) en tamaño móvil: cancelar un pendiente sin abrir el pase (y que no abra el pase), búsqueda sin llamadas al servidor (ID, nombre con y sin tildes, «Ya está»), inscribir y que la lista se actualice, baja y cambio de grupo desde la Lista, baja desde el pase conservando las marcas y quitando al usuario si su último día es anterior, flechas sin pasar de hoy, faltas seguidas con un evento en medio y textos rápidos sin repetir. La función `faltasSeguidas_` se probó en Node. **Falta probarlo en Google**: `clasp push`, versión nueva de la implementación y abrir `/dev` en el móvil (en especial, el tiempo de `api_usuariosAlta` y de `api_sesion` con la hoja Asistencia real, que ahora se lee siempre para las faltas seguidas).
+- **3-nov-2026 — Ajustes sin tocar código** (`Config.gs`, `Servicio.gs`, `Admin.gs`, `Setup.gs`, `Api.gs`, `Cliente.html`; secciones 5, 7.2, 7.6 y 8): las observaciones rápidas salen de la lista `obs_rapida` (Gestión › Listas) y el aviso de faltas seguidas de la clave `faltas_seguidas` de Config (Gestión › Curso). Se quitó `api_buscarUsuarios` (y `buscarUsuarios_`), que ya no usaba la app. Probado con la simulación: cambiar la lista y verla en el panel del pase, subir el aviso a 4 y que desaparezcan las marcas, rechazar 1; `completarDatosNuevos_` probada en Node (añade solo lo que falta, también al repetirla). **Falta probarlo en Google**: tras `clasp push`, ejecutar otra vez «Configuración inicial» (añade `faltas_seguidas` y la lista `obs_rapida`) y crear una versión nueva de la implementación.
+- Pendiente: renovar grupos de un trimestre o curso a otro (Fase 3). Fase 3 «Aviso de usuarios con faltas seguidas»: hecho en el pase de lista (3-nov-2026).

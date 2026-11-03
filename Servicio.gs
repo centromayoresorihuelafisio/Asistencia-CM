@@ -129,7 +129,8 @@ function config_() {
     curso: o[CLAVES_CONFIG.CURSO] || '',
     inicio: esFechaValida_(o[CLAVES_CONFIG.INICIO]) ? o[CLAVES_CONFIG.INICIO] : '',
     fin: esFechaValida_(o[CLAVES_CONFIG.FIN]) ? o[CLAVES_CONFIG.FIN] : '',
-    diasPendientes: parseInt(o[CLAVES_CONFIG.DIAS_PENDIENTES], 10) || DIAS_PENDIENTES_POR_DEFECTO
+    diasPendientes: parseInt(o[CLAVES_CONFIG.DIAS_PENDIENTES], 10) || DIAS_PENDIENTES_POR_DEFECTO,
+    faltasSeguidas: parseInt(o[CLAVES_CONFIG.FALTAS_SEGUIDAS], 10) || FALTAS_SEGUIDAS_POR_DEFECTO
   };
 }
 
@@ -256,6 +257,7 @@ function datosIniciales_(monitora) {
     estados: estados_(),
     estadoPorDefecto: ESTADO_POR_DEFECTO,
     motivosBaja: valoresLista_(LISTA_MOTIVO_BAJA).filter(function (m) { return m !== MOTIVO_CAMBIO_GRUPO; }),
+    obsRapidas: valoresLista_(LISTA_OBS_RAPIDA),
     grupos: gruposAccesibles_(monitora).map(function (g) { return grupoParaCliente_(g, talleres); })
       .sort(function (a, b) { return (a.taller + a.nombre).localeCompare(b.taller + b.nombre, 'es'); })
   };
@@ -305,23 +307,36 @@ function datosSesion_(monitora, grupoId, fecha) {
 
   const usuarios = usuariosPorId_();
   const sesion = sesionesPorClave_()[fecha + '|' + grupoId] || null;
+  const realizada = !!(sesion && sesion.estado === ESTADO_SESION.REALIZADA);
+  const avisoFaltas = config_().faltasSeguidas;
+  const tipos = {};
+  leerTabla_(HOJAS.ESTADOS).forEach(function (e) { tipos[e.codigo] = e.tipo; });
   const guardados = {};
-  if (sesion && sesion.estado === ESTADO_SESION.REALIZADA) {
-    leerTabla_(HOJAS.ASISTENCIA).forEach(function (a) {
-      if (a.fecha === fecha && a.grupo_id === grupoId) guardados[normalizarId_(a.usuario_id)] = a;
-    });
-  }
+  const anteriores = {};   // usuario_id → registros de este grupo anteriores a la fecha
+  leerTabla_(HOJAS.ASISTENCIA).forEach(function (a) {
+    if (a.grupo_id !== grupoId) return;
+    const id = normalizarId_(a.usuario_id);
+    if (a.fecha === fecha) {
+      if (realizada) guardados[id] = a;
+    } else if (a.fecha < fecha) {
+      (anteriores[id] = anteriores[id] || []).push({ fecha: a.fecha, tipo: tipos[a.estado] });
+    }
+  });
 
   const lista = inscritosEn_(grupoId, fecha).map(function (i) {
     const id = normalizarId_(i.usuario_id);
     const u = usuarios[id] || {};
     const g = guardados[id];
+    const faltas = faltasSeguidas_(anteriores[id] || []);
     return {
       usuario_id: id,
       nombre: u.nombre || ('(ID ' + id + ' sin ficha)'),
       telefono: u.telefono || '',
       estado: g ? g.estado : ESTADO_POR_DEFECTO,
-      observaciones: g ? g.observaciones : ''
+      observaciones: g ? g.observaciones : '',
+      inscripcion_id: i.inscripcion_id,
+      fecha_baja: i.fecha_baja,
+      faltasSeguidas: faltas >= avisoFaltas ? faltas : 0
     };
   }).sort(compararNombres_);
 
@@ -332,6 +347,20 @@ function datosSesion_(monitora, grupoId, fecha) {
     diaEspecial: diaEspecial_(grupoId, fecha),
     usuarios: lista
   };
+}
+
+/**
+ * Faltas seguidas más recientes: registros de tipo ausente desde el último presente.
+ * Los neutros (evento, excursión…) ni suman ni cortan la racha.
+ */
+function faltasSeguidas_(registros) {
+  const ordenados = registros.slice().sort(function (a, b) { return a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0; });
+  let n = 0;
+  for (let k = 0; k < ordenados.length; k++) {
+    if (ordenados[k].tipo === TIPO_ESTADO.AUSENTE) n++;
+    else if (ordenados[k].tipo === TIPO_ESTADO.PRESENTE) break;
+  }
+  return n;
 }
 
 /** Regla 4: guardar la sesión. */
@@ -463,27 +492,13 @@ function datosGrupo_(monitora, grupoId) {
   return { grupo: grupoParaCliente_(grupo, talleres), inscritos: inscritos, destinos: destinos };
 }
 
-function buscarUsuarios_(monitora, texto, grupoId) {
-  const t = sinTildes_(texto).replace(/\s+/g, ' ').trim();
-  if (t.length < 2) return [];
-  const yaInscritos = {};
-  if (grupoId) {
-    const hoy = hoy_();
-    leerTabla_(HOJAS.INSCRIPCIONES).forEach(function (i) {
-      if (i.grupo_id === grupoId && (!i.fecha_baja || i.fecha_baja >= hoy)) yaInscritos[normalizarId_(i.usuario_id)] = true;
-    });
-  }
-  const tId = t.replace(/\s+/g, '');
+/**
+ * Todos los usuarios (ID y nombre, sin teléfonos) para buscar en el móvil al dar de alta sin esperar al servidor.
+ */
+function usuariosParaAlta_(monitora) {
   return leerTabla_(HOJAS.USUARIOS)
-    .filter(function (u) {
-      const id = normalizarId_(u.usuario_id);
-      return id && (id.indexOf(tId) === 0 || sinTildes_(u.nombre).indexOf(t) >= 0);
-    })
-    .slice(0, 25)
-    .map(function (u) {
-      const id = normalizarId_(u.usuario_id);
-      return { usuario_id: id, nombre: u.nombre, enGrupo: !!yaInscritos[id] };
-    })
+    .filter(function (u) { return normalizarId_(u.usuario_id); })
+    .map(function (u) { return { usuario_id: normalizarId_(u.usuario_id), nombre: u.nombre }; })
     .sort(compararNombres_);
 }
 

@@ -27,6 +27,7 @@ function setup() {
   });
   sembrar_(HOJAS.GRUPOS, [grupo], informe);
   completarLetras_(informe);
+  completarDatosNuevos_(informe);
 
   aplicarValidaciones_(libro);
   invalidarTodo_();
@@ -84,6 +85,25 @@ function completarLetras_(informe) {
   cambiar.forEach(function (e) { e.letra = porCodigo[e.codigo]; });
   actualizarFilas_(HOJAS.ESTADOS, cambiar);
   if (cambiar.length) informe.push('Añadida la letra del historial a ' + cambiar.length + ' estados.');
+}
+
+/**
+ * En hojas creadas antes, añade lo que se ha ido incorporando después (3-nov-2026): las claves de Config
+ * que falten y la lista de textos rápidos de observaciones si no tiene ningún valor.
+ */
+function completarDatosNuevos_(informe) {
+  const claves = leerHoja_(HOJAS.CONFIG).map(function (c) { return c.clave; });
+  const config = DATOS_INICIALES.config.filter(function (c) { return claves.indexOf(c.clave) < 0; })
+    .map(function (c) { return { clave: c.clave, valor: c.esFecha ? textoAFecha_(c.valor) : c.valor }; });
+  anadirFilas_(HOJAS.CONFIG, config);
+  if (config.length) informe.push('Añadido a Config: ' + config.map(function (c) { return c.clave; }).join(', ') + '.');
+
+  const listas = leerHoja_(HOJAS.LISTAS);
+  const nuevas = DATOS_INICIALES.listas.filter(function (l) {
+    return l.lista === LISTA_OBS_RAPIDA && !listas.some(function (x) { return x.lista === LISTA_OBS_RAPIDA; });
+  });
+  anadirFilas_(HOJAS.LISTAS, nuevas);
+  if (nuevas.length) informe.push('Añadida a Listas la lista «' + LISTA_OBS_RAPIDA + '» (textos rápidos de observaciones).');
 }
 
 /** Añade filas iniciales solo si la hoja no tiene datos. */

@@ -42,8 +42,8 @@ function api_grupo(grupo_id) {
   return responder_(function (m) { return datosGrupo_(m, grupo_id); });
 }
 
-function api_buscarUsuarios(texto, grupo_id) {
-  return responder_(function (m) { return buscarUsuarios_(m, texto, grupo_id); });
+function api_usuariosAlta() {
+  return responder_(function (m) { return usuariosParaAlta_(m); });
 }
 
 function api_altaUsuario(grupo_id, datos) {

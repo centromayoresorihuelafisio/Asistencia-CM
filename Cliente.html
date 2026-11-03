@@ -72,6 +72,11 @@
       const d = new Date(p[0], p[1] - 1 + n, 1);
       return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     }
+    function sumarDias(texto, n) {
+      const d = aFecha(texto);
+      d.setDate(d.getDate() + n);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
     function porcentaje(valor) {
       return valor === null || valor === undefined ? '—' : String(valor).replace('.', ',') + ' %';
     }
@@ -216,10 +221,10 @@
         varias(['api_grupo', 'api_sesion', 'api_inicio', 'api_historial', 'api_informe', 'api_usuario', 'api_gestion', 'api_usuariosGestion']);
       } else if (cambio === 'usuario-nuevo') {
         // Usuario nuevo, todavía sin grupo
-        varias(['api_usuariosGestion', 'api_gestion']);
+        varias(['api_usuariosGestion', 'api_gestion', 'api_usuariosAlta']);
       } else if (cambio === 'usuario') {
         // Datos de un usuario (nombre, teléfono, activo)
-        varias(['api_usuario', 'api_usuariosGestion', 'api_gestion', 'api_grupo', 'api_sesion', 'api_historial']);
+        varias(['api_usuario', 'api_usuariosGestion', 'api_gestion', 'api_grupo', 'api_sesion', 'api_historial', 'api_usuariosAlta']);
       } else if (cambio === 'dias') {
         varias(['api_inicio', 'api_sesion', 'api_historial', 'api_gestion']);
       } else if (cambio === 'lista') {
@@ -291,6 +296,7 @@
         enCola('api_usuariosGestion', ['']);
       }
       grupos.forEach(function (g) { enCola('api_grupo', [g.grupo_id]); });
+      enCola('api_usuariosAlta', []);
     }
 
     /** Tras un rato sin usar la app, lo vuelve a pedir todo (por si se ha tocado la hoja a mano). */
@@ -434,6 +440,8 @@
       pedir('api_inicio', app.fecha).then(function (d) {
         pintarInicio(d);
         precargarSesiones(d);
+        // La flecha ‹ suele ser lo siguiente: el día anterior se pide ya en segundo plano.
+        enCola('api_inicio', [sumarDias(app.fecha, -1)]);
       }).catch(function (e) {
         $('vista').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>';
       });
@@ -460,15 +468,21 @@
       app.ultimoInicio = d;
       if (app.vista !== 'inicio') return;
       let html = '<div class="selector-fecha"><label for="fechaInicio">Fecha</label>' +
-        '<input type="date" id="fechaInicio" value="' + esc(app.fecha) + '" max="' + esc(d.hoy) + '"></div>';
+        '<button type="button" class="boton flecha-dia" data-accion="dia" data-salto="-1" aria-label="Día anterior">‹</button>' +
+        '<input type="date" id="fechaInicio" value="' + esc(app.fecha) + '" max="' + esc(d.hoy) + '">' +
+        '<button type="button" class="boton flecha-dia" data-accion="dia" data-salto="1" aria-label="Día siguiente"' +
+        (app.fecha >= d.hoy ? ' disabled' : '') + '>›</button></div>';
 
       if (d.pendientes.length) {
         html += '<h2 class="seccion peligro">Pendientes (' + d.pendientes.length + ')</h2>';
+        // Cada pendiente: la tarjeta abre el pase y «No hubo clase» la cancela sin abrirlo.
         d.pendientes.forEach(function (p) {
-          html += '<button type="button" class="tarjeta pendiente" data-accion="pase" data-grupo="' + esc(p.grupo_id) +
-            '" data-fecha="' + esc(p.fecha) + '"><div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(p.nombre) +
-            '</div><div class="tarjeta-detalle">' + esc(p.taller) + ' · ' + esc(fechaCorta(p.fecha)) + '</div></div>' +
-            etiquetaGuardado(p.grupo_id, p.fecha) + '</button>';
+          const guardado = etiquetaGuardado(p.grupo_id, p.fecha);
+          html += '<div class="tarjeta pendiente con-accion"><button type="button" class="tarjeta-abrir" data-accion="pase" data-grupo="' +
+            esc(p.grupo_id) + '" data-fecha="' + esc(p.fecha) + '"><div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(p.nombre) +
+            '</div><div class="tarjeta-detalle">' + esc(p.taller) + ' · ' + esc(fechaCorta(p.fecha)) + '</div></div>' + guardado + '</button>' +
+            (guardado ? '' : '<button type="button" class="boton compacto" data-accion="no-hubo-clase" data-grupo="' + esc(p.grupo_id) +
+              '" data-fecha="' + esc(p.fecha) + '">No hubo clase</button>') + '</div>';
         });
       }
 
@@ -527,8 +541,11 @@
       try { window.localStorage.removeItem(claveBorrador(grupoId, fecha)); } catch (e) { /* se ignora */ }
     }
 
-    /** volver: función para regresar a la pantalla de origen (Inicio por defecto). */
-    function abrirPase(grupoId, fecha, volver) {
+    /**
+     * volver: función para regresar a la pantalla de origen (Inicio por defecto).
+     * sinAvisoBorrador: al reabrirlo tras una baja hecha desde el propio pase no se avisa de las marcas recuperadas.
+     */
+    function abrirPase(grupoId, fecha, volver, sinAvisoBorrador) {
       pedir('api_sesion', grupoId, fecha).then(function (d) {
         d.nota = d.sesion ? (d.sesion.nota || '') : '';
         d.borradorRecuperado = false;
@@ -540,7 +557,7 @@
             if (g) { u.estado = g.estado; u.observaciones = g.observaciones || ''; }
           });
           if (typeof b.nota === 'string') d.nota = b.nota;
-          d.borradorRecuperado = true;
+          d.borradorRecuperado = !sinAvisoBorrador;
         }
         pantallaSecundaria('pase', d.grupo.nombre, fechaLarga(fecha), d.volver);
         app.pase = d;
@@ -589,7 +606,9 @@
     function filaUsuario(u, i) {
       const e = estadoInfo(u.estado);
       return '<div class="fila-usuario" data-accion="usuario" data-indice="' + i + '" id="fila' + i + '">' +
-        '<div class="nombre">' + esc(u.nombre) + (u.observaciones ? '<span class="obs">' + esc(u.observaciones) + '</span>' : '') + '</div>' +
+        '<div class="nombre">' + esc(u.nombre) +
+        (u.faltasSeguidas ? '<span class="faltas-seguidas">' + u.faltasSeguidas + ' faltas seguidas</span>' : '') +
+        (u.observaciones ? '<span class="obs">' + esc(u.observaciones) + '</span>' : '') + '</div>' +
         '<button type="button" class="alternar" data-accion="alternar" data-indice="' + i + '" aria-label="' + esc(e.etiqueta) + '. Cambiar estado">' +
         '<span class="chip" style="' + estiloEstado(u.estado) + '">' + esc(e.etiqueta) + '</span></button>' +
         enlaceLlamar(u.telefono) + '</div>';
@@ -644,13 +663,28 @@
       }).join('') + '</div>';
     }
 
+    /** Añade un texto rápido a las observaciones (separado por coma), si no está ya. */
+    function anadirObsRapida(texto) {
+      const caja = $('obsUsuario');
+      if (!caja) return;
+      const actual = caja.value.trim();
+      if (actual.split(/\s*,\s*/).indexOf(texto) >= 0) return;
+      caja.value = actual ? actual + ', ' + texto : texto;
+    }
+
     function abrirPanelUsuario(i) {
       const u = app.pase.usuarios[i];
       app.pase.indice = i;
       abrirPanel('<div><h3>' + esc(u.nombre) + '</h3>' +
         botonesEstados('elegir-estado').replace('data-estado="' + esc(u.estado) + '"', 'data-estado="' + esc(u.estado) + '" data-elegido="1"') +
-        '<div class="campo"><label for="obsUsuario">Observaciones</label><textarea id="obsUsuario" rows="2">' + esc(u.observaciones) + '</textarea></div>' +
-        '<button type="button" class="boton ancho" data-accion="cerrar-usuario">Hecho</button></div>');
+        '<div class="campo"><label for="obsUsuario">Observaciones</label><textarea id="obsUsuario" rows="2">' + esc(u.observaciones) + '</textarea>' +
+        // Textos rápidos: lista obs_rapida de la hoja Listas (Gestión › Listas).
+        ((app.init.obsRapidas || []).length ? '<div class="obs-rapidas">' + app.init.obsRapidas.map(function (t) {
+          return '<button type="button" class="boton compacto" data-accion="obs-rapida" data-texto="' + esc(t) + '">' + esc(t) + '</button>';
+        }).join('') + '</div>' : '') + '</div>' +
+        '<button type="button" class="boton ancho" data-accion="cerrar-usuario">Hecho</button>' +
+        (u.inscripcion_id && !u.fecha_baja ? '<button type="button" class="boton peligro ancho separado" data-accion="pase-baja">Dar de baja de este grupo…</button>' : '') +
+        '</div>');
       const elegido = $('panel').querySelector('[data-elegido]');
       if (elegido) elegido.classList.add('elegido');
     }
@@ -795,6 +829,44 @@
       }).catch(avisoError);
     }
 
+    /** «No hubo clase» en un pendiente de Inicio: cancela la sesión sin abrir el pase de lista. */
+    let cancelarPendiente = null;
+    function abrirNoHuboClase(grupoId, fecha) {
+      const d = app.ultimoInicio;
+      const p = d && d.pendientes.find(function (x) { return x.grupo_id === grupoId && x.fecha === fecha; });
+      cancelarPendiente = { grupo_id: grupoId, fecha: fecha, nombre: p ? p.nombre : grupoId };
+      abrirPanel('<div><h3>¿No hubo clase?</h3>' +
+        '<p><strong>' + esc(cancelarPendiente.nombre) + '</strong> · ' + esc(fechaLarga(fecha)) + '</p>' +
+        '<p>Se marcará como sesión cancelada y dejará de salir en Pendientes.</p>' +
+        '<div class="campo"><label for="motivoCancelar">Motivo (opcional)</label><textarea id="motivoCancelar" rows="2"></textarea></div>' +
+        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">No</button>' +
+        '<button type="button" class="boton peligro-lleno" data-accion="confirmar-no-hubo">Sí, cancelar</button></div></div>');
+    }
+
+    function cancelarDesdeInicio() {
+      const c = cancelarPendiente;
+      if (!c) return;
+      const clave = claveBorrador(c.grupo_id, c.fecha);
+      llamar('api_cancelarSesion', c.grupo_id, c.fecha, $('motivoCancelar').value.trim()).then(function () {
+        cancelarPendiente = null;
+        app.hechos[clave] = true;
+        borrarBorrador(c.grupo_id, c.fecha);
+        anticuar('sesion', c.grupo_id, c.fecha);
+        cerrarPanel();
+        aviso('Sesión marcada como cancelada: ' + c.nombre + ', ' + fechaCorta(c.fecha) + '.');
+        // Se quita al momento de la lista y después se repinta con los datos del servidor.
+        if (app.vista === 'inicio' && app.ultimoInicio) {
+          const d = copia(app.ultimoInicio);
+          d.pendientes = d.pendientes.filter(function (x) { return claveBorrador(x.grupo_id, x.fecha) !== clave; });
+          const y = window.scrollY;
+          pintarInicio(d);
+          window.scrollTo(0, y);
+        }
+        refrescarVista();
+        precargar();
+      }).catch(avisoError);
+    }
+
     // ---------- Altas y bajas de un grupo ----------
 
     function abrirGrupo(grupoId, pestana, volver) {
@@ -823,11 +895,58 @@
 
     function htmlLista(d) {
       if (!d.inscritos.length) return '<p class="vacio">Todavía no hay usuarios inscritos.</p>';
-      return d.inscritos.map(function (u) {
-        return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(u.nombre) + '</strong></div>' +
+      return '<p class="ayuda">Toca a un usuario para darle de baja o cambiarle de grupo.</p>' + d.inscritos.map(function (u) {
+        return '<div class="resultado tocable" data-accion="inscrito" data-inscripcion="' + esc(u.inscripcion_id) + '">' +
+          '<div class="cuerpo"><div><strong>' + esc(u.nombre) + '</strong></div>' +
           '<div class="sub">ID ' + esc(u.usuario_id) + ' · alta ' + esc(fechaNumerica(u.fecha_alta)) +
           (u.fecha_baja ? ' · baja ' + esc(fechaNumerica(u.fecha_baja)) : '') + '</div></div>' + enlaceLlamar(u.telefono) + '</div>';
       }).join('');
+    }
+
+    /** Panel de un usuario de la pestaña Lista: baja, cambio de grupo y llamada, con el usuario ya elegido. */
+    function abrirPanelInscrito(inscripcionId) {
+      const u = app.grupo.inscritos.find(function (x) { return x.inscripcion_id === inscripcionId; });
+      if (!u) return;
+      let html = '<div><h3>' + esc(u.nombre) + '</h3><p>ID ' + esc(u.usuario_id) + ' · alta ' + esc(fechaNumerica(u.fecha_alta)) +
+        (u.fecha_baja ? '<br>Ya tiene la baja: su último día es el ' + esc(fechaNumerica(u.fecha_baja)) + '.' : '') + '</p><div class="pila">';
+      if (!u.fecha_baja) {
+        html += '<button type="button" class="boton peligro ancho" data-accion="panel-baja" data-inscripcion="' + esc(u.inscripcion_id) + '">Dar de baja</button>' +
+          '<button type="button" class="boton ancho" data-accion="panel-cambio" data-inscripcion="' + esc(u.inscripcion_id) + '">Cambiar de grupo</button>';
+      }
+      if (u.telefono) {
+        html += '<a class="boton ancho" href="tel:' + esc(u.telefono) + '">' + ICONO_TELEFONO + ' Llamar al ' + esc(u.telefono) + '</a>';
+      }
+      html += '<button type="button" class="boton ancho" data-accion="cerrar-panel">Cerrar</button></div></div>';
+      abrirPanel(html);
+    }
+
+    function camposBaja() {
+      return '<div class="campo"><label for="fechaBaja">Último día en el grupo</label><input type="date" id="fechaBaja" value="' + esc(app.init.hoy) + '"></div>' +
+        '<div class="campo"><label for="motivoBaja">Motivo</label><select id="motivoBaja"><option value="">— Elige el motivo —</option>' +
+        opciones(app.init.motivosBaja, '') + '</select></div>';
+    }
+
+    function camposCambio(destinos) {
+      const opcionesDestino = '<option value="">— Elige el grupo nuevo —</option>' + destinos.map(function (g) {
+        return '<option value="' + esc(g.grupo_id) + '">' + esc(g.taller) + ' · ' + esc(g.nombre) + (g.dias ? ' (' + esc(g.dias) + ')' : '') + '</option>';
+      }).join('');
+      return '<div class="campo"><label for="grupoDestino">Grupo nuevo</label><select id="grupoDestino">' + opcionesDestino + '</select></div>' +
+        '<div class="campo"><label for="fechaCambio">Primer día en el grupo nuevo</label><input type="date" id="fechaCambio" value="' + esc(app.init.hoy) + '"></div>';
+    }
+
+    /** Baja o cambio de grupo de un usuario ya elegido, en el panel: el campo oculto bajaUsuario hace de selector para pedirBaja/pedirCambio. */
+    function abrirPanelBaja(inscripcionId) {
+      abrirPanel('<div><h3>Dar de baja</h3><p><strong>' + esc(nombreInscripcion(inscripcionId)) + '</strong></p>' +
+        '<input type="hidden" id="bajaUsuario" value="' + esc(inscripcionId) + '">' + camposBaja() +
+        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
+        '<button type="button" class="boton peligro" data-accion="dar-baja">Dar de baja</button></div></div>');
+    }
+
+    function abrirPanelCambio(inscripcionId) {
+      abrirPanel('<div><h3>Cambiar de grupo</h3><p><strong>' + esc(nombreInscripcion(inscripcionId)) + '</strong></p>' +
+        '<input type="hidden" id="bajaUsuario" value="' + esc(inscripcionId) + '">' + camposCambio(app.grupo.destinos) +
+        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
+        '<button type="button" class="boton primario" data-accion="cambiar-grupo">Cambiar de grupo</button></div></div>');
     }
 
     function htmlAlta() {
@@ -849,19 +968,11 @@
       const opcionesUsuario = '<option value="">— Elige un usuario —</option>' + activos.map(function (u) {
         return '<option value="' + esc(u.inscripcion_id) + '">' + esc(u.nombre) + ' (' + esc(u.usuario_id) + ')</option>';
       }).join('');
-      const opcionesMotivo = '<option value="">— Elige el motivo —</option>' + opciones(app.init.motivosBaja, '');
-      const opcionesDestino = '<option value="">— Elige el grupo nuevo —</option>' + d.destinos.map(function (g) {
-        return '<option value="' + esc(g.grupo_id) + '">' + esc(g.taller) + ' · ' + esc(g.nombre) + (g.dias ? ' (' + esc(g.dias) + ')' : '') + '</option>';
-      }).join('');
 
       return '<div class="campo"><label for="bajaUsuario">Usuario</label><select id="bajaUsuario">' + opcionesUsuario + '</select></div>' +
-        '<div class="bloque"><h3>Dar de baja</h3>' +
-        '<div class="campo"><label for="fechaBaja">Último día en el grupo</label><input type="date" id="fechaBaja" value="' + esc(app.init.hoy) + '"></div>' +
-        '<div class="campo"><label for="motivoBaja">Motivo</label><select id="motivoBaja">' + opcionesMotivo + '</select></div>' +
+        '<div class="bloque"><h3>Dar de baja</h3>' + camposBaja() +
         '<button type="button" class="boton peligro ancho" data-accion="dar-baja">Dar de baja</button></div>' +
-        '<div class="bloque"><h3>Cambiar de grupo</h3>' +
-        '<div class="campo"><label for="grupoDestino">Grupo nuevo</label><select id="grupoDestino">' + opcionesDestino + '</select></div>' +
-        '<div class="campo"><label for="fechaCambio">Primer día en el grupo nuevo</label><input type="date" id="fechaCambio" value="' + esc(app.init.hoy) + '"></div>' +
+        '<div class="bloque"><h3>Cambiar de grupo</h3>' + camposCambio(d.destinos) +
         '<button type="button" class="boton primario ancho" data-accion="cambiar-grupo">Cambiar de grupo</button></div>';
     }
 
@@ -871,6 +982,30 @@
       temporizadorBusqueda = setTimeout(fn, 450);
     }
 
+    /** Para buscar: mayúsculas, sin tildes y sin espacios sobrantes (como sinTildes_ del servidor). */
+    function paraBuscar(texto) {
+      return String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+    }
+
+    /**
+     * Busca en la lista de todos los usuarios (api_usuariosAlta, precargada y sin teléfonos), sin esperar al servidor:
+     * por el principio del ID o por cualquier parte del nombre. Como mucho 25, por orden alfabético.
+     */
+    function filtrarUsuarios(lista, texto, grupo) {
+      const t = paraBuscar(texto);
+      const tId = t.replace(/\s+/g, '');
+      const enGrupo = {};
+      grupo.inscritos.forEach(function (u) { enGrupo[u.usuario_id] = true; });
+      const encontrados = [];
+      for (let k = 0; k < lista.length && encontrados.length < 25; k++) {
+        const u = lista[k];
+        if (u.usuario_id.indexOf(tId) === 0 || paraBuscar(u.nombre).indexOf(t) >= 0) {
+          encontrados.push({ usuario_id: u.usuario_id, nombre: u.nombre, enGrupo: !!enGrupo[u.usuario_id] });
+        }
+      }
+      return encontrados;
+    }
+
     function buscar() {
       const caja = $('textoBuscar');
       if (!caja) return;
@@ -878,9 +1013,11 @@
       const destino = $('resultadosBusqueda');
       if (texto.length < 2) { destino.innerHTML = ''; return; }
       const numero = ++app.busqueda;
-      destino.innerHTML = '<p class="vacio">Buscando…</p>';
-      llamarSinCarga(false, 'api_buscarUsuarios', [texto, app.grupo.grupo.grupo_id]).then(function (lista) {
+      if (!tieneMemoria('api_usuariosAlta', [])) destino.innerHTML = '<p class="vacio">Cargando la lista de usuarios…</p>';
+      const grupo = app.grupo;
+      pedirCon(false, 'api_usuariosAlta', []).then(function (todos) {
         if (numero !== app.busqueda || !$('resultadosBusqueda')) return;
+        const lista = filtrarUsuarios(todos, texto, grupo);
         if (!lista.length) {
           $('resultadosBusqueda').innerHTML = '<p class="vacio">No se ha encontrado a nadie. Puedes crearlo abajo.</p>';
           if (/^\S+$/.test(texto) && /\d/.test(texto)) $('nuevoId').value = texto.toUpperCase();
@@ -908,14 +1045,17 @@
           return;
         }
         anticuar('inscripciones');
+        if (r.creado) anticuar('usuario-nuevo');
         aviso((r.creado ? 'Usuario creado e inscrito: ' : 'Inscrito/a: ') + r.nombre);
         abrirGrupo(app.grupo.grupo.grupo_id, 'alta');
         precargar();
       }).catch(avisoError);
     }
 
+    /** Nombre de una inscripción: del pase de lista abierto o de Altas y bajas. */
     function nombreInscripcion(inscripcionId) {
-      const u = app.grupo.inscritos.find(function (x) { return x.inscripcion_id === inscripcionId; });
+      const lista = app.vista === 'pase' && app.pase ? app.pase.usuarios : (app.grupo ? app.grupo.inscritos : []);
+      const u = lista.find(function (x) { return x.inscripcion_id === inscripcionId; });
       return u ? u.nombre : '';
     }
 
@@ -946,12 +1086,19 @@
       });
     }
 
+    /** Tras una baja o un cambio: vuelve a abrir el pase de lista (si se hizo desde él, con sus marcas) o la lista del grupo. */
     function accionGrupo(promesa, mensaje) {
-      const grupoId = app.grupo.grupo.grupo_id;
+      const pase = app.vista === 'pase' ? app.pase : null;
+      const grupoId = pase ? pase.grupo.grupo_id : app.grupo.grupo.grupo_id;
       promesa.then(function () {
         anticuar('inscripciones');
         aviso(mensaje);
-        abrirGrupo(grupoId, 'lista');
+        if (pase) {
+          cerrarPanel();
+          abrirPase(grupoId, pase.fecha, pase.volver, true);
+        } else {
+          abrirGrupo(grupoId, 'lista');
+        }
         precargar();
       }).catch(function (e) { cerrarPanel(); avisoError(e); });
     }
@@ -1501,12 +1648,14 @@
         '<div class="campo"><label for="cFin">Último día de clase</label><input type="date" id="cFin" value="' + esc(c.fin) + '"></div></div>' +
         '<div class="campo"><label for="cPendientes">Avisar de listas sin pasar de los últimos… (días)</label>' +
         '<input type="number" id="cPendientes" min="1" max="60" value="' + esc(c.diasPendientes) + '"></div>' +
+        '<div class="campo"><label for="cFaltas">Avisar en el pase de lista a partir de… faltas seguidas</label>' +
+        '<input type="number" id="cFaltas" min="2" max="20" value="' + esc(c.faltasSeguidas) + '"></div>' +
         '<p class="ayuda">Fuera de estas fechas no se avisa de pendientes. Los grupos nuevos se apuntan en el curso indicado.</p>' +
         '<button type="button" class="boton primario ancho" data-accion="g-guardar-curso">Guardar</button></div>');
     }
 
     function guardarCurso() {
-      const datos = { curso: valor('cCurso'), inicio: valor('cInicio'), fin: valor('cFin'), diasPendientes: valor('cPendientes') };
+      const datos = { curso: valor('cCurso'), inicio: valor('cInicio'), fin: valor('cFin'), diasPendientes: valor('cPendientes'), faltasSeguidas: valor('cFaltas') };
       llamar('api_guardarConfig', datos).then(function () {
         aviso('Curso guardado.');
         return recargarDatos('gestion');
@@ -1524,7 +1673,11 @@
         '<button type="button" class="boton primario ancho" data-accion="g-guardar-lista" data-lista="motivo_baja" data-campo="lMotivos">Guardar motivos</button></div>' +
         '<div class="bloque"><h3>Tipos de día sin clase</h3>' +
         '<div class="campo"><label for="lTipos">Uno por línea</label><textarea id="lTipos" rows="5">' + esc(l.tipo_dia.join('\n')) + '</textarea></div>' +
-        '<button type="button" class="boton primario ancho" data-accion="g-guardar-lista" data-lista="tipo_dia" data-campo="lTipos">Guardar tipos</button></div>');
+        '<button type="button" class="boton primario ancho" data-accion="g-guardar-lista" data-lista="tipo_dia" data-campo="lTipos">Guardar tipos</button></div>' +
+        '<div class="bloque"><h3>Observaciones rápidas</h3>' +
+        '<div class="campo"><label for="lObs">Una por línea</label><textarea id="lObs" rows="5">' + esc((l.obs_rapida || []).join('\n')) + '</textarea>' +
+        '<p class="ayuda">Salen como botones en el panel de cada usuario del pase de lista y se añaden a sus observaciones con un toque.</p></div>' +
+        '<button type="button" class="boton primario ancho" data-accion="g-guardar-lista" data-lista="obs_rapida" data-campo="lObs">Guardar observaciones</button></div>');
     }
 
     function guardarLista(lista, campo) {
@@ -1553,6 +1706,7 @@
         case 'alternar': alternarEstado(Number(dato('indice'))); break;
         case 'elegir-estado': cerrarPanelUsuario(dato('estado')); break;
         case 'cerrar-usuario': cerrarPanelUsuario(null); break;
+        case 'obs-rapida': anadirObsRapida(dato('texto')); break;
         case 'aplicar-todos':
           abrirPanel('<div><h3>Aplicar a todos</h3><p>Se pondrá el mismo estado a todo el grupo. Después puedes cambiar casos sueltos.</p>' +
             botonesEstados('aplicar-estado') + '<button type="button" class="boton ancho" data-accion="cerrar-panel">Cancelar</button></div>');
@@ -1568,6 +1722,14 @@
         case 'confirmar-guardar': guardarPase(!!dato('siguiente')); break;
         case 'cancelar-sesion': abrirCancelarSesion(); break;
         case 'confirmar-cancelar': cancelarPase(!!dato('siguiente')); break;
+        case 'dia': {
+          // Flechas de Inicio: un día antes o después, sin pasar de hoy.
+          const f = sumarDias(app.fecha, Number(dato('salto')));
+          if (f <= app.init.hoy) { app.fecha = f; irInicio(); }
+          break;
+        }
+        case 'no-hubo-clase': abrirNoHuboClase(dato('grupo'), dato('fecha')); break;
+        case 'confirmar-no-hubo': cancelarDesdeInicio(); break;
         case 'cerrar-panel': cerrarPanel(); break;
         case 'confirmar-si': if (confirmacionPendiente) confirmacionPendiente(); break;
         case 'parecido-usar': cerrarPanel(); if (parecidosPendiente) parecidosPendiente.usar(dato('usuario')); break;
@@ -1583,6 +1745,16 @@
         }
         case 'dar-baja': pedirBaja(); break;
         case 'cambiar-grupo': pedirCambio(); break;
+        case 'inscrito': abrirPanelInscrito(dato('inscripcion')); break;
+        case 'panel-baja': abrirPanelBaja(dato('inscripcion')); break;
+        case 'panel-cambio': abrirPanelCambio(dato('inscripcion')); break;
+        case 'pase-baja': {
+          // Se guardan antes el estado y las observaciones del panel (quedan en el borrador al reabrir el pase).
+          const u = app.pase.usuarios[app.pase.indice];
+          cerrarPanelUsuario(null);
+          abrirPanelBaja(u.inscripcion_id);
+          break;
+        }
         // Historial
         case 'mes': app.hist.mes = sumarMes(app.hist.mes, Number(dato('salto'))); cargarHistorial(); break;
         case 'pase-historial': abrirPase(app.hist.grupo_id, dato('fecha'), volverAHistorial); break;
@@ -1618,7 +1790,7 @@
     });
 
     document.addEventListener('input', function (ev) {
-      if (ev.target.id === 'textoBuscar') programar(buscar);
+      if (ev.target.id === 'textoBuscar') buscar();
       if (ev.target.id === 'gBuscarUsuario') programar(buscarUsuariosGestion);
       if (ev.target.id === 'notaSesion' && app.pase) { app.pase.nota = ev.target.value; guardarBorrador(); }
     });

@@ -96,6 +96,8 @@ const ESTADO_POR_DEFECTO = 'ASI';
 
 const LISTA_MOTIVO_BAJA = 'motivo_baja';
 const LISTA_TIPO_DIA = 'tipo_dia';
+// Textos rápidos de observaciones en el pase de lista.
+const LISTA_OBS_RAPIDA = 'obs_rapida';
 
 // Motivo reservado para la acción «Cambiar de grupo».
 const MOTIVO_CAMBIO_GRUPO = 'Cambio de grupo';
@@ -106,7 +108,7 @@ const LETRAS_DIAS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 const ORDEN_DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 // Listas que se pueden editar desde la app (Gestión › Listas).
-const LISTAS_EDITABLES = [LISTA_MOTIVO_BAJA, LISTA_TIPO_DIA];
+const LISTAS_EDITABLES = [LISTA_MOTIVO_BAJA, LISTA_TIPO_DIA, LISTA_OBS_RAPIDA];
 
 // Máximo de días que se apuntan de una vez como «día sin clase» (un intervalo de vacaciones).
 const MAX_DIAS_INTERVALO = 120;
@@ -115,10 +117,15 @@ const CLAVES_CONFIG = {
   CURSO: 'curso_activo',
   INICIO: 'inicio_curso',
   FIN: 'fin_curso',
-  DIAS_PENDIENTES: 'dias_pendientes'
+  DIAS_PENDIENTES: 'dias_pendientes',
+  FALTAS_SEGUIDAS: 'faltas_seguidas'
 };
 
 const DIAS_PENDIENTES_POR_DEFECTO = 14;
+
+// Pase de lista: a partir de cuántas faltas seguidas (registros de tipo ausente) se marca al usuario,
+// si la hoja Config no dice otra cosa (clave faltas_seguidas).
+const FALTAS_SEGUIDAS_POR_DEFECTO = 3;
 
 // Aviso de posibles usuarios duplicados (nombres parecidos con otro ID).
 // Palabras que no cuentan al comparar nombres («GARCIA DE LA TORRE» = «GARCIA TORRE»).
@@ -144,7 +151,8 @@ const CENTRO_COLUMNAS_TRAS_ID = { TALLER: 1, LOCALIDAD: 2 };
 // La columna del teléfono es la primera cuya cabecera empieza por una de estas palabras (TELÉFONO, Tfno…).
 const CENTRO_CABECERA_TELEFONO = ['TEL', 'TFNO', 'TLF'];
 
-// Datos que crea setup() la primera vez (solo si la hoja está vacía).
+// Datos que crea setup() la primera vez (solo si la hoja está vacía; completarDatosNuevos_ añade después
+// las claves de Config y la lista obs_rapida que falten en hojas creadas antes).
 const DATOS_INICIALES = {
   estados: [
     { codigo: 'ASI', etiqueta: 'Asistido', tipo: TIPO_ESTADO.PRESENTE, color: '#2e7d32', activo: SI, letra: 'X' },
@@ -161,13 +169,19 @@ const DATOS_INICIALES = {
     { lista: LISTA_TIPO_DIA, valor: 'Festivo' },
     { lista: LISTA_TIPO_DIA, valor: 'Asunto propio' },
     { lista: LISTA_TIPO_DIA, valor: 'Vacaciones' },
-    { lista: LISTA_TIPO_DIA, valor: 'Otro' }
+    { lista: LISTA_TIPO_DIA, valor: 'Otro' },
+    { lista: LISTA_OBS_RAPIDA, valor: 'Avisó' },
+    { lista: LISTA_OBS_RAPIDA, valor: 'Llegó tarde' },
+    { lista: LISTA_OBS_RAPIDA, valor: 'Se fue antes' },
+    { lista: LISTA_OBS_RAPIDA, valor: 'Enfermedad' },
+    { lista: LISTA_OBS_RAPIDA, valor: 'Cita médica' }
   ],
   config: [
     { clave: CLAVES_CONFIG.CURSO, valor: '2026-2027' },
     { clave: CLAVES_CONFIG.INICIO, valor: '2026-09-01', esFecha: true },
     { clave: CLAVES_CONFIG.FIN, valor: '2027-06-30', esFecha: true },
-    { clave: CLAVES_CONFIG.DIAS_PENDIENTES, valor: String(DIAS_PENDIENTES_POR_DEFECTO) }
+    { clave: CLAVES_CONFIG.DIAS_PENDIENTES, valor: String(DIAS_PENDIENTES_POR_DEFECTO) },
+    { clave: CLAVES_CONFIG.FALTAS_SEGUIDAS, valor: String(FALTAS_SEGUIDAS_POR_DEFECTO) }
   ],
   taller: { taller_id: 'YOGA', nombre: 'Yoga', activo: SI },
   grupo: { grupo_id: 'YOGA-SUELO-LX', taller_id: 'YOGA', nombre: 'Yoga suelo', dias: 'L,X', hora: '10:00', activo: SI }
