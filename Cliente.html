@@ -82,6 +82,39 @@
     }
     function esAdmin() { return app.init.monitora.rol === 'admin'; }
 
+    /**
+     * Nombre de un usuario para mostrar: «GARCIA DE LA FUENTE MARIA» → «Garcia de la Fuente Maria».
+     * Solo cambia cómo se ve: en la hoja, en los campos para editar y en las búsquedas sigue en mayúsculas.
+     */
+    const PARTICULAS = { DE: 1, DEL: 1, LA: 1, LAS: 1, LOS: 1, Y: 1, I: 1, E: 1 };
+    function nombreVisible(texto) {
+      const t = String(texto || '');
+      if (!t || t.charAt(0) === '(') return t;   // «(ID 12 sin ficha)» se deja tal cual
+      return t.split(' ').map(function (palabra, i) {
+        if (i > 0 && PARTICULAS[palabra.toUpperCase()]) return palabra.toLowerCase();
+        return palabra.toLowerCase().replace(/(^|[-'])(\S)/g, function (m, antes, letra) { return antes + letra.toUpperCase(); });
+      }).join(' ');
+    }
+    /**
+     * Círculo con las iniciales (como en Contactos): primer apellido y nombre (tercera palabra, o la última si hay
+     * menos), sin partículas. El color sale del propio nombre, así cada usuario tiene siempre el mismo.
+     */
+    function avatar(nombre) {
+      const palabras = String(nombre || '').toUpperCase().split(' ').filter(function (p) { return p && !PARTICULAS[p] && /[A-ZÑ]/.test(p); });
+      if (!palabras.length || String(nombre).charAt(0) === '(') return '<span class="avatar av-0" aria-hidden="true">?</span>';
+      const segunda = palabras.length > 2 ? palabras[2] : palabras[palabras.length - 1];
+      const iniciales = palabras[0].replace(/[^A-ZÑÁÉÍÓÚÜ]/g, '').charAt(0) +
+        (palabras.length > 1 ? segunda.replace(/[^A-ZÑÁÉÍÓÚÜ]/g, '').charAt(0) : '');
+      let suma = 0;
+      for (let k = 0; k < nombre.length; k++) suma += nombre.charCodeAt(k);
+      return '<span class="avatar av-' + (suma % 6) + '" aria-hidden="true">' + esc(iniciales) + '</span>';
+    }
+
+    /** Vibración muy corta al marcar un estado (solo en los móviles que la admiten, como Android). */
+    function vibrar() {
+      try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) { /* sin vibración: se ignora */ }
+    }
+
     /** Color de texto legible sobre un color de fondo (#rrggbb). */
     function colorTexto(fondo) {
       const m = /^#?([0-9a-f]{6})$/i.exec(String(fondo || '').trim());
@@ -145,6 +178,7 @@
 
     const ICONO_TELEFONO = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg>';
 
+    const ICONO_MAS = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>';
     const ICONO_GUARDAR = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
 
     function enlaceLlamar(telefono) {
@@ -384,9 +418,9 @@
     function avisarParecidos(nombre, parecidos, textoUsar, alUsar, alCrear) {
       parecidosPendiente = { usar: alUsar, crear: alCrear };
       abrirPanel('<div><h3>¿Es la misma persona?</h3>' +
-        '<p>Ya hay ' + (parecidos.length === 1 ? 'un usuario' : 'usuarios') + ' con un nombre parecido a <strong>' + esc(nombre) + '</strong>:</p>' +
+        '<p>Ya hay ' + (parecidos.length === 1 ? 'un usuario' : 'usuarios') + ' con un nombre parecido a <strong>' + esc(nombreVisible(nombre)) + '</strong>:</p>' +
         parecidos.map(function (u) {
-          return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(u.nombre) + '</strong></div>' +
+          return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(nombreVisible(u.nombre)) + '</strong></div>' +
             '<div class="sub">ID ' + esc(u.usuario_id) + (u.activo ? '' : ' · inactivo') + '</div></div>' +
             '<button type="button" class="boton primario" data-accion="parecido-usar" data-usuario="' + esc(u.usuario_id) + '">' + esc(textoUsar) + '</button></div>';
         }).join('') +
@@ -652,7 +686,7 @@
       // Si no está en el estado por defecto, la fila toma un tinte muy suave de su color (como las citas de fisio).
       const tinte = u.estado !== app.init.estadoPorDefecto ? ' style="--tinte:' + esc(e.color) + '"' : '';
       return '<div class="fila-usuario" data-accion="usuario" data-indice="' + i + '" id="fila' + i + '"' + tinte + '>' +
-        '<div class="nombre">' + esc(u.nombre) +
+        avatar(u.nombre) + '<div class="nombre">' + esc(nombreVisible(u.nombre)) +
         (u.faltasSeguidas ? '<span class="faltas-seguidas">' + u.faltasSeguidas + ' faltas seguidas</span>' : '') +
         (u.observaciones ? '<span class="obs">' + esc(u.observaciones) + '</span>' : '') + '</div>' +
         '<button type="button" class="alternar" data-accion="alternar" data-indice="' + i + '" aria-label="' + esc(e.etiqueta) + '. Cambiar estado">' +
@@ -677,6 +711,7 @@
       if (!par) { abrirPanelUsuario(i); return; }
       const u = app.pase.usuarios[i];
       u.estado = u.estado === par.presente.codigo ? par.falta.codigo : par.presente.codigo;
+      vibrar();
       $('fila' + i).outerHTML = filaUsuario(u, i, true);
       pintarPiePase();
       guardarBorrador();
@@ -723,7 +758,7 @@
     function abrirPanelUsuario(i) {
       const u = app.pase.usuarios[i];
       app.pase.indice = i;
-      abrirPanel('<div><h3>' + esc(u.nombre) + '</h3>' +
+      abrirPanel('<div><h3>' + esc(nombreVisible(u.nombre)) + '</h3>' +
         botonesEstados('elegir-estado').replace('data-estado="' + esc(u.estado) + '"', 'data-estado="' + esc(u.estado) + '" data-elegido="1"') +
         '<div class="campo"><label for="obsUsuario">Observaciones</label><textarea id="obsUsuario" rows="2">' + esc(u.observaciones) + '</textarea>' +
         // Textos rápidos: lista obs_rapida de la hoja Listas (Gestión › Listas).
@@ -740,7 +775,7 @@
     function cerrarPanelUsuario(nuevoEstado) {
       const p = app.pase;
       const u = p.usuarios[p.indice];
-      if (nuevoEstado) u.estado = nuevoEstado;
+      if (nuevoEstado) { u.estado = nuevoEstado; vibrar(); }
       const obs = $('obsUsuario');
       if (obs) u.observaciones = obs.value.trim();
       cerrarPanel();
@@ -938,14 +973,20 @@
       if (app.pestana === 'lista') html += htmlLista(d);
       if (app.pestana === 'alta') html += htmlAlta();
       if (app.pestana === 'baja') html += htmlBaja(d);
+      // Botón flotante de Material 3 en la Lista: lleva a Alta con el buscador listo para escribir.
+      if (app.pestana === 'lista') {
+        html += '<div class="hueco-fab"></div><button type="button" class="fab" data-accion="pestana" data-pestana="alta" data-enfocar="1">' +
+          ICONO_MAS + 'Inscribir</button>';
+      }
       pintar(html);
+      if (app.pestana === 'alta' && app.enfocarBuscador) { app.enfocarBuscador = false; $('textoBuscar').focus(); }
     }
 
     function htmlLista(d) {
       if (!d.inscritos.length) return '<p class="vacio">Todavía no hay usuarios inscritos.</p>';
       return '<p class="ayuda">Toca a un usuario para darle de baja o cambiarle de grupo.</p><div class="lista">' + d.inscritos.map(function (u) {
-        return '<div class="resultado tocable" data-accion="inscrito" data-inscripcion="' + esc(u.inscripcion_id) + '">' +
-          '<div class="cuerpo"><div><strong>' + esc(u.nombre) + '</strong></div>' +
+        return '<div class="resultado tocable" data-accion="inscrito" data-inscripcion="' + esc(u.inscripcion_id) + '">' + avatar(u.nombre) +
+          '<div class="cuerpo"><div><strong>' + esc(nombreVisible(u.nombre)) + '</strong></div>' +
           '<div class="sub">ID ' + esc(u.usuario_id) + ' · alta ' + esc(fechaNumerica(u.fecha_alta)) +
           (u.fecha_baja ? ' · baja ' + esc(fechaNumerica(u.fecha_baja)) : '') + '</div></div>' + enlaceLlamar(u.telefono) + '</div>';
       }).join('') + '</div>';
@@ -955,7 +996,7 @@
     function abrirPanelInscrito(inscripcionId) {
       const u = app.grupo.inscritos.find(function (x) { return x.inscripcion_id === inscripcionId; });
       if (!u) return;
-      let html = '<div><h3>' + esc(u.nombre) + '</h3><p>ID ' + esc(u.usuario_id) + ' · alta ' + esc(fechaNumerica(u.fecha_alta)) +
+      let html = '<div><h3>' + esc(nombreVisible(u.nombre)) + '</h3><p>ID ' + esc(u.usuario_id) + ' · alta ' + esc(fechaNumerica(u.fecha_alta)) +
         (u.fecha_baja ? '<br>Ya tiene la baja: su último día es el ' + esc(fechaNumerica(u.fecha_baja)) + '.' : '') + '</p><div class="pila">';
       if (!u.fecha_baja) {
         html += '<button type="button" class="boton peligro ancho" data-accion="panel-baja" data-inscripcion="' + esc(u.inscripcion_id) + '">Dar de baja</button>' +
@@ -984,14 +1025,14 @@
 
     /** Baja o cambio de grupo de un usuario ya elegido, en el panel: el campo oculto bajaUsuario hace de selector para pedirBaja/pedirCambio. */
     function abrirPanelBaja(inscripcionId) {
-      abrirPanel('<div><h3>Dar de baja</h3><p><strong>' + esc(nombreInscripcion(inscripcionId)) + '</strong></p>' +
+      abrirPanel('<div><h3>Dar de baja</h3><p><strong>' + esc(nombreVisible(nombreInscripcion(inscripcionId))) + '</strong></p>' +
         '<input type="hidden" id="bajaUsuario" value="' + esc(inscripcionId) + '">' + camposBaja() +
         '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
         '<button type="button" class="boton peligro" data-accion="dar-baja">Dar de baja</button></div></div>');
     }
 
     function abrirPanelCambio(inscripcionId) {
-      abrirPanel('<div><h3>Cambiar de grupo</h3><p><strong>' + esc(nombreInscripcion(inscripcionId)) + '</strong></p>' +
+      abrirPanel('<div><h3>Cambiar de grupo</h3><p><strong>' + esc(nombreVisible(nombreInscripcion(inscripcionId))) + '</strong></p>' +
         '<input type="hidden" id="bajaUsuario" value="' + esc(inscripcionId) + '">' + camposCambio(app.grupo.destinos) +
         '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
         '<button type="button" class="boton primario" data-accion="cambiar-grupo">Cambiar de grupo</button></div></div>');
@@ -1014,7 +1055,7 @@
       const activos = d.inscritos.filter(function (u) { return !u.fecha_baja; });
       if (!activos.length) return '<p class="vacio">No hay usuarios para dar de baja.</p>';
       const opcionesUsuario = '<option value="">— Elige un usuario —</option>' + activos.map(function (u) {
-        return '<option value="' + esc(u.inscripcion_id) + '">' + esc(u.nombre) + ' (' + esc(u.usuario_id) + ')</option>';
+        return '<option value="' + esc(u.inscripcion_id) + '">' + esc(nombreVisible(u.nombre)) + ' (' + esc(u.usuario_id) + ')</option>';
       }).join('');
 
       return '<div class="campo"><label for="bajaUsuario">Usuario</label><select id="bajaUsuario">' + opcionesUsuario + '</select></div>' +
@@ -1072,7 +1113,7 @@
           return;
         }
         $('resultadosBusqueda').innerHTML = lista.map(function (u) {
-          return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(u.nombre) + '</strong></div>' +
+          return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(nombreVisible(u.nombre)) + '</strong></div>' +
             '<div class="sub">ID ' + esc(u.usuario_id) + '</div></div>' +
             (u.enGrupo ? '<span class="etiqueta realizada">Ya está</span>'
               : '<button type="button" class="boton primario" data-accion="inscribir" data-usuario="' + esc(u.usuario_id) + '">Inscribir</button>') +
@@ -1094,7 +1135,7 @@
         }
         anticuar('inscripciones');
         if (r.creado) anticuar('usuario-nuevo');
-        aviso((r.creado ? 'Usuario creado e inscrito: ' : 'Inscrito/a: ') + r.nombre);
+        aviso((r.creado ? 'Usuario creado e inscrito: ' : 'Inscrito/a: ') + nombreVisible(r.nombre));
         abrirGrupo(app.grupo.grupo.grupo_id, 'alta');
         precargar();
       }).catch(avisoError);
@@ -1114,7 +1155,7 @@
       if (!insc) return aviso('Elige primero el usuario.', true);
       if (!fecha) return aviso('Indica la fecha de baja.', true);
       if (!motivo) return aviso('Elige el motivo de la baja.', true);
-      confirmar('¿Dar de baja?', '<strong>' + esc(nombreInscripcion(insc)) + '</strong><br>Último día: ' +
+      confirmar('¿Dar de baja?', '<strong>' + esc(nombreVisible(nombreInscripcion(insc))) + '</strong><br>Último día: ' +
         esc(fechaNumerica(fecha)) + '<br>Motivo: ' + esc(motivo), 'Sí, dar de baja', true, function () {
         accionGrupo(llamar('api_baja', insc, fecha, motivo), 'Baja registrada.');
       });
@@ -1128,7 +1169,7 @@
       if (!destino) return aviso('Elige el grupo nuevo.', true);
       if (!fecha) return aviso('Indica la fecha del cambio.', true);
       const g = app.grupo.destinos.find(function (x) { return x.grupo_id === destino; });
-      confirmar('¿Cambiar de grupo?', '<strong>' + esc(nombreInscripcion(insc)) + '</strong><br>Pasa a: ' +
+      confirmar('¿Cambiar de grupo?', '<strong>' + esc(nombreVisible(nombreInscripcion(insc))) + '</strong><br>Pasa a: ' +
         esc(g ? g.taller + ' · ' + g.nombre : destino) + '<br>Desde el ' + esc(fechaNumerica(fecha)), 'Sí, cambiar', false, function () {
         accionGrupo(llamar('api_cambiarGrupo', insc, destino, fecha), 'Cambio de grupo registrado.');
       });
@@ -1168,6 +1209,14 @@
       pedir('api_historial', grupoId, mes).then(function (d) {
         if (app.vista === 'historial' && app.hist.grupo_id === grupoId && app.hist.mes === mes) pintarHistorial(d);
       }).catch(function (e) { pintarHistorial(null); avisoError(e); });
+    }
+
+    /** % de asistencia con una barrita debajo: verde desde el 75 %, ámbar desde el 50 % y roja por debajo. */
+    function barraPorcentaje(p) {
+      if (p === null || p === undefined) return '—';
+      const n = Math.round(p);
+      const nivel = n >= 75 ? 'alto' : n >= 50 ? 'medio' : 'bajo';
+      return n + '<span class="pct-barra ' + nivel + '"><span style="width:' + Math.max(0, Math.min(100, n)) + '%"></span></span>';
     }
 
     function pintarHistorial(d) {
@@ -1212,7 +1261,7 @@
       html += '<th class="pct">%</th></tr></thead><tbody>';
       d.filas.forEach(function (f) {
         html += '<tr><th class="fija nombre-hist"' + (esAdmin() ? ' data-accion="ficha" data-usuario="' + esc(f.usuario_id) + '"' : '') + '>' +
-          esc(f.nombre) + '</th>';
+          esc(nombreVisible(f.nombre)) + '</th>';
         f.celdas.forEach(function (codigo, i) {
           const c = d.columnas[i];
           if (codigo === '-') { html += '<td class="no-inscrito" title="No estaba inscrito/a">·</td>'; return; }
@@ -1223,7 +1272,7 @@
           const e = estadoInfo(codigo, d.estados);
           html += '<td><span class="celda" style="' + estiloColor(e.color) + '" title="' + esc(e.etiqueta) + '">' + esc(e.letra) + '</span></td>';
         });
-        html += '<td class="pct">' + (f.porcentaje === null ? '—' : Math.round(f.porcentaje)) + '</td></tr>';
+        html += '<td class="pct">' + barraPorcentaje(f.porcentaje) + '</td></tr>';
       });
       html += '</tbody><tfoot><tr><th class="fija">Asistieron</th>';
       d.columnas.forEach(function (c) {
@@ -1491,7 +1540,7 @@
           ? '<p class="ayuda">Se muestran ' + r.usuarios.length + ' de ' + r.encontrados + '. Escribe para afinar la búsqueda.</p>' : '') +
           (r.usuarios.length ? r.usuarios.map(function (u) {
             return '<button type="button" class="tarjeta' + (u.activo ? '' : ' inactiva') + '" data-accion="ficha" data-usuario="' + esc(u.usuario_id) + '">' +
-              '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(u.nombre) + '</div>' +
+              avatar(u.nombre) + '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(nombreVisible(u.nombre)) + '</div>' +
               '<div class="tarjeta-detalle">ID ' + esc(u.usuario_id) + (u.telefono ? ' · ' + esc(u.telefono) : '') + ' · ' +
               (u.grupos ? u.grupos + (u.grupos === 1 ? ' grupo' : ' grupos') : 'sin grupo') + '</div></div>' +
               (u.activo ? '' : '<span class="etiqueta cancelada">Inactivo</span>') + '<span class="flecha" aria-hidden="true">›</span></button>';
@@ -1519,7 +1568,7 @@
           return;
         }
         anticuar('usuario-nuevo');
-        aviso('Usuario creado: ' + r.nombre);
+        aviso('Usuario creado: ' + nombreVisible(r.nombre));
         app.gest.totalUsuarios++;
         abrirFicha(r.usuario_id, irUsuarios);
         precargar();
@@ -1537,7 +1586,7 @@
     function pintarFicha() {
       const d = app.ficha;
       const u = d.usuario;
-      pantallaSecundaria('ficha', u.nombre, 'ID ' + u.usuario_id, d.volver);
+      pantallaSecundaria('ficha', nombreVisible(u.nombre), 'ID ' + u.usuario_id, d.volver);
       const vigentes = d.inscripciones.filter(function (i) { return !i.fecha_baja || i.fecha_baja >= app.init.hoy; });
       const gruposLibres = (app.gest ? app.gest.grupos : []).filter(function (g) {
         return g.activo && !vigentes.some(function (i) { return i.grupo_id === g.grupo_id; });
@@ -1782,7 +1831,7 @@
         case 'confirmar-si': if (confirmacionPendiente) confirmacionPendiente(); break;
         case 'parecido-usar': cerrarPanel(); if (parecidosPendiente) parecidosPendiente.usar(dato('usuario')); break;
         case 'parecido-crear': cerrarPanel(); if (parecidosPendiente) parecidosPendiente.crear(); break;
-        case 'pestana': app.pestana = dato('pestana'); pintarGrupo(); break;
+        case 'pestana': app.pestana = dato('pestana'); app.enfocarBuscador = !!dato('enfocar'); pintarGrupo(); break;
         case 'inscribir': inscribir({ usuario_id: dato('usuario') }); break;
         case 'crear-usuario': {
           const id = valor('nuevoId');
@@ -1879,6 +1928,27 @@
     // Barra superior de Material 3: al desplazar la pantalla toma el color del contenedor (sin línea ni sombra).
     window.addEventListener('scroll', function () {
       $('barra').classList.toggle('elevada', window.scrollY > 4);
+    }, { passive: true });
+
+    // Onda de Material al pulsar: un círculo que crece desde el dedo y se desvanece. Si el sistema pide
+    // reducir el movimiento, no se dibuja (queda el oscurecimiento suave de siempre).
+    const CON_ONDA = '.boton, .tarjeta:not(.con-accion), .tarjeta-abrir, .fila-usuario, .pestana, .opcion-estado, .resultado.tocable, .fab, .barra-volver';
+    const sinMovimiento = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+    document.addEventListener('pointerdown', function (ev) {
+      if (ev.button !== 0 || (sinMovimiento && sinMovimiento.matches)) return;
+      // El chip y el teléfono tienen su propio toque: no se dibuja la onda de la fila debajo.
+      if (ev.target.closest('.alternar, a.llamar')) return;
+      const el = ev.target.closest(CON_ONDA);
+      if (!el || el.disabled) return;
+      const caja = el.getBoundingClientRect();
+      const lado = 2 * Math.hypot(Math.max(ev.clientX - caja.left, caja.right - ev.clientX), Math.max(ev.clientY - caja.top, caja.bottom - ev.clientY));
+      const onda = document.createElement('span');
+      onda.className = 'onda';
+      onda.style.width = onda.style.height = lado + 'px';
+      onda.style.left = (ev.clientX - caja.left - lado / 2) + 'px';
+      onda.style.top = (ev.clientY - caja.top - lado / 2) + 'px';
+      el.appendChild(onda);
+      onda.addEventListener('animationend', function () { onda.remove(); });
     }, { passive: true });
 
     // ---------- Arranque ----------

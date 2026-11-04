@@ -36,6 +36,14 @@
     --md-surface-container-high: #e4e9f1;
     --md-secondary-container:    #d3e3fd;
     --md-on-secondary-container: #041e49;
+
+    /* Colores de las iniciales de los usuarios (tonos suaves, como los de Contactos) */
+    --md-av-azul:      #d3e3fd;  --md-av-azul-texto:      #0842a0;
+    --md-av-verde:     #c4eed0;  --md-av-verde-texto:     #0f5223;
+    --md-av-rosa:      #ffd8e4;  --md-av-rosa-texto:      #7d2950;
+    --md-av-naranja:   #ffdcc1;  --md-av-naranja-texto:   #7a3b00;
+    --md-av-lila:      #e8def8;  --md-av-lila-texto:      #4a3c7a;
+    --md-av-turquesa:  #c2e8ec;  --md-av-turquesa-texto:  #00585f;
     --md-outline:         #dadce0;   /* separadores y bordes de tarjeta */
     --md-outline-strong:  #80868b;   /* bordes de campos y controles */
 
@@ -86,7 +94,8 @@
     --md-elev-arriba:  0 -1px 3px rgba(60,64,67,.15);       /* barras fijas abajo (pie, navegación) */
     --md-elev-lateral: 8px 0 10px -8px var(--md-scrim);      /* columna fija de una tabla desplazada */
 
-    /* --- Movimiento (sobrio: sin onda ni rebote; solo el icono del chip crece un instante al cambiar de estado) --- */
+    /* --- Movimiento (sobrio, sin rebote: la onda al pulsar y el icono del chip, que crece un instante al cambiar) --- */
+    --dur-onda: 550ms;
     --dur-1: 100ms;
     --dur-2: 180ms;
     --dur-3: 280ms;
@@ -107,6 +116,7 @@
   @keyframes md-entra   { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes md-sube    { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes md-barrido { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+  @keyframes md-onda    { 0% { transform: scale(0); opacity: .16; } 60% { opacity: .12; } 100% { transform: scale(1); opacity: 0; } }
   @keyframes md-latido  { from { opacity: .35; } to { opacity: 1; } }
   /* Icono del chip al cambiar de estado: aparece desde pequeño (corto y sin rebote) */
   @keyframes md-icono   { from { opacity: 0; transform: scale(.4) rotate(-45deg); } to { opacity: 1; transform: none; } }
@@ -216,6 +226,66 @@
   }
   .boton:active:not(:disabled)::after, .tarjeta:active::after, .fila-usuario:active::after,
   .pestana:active::after, .opcion-estado:active::after, .barra-volver:active::after { opacity: .12; }
+
+  /* Onda al pulsar (la pone Cliente.html donde cae el dedo): crece y se desvanece */
+  .boton, .tarjeta, .tarjeta-abrir, .fila-usuario, .pestana, .opcion-estado, .resultado.tocable, .fab, .barra-volver { overflow: hidden; }
+  .tarjeta-abrir { position: relative; }
+  .onda {
+    position: absolute;
+    border-radius: 50%;
+    background: currentColor;
+    pointer-events: none;
+    transform: scale(0);
+    animation: md-onda var(--dur-onda) var(--ease) forwards;
+  }
+
+  /* ---------- Iniciales (como en Contactos): el color sale del nombre ---------- */
+  .avatar {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    letter-spacing: .02em;
+    background: var(--av-fondo);
+    color: var(--av-texto);
+  }
+  .av-0 { --av-fondo: var(--md-av-azul);    --av-texto: var(--md-av-azul-texto); }
+  .av-1 { --av-fondo: var(--md-av-verde);   --av-texto: var(--md-av-verde-texto); }
+  .av-2 { --av-fondo: var(--md-av-rosa);    --av-texto: var(--md-av-rosa-texto); }
+  .av-3 { --av-fondo: var(--md-av-naranja); --av-texto: var(--md-av-naranja-texto); }
+  .av-4 { --av-fondo: var(--md-av-lila);    --av-texto: var(--md-av-lila-texto); }
+  .av-5 { --av-fondo: var(--md-av-turquesa); --av-texto: var(--md-av-turquesa-texto); }
+
+  /* ---------- Botón flotante (FAB extendido de Material 3) ---------- */
+  .fab {
+    position: fixed;
+    right: 16px;
+    bottom: 20px;
+    z-index: var(--z-pie);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 56px;
+    padding: 0 20px 0 16px;
+    border: 0;
+    border-radius: var(--md-shape-lg);
+    background: var(--md-primary-container);
+    color: var(--md-primary-dark);
+    box-shadow: var(--md-elev-3);
+    font: inherit;
+    font-size: var(--fs-md);
+    font-weight: 600;
+    cursor: pointer;
+    animation: md-entra var(--dur-3) var(--ease);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .fab:active { box-shadow: var(--md-elev-2); }
+  .hueco-fab { height: 88px; }
 
   /* ---------- Tarjetas ---------- */
   .tarjeta {
@@ -542,7 +612,7 @@
     align-items: center;
     gap: 4px;
     min-height: var(--alto-fila);
-    padding: 6px 6px 6px 16px;
+    padding: 6px 6px 6px 12px;
     margin-bottom: 2px;
     border: 0;
     border-radius: var(--md-shape-md);
@@ -551,6 +621,7 @@
     transition: background-color var(--dur-2) var(--ease);
   }
   .fila-usuario[style*="--tinte"] { background: color-mix(in oklab, var(--tinte) 7%, var(--md-surface)); }
+  .fila-usuario .avatar { width: 36px; height: 36px; margin-right: 6px; font-size: var(--fs-xs); }
   .fila-usuario .nombre { flex: 1; min-width: 0; padding: 6px 4px 6px 0; font-size: var(--fs-md); font-weight: 600; line-height: 1.3; letter-spacing: .01em; }
   .fila-usuario .obs { display: block; margin-top: 2px; font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--md-on-surface-med); }
   /* Aviso de faltas seguidas (lo calcula el servidor): insignia roja con icono, como la de absentismo de fisio */
@@ -567,6 +638,7 @@
     font-size: var(--fs-xs);
     font-weight: 600;
     letter-spacing: 0;
+    white-space: nowrap;
   }
   .fila-usuario .faltas-seguidas::before {
     content: "";
@@ -606,8 +678,8 @@
     justify-content: center;
     gap: 6px;
     min-height: 36px;
-    min-width: 116px;
-    padding: 6px 14px 6px 10px;
+    min-width: 104px;
+    padding: 6px 12px 6px 8px;
     border-radius: var(--md-shape-full);
     font-size: var(--fs-sm);
     font-weight: 600;
@@ -635,10 +707,10 @@
   .llamar {
     position: relative;
     z-index: var(--z-base);
-    width: var(--alto-boton);
+    width: 44px;
     height: var(--alto-boton);
     flex: none;
-    border-radius: 50%;
+    border-radius: var(--md-shape-full);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -646,11 +718,11 @@
     color: var(--md-success);
     text-decoration: none;
   }
-  .sin-telefono { flex: none; width: var(--alto-boton); }
+  .sin-telefono { flex: none; width: 44px; }
   .llamar::after {
     content: "";
     position: absolute;
-    inset: 6px;
+    inset: 6px 2px;
     border-radius: 50%;
     background: var(--md-success-bg);
     z-index: -1;
@@ -899,7 +971,12 @@
   table.historial thead .fija { background: var(--md-surface-variant); }
   table.historial .nombre-hist { font-size: var(--fs-sm); white-space: normal; line-height: 1.25; }
   table.historial .nombre-hist[data-accion] { cursor: pointer; color: var(--md-primary); }
-  table.historial .pct { font-weight: 600; }
+  table.historial .pct { font-weight: 600; min-width: 52px; font-variant-numeric: tabular-nums; }
+  /* Barrita del % de asistencia del usuario en el mes */
+  .pct-barra { display: block; width: 36px; height: 4px; margin: 4px auto 0; border-radius: var(--md-shape-full); background: var(--md-surface-container-high); overflow: hidden; }
+  .pct-barra > span { display: block; height: 100%; border-radius: inherit; background: var(--md-success); }
+  .pct-barra.medio > span { background: var(--md-warning); }
+  .pct-barra.bajo > span { background: var(--md-error); }
   table.historial tfoot td, table.historial tfoot th { font-size: var(--fs-xs); color: var(--md-on-surface-med); border-bottom: 0; }
   /* Cabecera de columnas de sesión cancelada, sin pasar lista y día sin clase (las celdas usan las clases generales de abajo) */
   table.historial thead .col-cancelada { background: var(--md-surface-variant); }
@@ -915,7 +992,7 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    border-radius: var(--md-shape-sm);
+    border-radius: 50%;
     font-weight: 600;
     font-size: var(--fs-sm);
     vertical-align: middle;
@@ -1003,6 +1080,6 @@
   /* Reducir movimiento: una sola llave. El girador sigue girando (es información), más despacio */
   @media (prefers-reduced-motion: reduce) {
     :root { --dur-1: .01ms; --dur-2: .01ms; --dur-3: .01ms; --dur-giro: 1.6s; }
-    .panel, .aviso { animation: none; }
+    .panel, .aviso, .fab { animation: none; }
   }
 </style>
