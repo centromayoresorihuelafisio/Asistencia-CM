@@ -50,6 +50,9 @@
     --md-on-surface:     #202124;
     --md-on-surface-med: #5f6368;
     --md-on-surface-low: #5f6368;   /* texto terciario: 4,5:1 sobre el fondo (antes #80868b) */
+    /* Textos de ejemplo de los campos (placeholder): más claros que lo escrito, para no confundirlos con un valor.
+       Siempre van con su etiqueta encima, que es la que dice qué se escribe. */
+    --md-placeholder:    #80868b;
     /* Botones desactivados (Material): contenedor gris y texto gris legible, sin transparencias */
     --md-disabled:       #e8eaed;
     --md-on-disabled:    #6b6f74;
@@ -483,7 +486,7 @@
     background-repeat: no-repeat;
   }
   textarea { min-height: 88px; resize: vertical; line-height: 1.45; }
-  input::placeholder, textarea::placeholder { color: var(--md-on-surface-low); }
+  input::placeholder, textarea::placeholder { color: var(--md-placeholder); opacity: 1; }
   input:focus, select:focus, textarea:focus {
     border-color: var(--md-primary);
     box-shadow: inset 0 0 0 .5px var(--md-primary);
@@ -1193,7 +1196,6 @@
 
   /* Periodo (botón que abre un panel) y taller */
   .filtros-informe { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 16px; }
-  .filtros-informe .campo { flex: 1 1 180px; margin-bottom: 0; }
   .boton.boton-periodo {
     flex: 0 0 auto;
     padding-left: 16px;
@@ -1204,6 +1206,9 @@
     white-space: nowrap;
   }
   .boton-periodo svg { width: 20px; height: 20px; }
+  /* El botón del taller puede llevar un nombre largo: se corta con «…» en vez de salirse */
+  .boton.boton-periodo { max-width: 100%; }
+  .boton-periodo .texto-filtro { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .flecha-abajo {
     width: 8px;
     height: 8px;

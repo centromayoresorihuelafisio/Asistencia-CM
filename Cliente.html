@@ -2392,6 +2392,32 @@
       }).map(function (g) { return { taller_id: g.taller_id, taller: g.taller }; });
     }
 
+    const ICONO_TALLER = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13zm8 0c-.3 0-.6 0-1 .1 1.2.8 2 2 2 3.4V19h6v-2.5c0-2.3-4.7-3.5-7-3.5z"/></svg>';
+
+    /** Nombre del taller elegido en el Informe, o «Todos los talleres». */
+    function nombreTallerInforme() {
+      const t = talleresDeMisGrupos().find(function (x) { return x.taller_id === app.inf.taller_id; });
+      return t ? t.taller : 'Todos los talleres';
+    }
+
+    /** Panel del botón del taller: «Todos los talleres» y cada taller de los grupos de la monitora. */
+    function abrirPanelTaller() {
+      const lista = [{ taller_id: '', taller: 'Todos los talleres' }].concat(talleresDeMisGrupos());
+      abrirPanel('<div><h3>Taller del informe</h3><div class="menu-opciones">' + lista.map(function (t) {
+        const elegido = t.taller_id === app.inf.taller_id;
+        return '<button type="button" class="opcion-menu' + (elegido ? ' elegida' : '') + '" data-accion="taller-informe" data-taller="' + esc(t.taller_id) + '"' +
+          (elegido ? ' aria-current="true"' : '') + '>' + ICONO_TALLER + '<span class="opcion-texto">' + esc(t.taller) + '</span>' + (elegido ? ICONO_ELEGIDO : '') + '</button>';
+      }).join('') + '</div></div>');
+    }
+
+    function elegirTallerInforme(tallerId) {
+      cerrarPanel();
+      if (tallerId === app.inf.taller_id) return;
+      app.inf.taller_id = tallerId;
+      app.inf.enlace = null;
+      cargarInforme();
+    }
+
     function irInforme() {
       pantallaPrincipal('informe', 'Informe', 'Datos para la memoria');
       const inf = app.inf;
@@ -2467,8 +2493,9 @@
       let html = '<div class="filtros-informe">' +
         '<button type="button" class="boton boton-periodo" data-accion="abrir-periodo" aria-label="Periodo: ' + esc(periodo) + '. Cambiar el periodo">' +
         ICONO_PERIODO + '<span>' + esc(periodo) + '</span><span class="flecha-abajo" aria-hidden="true"></span></button>' +
-        '<div class="campo"><label for="infTaller">Taller</label><select id="infTaller"><option value="">Todos los talleres</option>' +
-        opciones(talleresDeMisGrupos(), inf.taller_id, function (t) { return t.taller_id; }, function (t) { return t.taller; }) + '</select></div></div>';
+        // El taller, como el periodo: un botón que abre un panel con las opciones (4-nov-2026; antes, un desplegable).
+        '<button type="button" class="boton boton-periodo" data-accion="abrir-taller" aria-label="Taller: ' + esc(nombreTallerInforme()) + '. Cambiar el taller">' +
+        ICONO_TALLER + '<span class="texto-filtro">' + esc(nombreTallerInforme()) + '</span><span class="flecha-abajo" aria-hidden="true"></span></button></div>';
 
       const d = inf.datos;
       if (d) {
@@ -3224,6 +3251,8 @@
         // Informe
         case 'ver-informe': verInforme(); break;
         case 'abrir-periodo': abrirPanelPeriodo(); break;
+        case 'abrir-taller': abrirPanelTaller(); break;
+        case 'taller-informe': elegirTallerInforme(dato('taller')); break;
         case 'periodo': elegirPeriodo(dato('desde'), dato('hasta')); break;
         case 'exportar-informe': exportarInforme(); break;
         case 'info-porcentaje': abrirInfoPorcentaje(); break;
@@ -3273,11 +3302,6 @@
       if (ev.target.id === 'histGrupo') {
         app.hist.grupo_id = ev.target.value;
         cargarHistorial();
-      }
-      if (ev.target.id === 'infTaller') {
-        app.inf.taller_id = ev.target.value;
-        app.inf.enlace = null;
-        cargarInforme();
       }
       if (ev.target.id === 'gTaller') {
         $('campoTallerNuevo').classList.toggle('oculto', ev.target.value !== '__nuevo__');
