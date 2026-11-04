@@ -211,7 +211,7 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
 | 2 · Navegación nativa | Hecha | 4-nov-2026 | `022b70f` |
 | 3 · Carga, errores y progreso | Hecha | 4-nov-2026 | `31059e2` |
 | 4 · Avisos abajo y «Deshacer» | Hecha | 4-nov-2026 | `59a834b` |
-| 5 · Pase de lista e Inicio | Pendiente | | |
+| 5 · Pase de lista e Inicio | Hecha | 4-nov-2026 | `6abeeff` |
 | 6 · Historial e Informe | Pendiente | | |
 | 7 · Formularios y coherencia | Pendiente | | |
 
@@ -247,3 +247,9 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
   - «No hubo clase» desde el propio pase no tiene «Deshacer» (no estaba en el plan); sigue con su panel de confirmación. Si se quiere, `api_deshacerCancelar` ya sirve.
   - El servidor aún dice «ya está inscrito/a en este grupo» (`altaUsuario_` en `Servicio.gs`): queda la barra de género que la fase 1 quitó del cliente.
   - Cambio de grupo sigue con su confirmación y sin «Deshacer» (no estaba en el plan).
+- **Fase 5 (4-nov-2026):**
+  - El «⋮» de la barra es un botón fijo de `Index.html` (`btnMenuBarra`, `data-accion="menu-pase"`); `barra()` lo oculta en cada pantalla y `pintarPase` lo vuelve a mostrar. Si otra pantalla necesita menú, que lo muestre igual y cambie su `data-accion`.
+  - Los menús en panel usan `.menu-opciones` y `.opcion-menu` (filas de 56 px con icono de 24 px); sirven para la fase 7 (P23) si se quiere el mismo patrón en Gestión.
+  - A 360 px la ayuda del pase («Toca para marcar falta · Mantén pulsado para más») ocupa dos líneas por unos píxeles; a 375 px, una. Se dejó que salte de línea en vez de cortarla.
+  - El botón «Sin clase» del panel de un pendiente sigue diciendo «Guardando…» mientras espera (no tiene `data-en-curso`); mejor «Marcando sin clase…» (fase 7).
+  - El estado vacío del pase reutiliza el aspecto de `.estado-error` (`.estado-vacio`); en la fase 6, el Historial de un grupo vacío podría usar el mismo.
