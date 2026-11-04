@@ -26,9 +26,16 @@
     --md-warning-text: #8a5d1a;   /* texto de aviso */
     --md-warning-bg:   #fef7e0;
 
-    --md-bg:              #f8f9fa;
-    --md-surface:         #ffffff;
-    --md-surface-variant: #f1f3f4;
+    /* Superficies tonales de Material You (4-nov-2026): el fondo lleva un toque del azul principal y las
+       tarjetas y listas son blancas sin borde encima; las barras fijas usan los «contenedores» algo más oscuros. */
+    --md-bg:                     #f3f6fb;
+    --md-surface:                #ffffff;
+    --md-surface-variant:        #f1f3f4;
+    --md-surface-container-low:  #f7f9fc;
+    --md-surface-container:      #edf1f7;
+    --md-surface-container-high: #e4e9f1;
+    --md-secondary-container:    #d3e3fd;
+    --md-on-secondary-container: #041e49;
     --md-outline:         #dadce0;   /* separadores y bordes de tarjeta */
     --md-outline-strong:  #80868b;   /* bordes de campos y controles */
 
@@ -62,6 +69,15 @@
     --md-shape-lg:   16px;
     --md-shape-xl:   28px;
     --md-shape-full: 999px;
+    --md-shape-lista: 20px;   /* esquinas de fuera de una lista agrupada (las de dentro, --md-shape-xs) */
+
+    /* --- Iconos de las etiquetas (SVG propios en línea, sin descargas; se pintan con el color del texto) --- */
+    --ic-hecho:    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-2 15-5-5 1.4-1.4 3.6 3.6 7.6-7.6L19 8z'/%3E%3C/svg%3E");
+    --ic-reloj:    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 10.6 3.6 2.1-.8 1.3L11 13V7h2z'/%3E%3C/svg%3E");
+    --ic-bloqueo:  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM4 12a8 8 0 0 1 12.9-6.3L5.7 16.9A8 8 0 0 1 4 12zm8 8a8 8 0 0 1-4.9-1.7L18.3 7.1A8 8 0 0 1 12 20z'/%3E%3C/svg%3E");
+    --ic-calendario: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14zM7 11h5v5H7z'/%3E%3C/svg%3E");
+    --ic-alerta:   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2zm0-4h-2V7h2z'/%3E%3C/svg%3E");
+    --ic-subiendo: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19.4 10A7.5 7.5 0 0 0 5.3 8 6 6 0 0 0 6 20h13a5 5 0 0 0 .4-10zM14 13v4h-4v-4H7l5-5 5 5z'/%3E%3C/svg%3E");
 
     /* --- Elevación --- */
     --md-elev-1: 0 1px 2px rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
@@ -70,7 +86,7 @@
     --md-elev-arriba:  0 -1px 3px rgba(60,64,67,.15);       /* barras fijas abajo (pie, navegación) */
     --md-elev-lateral: 8px 0 10px -8px var(--md-scrim);      /* columna fija de una tabla desplazada */
 
-    /* --- Movimiento (sobrio: sin onda, escalado ni rebote) --- */
+    /* --- Movimiento (sobrio: sin onda ni rebote; solo el icono del chip crece un instante al cambiar de estado) --- */
     --dur-1: 100ms;
     --dur-2: 180ms;
     --dur-3: 280ms;
@@ -91,6 +107,9 @@
   @keyframes md-entra   { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes md-sube    { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes md-barrido { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+  @keyframes md-latido  { from { opacity: .35; } to { opacity: 1; } }
+  /* Icono del chip al cambiar de estado: aparece desde pequeño (corto y sin rebote) */
+  @keyframes md-icono   { from { opacity: 0; transform: scale(.4) rotate(-45deg); } to { opacity: 1; transform: none; } }
 
   * { box-sizing: border-box; }
 
@@ -122,11 +141,12 @@
     gap: 4px;
     min-height: 64px;
     padding: 8px 12px 8px 16px;
-    background: var(--md-surface);
+    background: var(--md-bg);
     color: var(--md-on-surface);
-    border-bottom: 1px solid var(--md-outline);
-    box-shadow: var(--md-elev-1);
+    transition: background-color var(--dur-2) var(--ease);
   }
+  /* Barra superior de Material 3: sin línea ni sombra; al desplazar la pantalla toma el color del contenedor */
+  .barra.elevada { background: var(--md-surface-container); }
   .barra-volver {
     position: relative;
     flex: none;
@@ -158,18 +178,20 @@
   .vista.con-nav { padding-bottom: 104px; }
 
   h2.seccion {
-    font-size: var(--fs-sm);
+    font-size: var(--fs-lg);
     font-weight: 600;
-    letter-spacing: .01em;
-    color: var(--md-on-surface-med);
+    letter-spacing: 0;
+    color: var(--md-on-surface);
     margin: 24px 4px 8px;
   }
   h2.seccion.peligro { color: var(--md-error); }
+  /* Subtítulo de lista (como en los ajustes de Android): pequeño y en el color principal */
   h3.taller {
-    font-size: var(--fs-md);
+    font-size: var(--fs-sm);
     font-weight: 600;
-    color: var(--md-primary-dark);
-    margin: 16px 4px 8px;
+    letter-spacing: .02em;
+    color: var(--md-primary);
+    margin: 16px 8px 8px;
   }
 
   .vacio { color: var(--md-on-surface-med); text-align: center; padding: 24px 8px; }
@@ -205,19 +227,42 @@
     min-height: var(--alto-fila);
     padding: 12px 16px;
     margin-bottom: 8px;
-    border: 1px solid var(--md-outline);
-    border-radius: var(--md-shape-md);
+    border: 0;
+    border-radius: var(--md-shape-lg);
     background: var(--md-surface);
     color: inherit;
     font: inherit;
     text-align: left;
     cursor: pointer;
   }
-  .tarjeta.pendiente {
-    border-color: color-mix(in srgb, var(--md-error) 35%, var(--md-outline));
-    background: var(--md-error-bg);
-    box-shadow: inset 4px 0 0 var(--md-error);
+  .tarjeta.pendiente { background: var(--md-error-bg); }
+
+  /* Lista agrupada (Material You, como los ajustes de Android): filas blancas separadas por 2 px,
+     esquinas grandes solo arriba del todo y abajo del todo */
+  .lista { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+  .lista > * { margin: 0 !important; border-radius: var(--md-shape-xs); }
+  .lista > :first-child { border-top-left-radius: var(--md-shape-lista); border-top-right-radius: var(--md-shape-lista); }
+  .lista > :last-child { border-bottom-left-radius: var(--md-shape-lista); border-bottom-right-radius: var(--md-shape-lista); }
+
+  /* Cuadro de delante de una tarjeta (hora del grupo o fecha del pendiente) */
+  .lead {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 48px;
+    border-radius: var(--md-shape-md);
+    background: var(--md-secondary-container);
+    color: var(--md-on-secondary-container);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
   }
+  .lead small { font-size: var(--fs-xs); font-weight: 500; text-transform: capitalize; }
+  .tarjeta.pendiente .lead { background: color-mix(in srgb, var(--md-error) 16%, var(--md-surface)); color: var(--md-error); }
   .tarjeta.inactiva { opacity: .6; }
   /* Tarjeta con un botón propio (pendientes: «No hubo clase»): la parte que abre es otro botón por dentro */
   .tarjeta.con-accion { padding: 0 12px 0 0; cursor: default; }
@@ -247,7 +292,8 @@
   .etiqueta {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
+    min-height: 32px;
     padding: 4px 12px;
     border-radius: var(--md-shape-full);
     font-size: var(--fs-sm);
@@ -257,13 +303,25 @@
     background: var(--md-primary-light);
     color: var(--md-primary-dark);
   }
-  .etiqueta.pendiente { background: var(--md-error-bg); color: var(--md-error); }
-  .etiqueta.realizada { background: var(--md-success-bg); color: var(--md-success); }
-  .etiqueta.realizada::before { content: "\2713"; }
-  .etiqueta.cancelada { background: var(--md-surface-variant); color: var(--md-on-surface-med); }
-  .etiqueta.especial { background: var(--md-warning-bg); color: var(--md-warning-text); }
-  .etiqueta.guardando { background: var(--md-primary-light); color: var(--md-primary-dark); }
-  .etiqueta.sin-guardar { background: var(--md-error); color: var(--md-on-primary); }
+  /* Icono delante (como los chips de asistencia de la agenda de fisio): color del texto, relleno */
+  .etiqueta.pendiente::before, .etiqueta.realizada::before, .etiqueta.cancelada::before,
+  .etiqueta.especial::before, .etiqueta.guardando::before, .etiqueta.sin-guardar::before {
+    content: "";
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin-left: -4px;
+    background: currentColor;
+    -webkit-mask: var(--icono) center / contain no-repeat;
+    mask: var(--icono) center / contain no-repeat;
+  }
+  .etiqueta.pendiente { --icono: var(--ic-reloj); background: var(--md-error-bg); color: var(--md-error); }
+  .etiqueta.realizada { --icono: var(--ic-hecho); background: var(--md-success-bg); color: var(--md-success); }
+  .etiqueta.cancelada { --icono: var(--ic-bloqueo); background: var(--md-surface-container); color: var(--md-on-surface-med); }
+  .etiqueta.especial { --icono: var(--ic-calendario); background: var(--md-warning-bg); color: var(--md-warning-text); }
+  .etiqueta.guardando { --icono: var(--ic-subiendo); background: var(--md-primary-light); color: var(--md-primary-dark); }
+  .etiqueta.guardando::before { animation: md-latido var(--dur-barrido) var(--ease) infinite alternate; }
+  .etiqueta.sin-guardar { --icono: var(--ic-alerta); background: var(--md-error); color: var(--md-on-primary); }
 
   /* ---------- Campos (como .md-campo--compacto de fisio: etiqueta encima) ---------- */
   .selector-fecha {
@@ -274,7 +332,17 @@
   }
   .selector-fecha label { font-weight: 600; font-size: var(--fs-sm); color: var(--md-on-surface-med); }
   .selector-fecha input { width: auto; flex: 1; min-width: 0; }
-  .selector-fecha .flecha-dia { flex: none; width: var(--alto-boton); padding: 0; font-size: 26px; line-height: 1; }
+  /* Flechas de día y de mes: botones de icono tonales (sin borde), como en Material 3 */
+  .selector-fecha .flecha-dia, .selector-mes .boton {
+    flex: none;
+    width: var(--alto-boton);
+    padding: 0;
+    border-color: transparent;
+    background: var(--md-surface-container-high);
+    color: var(--md-on-surface);
+    font-size: 26px;
+    line-height: 1;
+  }
 
   input, select, textarea {
     display: block;
@@ -387,6 +455,9 @@
   .boton:disabled { opacity: .38; cursor: default; }
   /* Acción principal: tonal, como en fisio (máximo uno por pantalla o bloque) */
   .boton.primario { background: var(--md-primary-container); border-color: transparent; color: var(--md-primary-dark); }
+  /* Botón relleno de Material 3: solo para Guardar el pase de lista, la acción que más se repite */
+  .boton.lleno { background: var(--md-primary); border-color: transparent; color: var(--md-on-primary); box-shadow: var(--md-elev-1); }
+  .boton svg { flex: none; }
   /* Acción de riesgo: letra roja con borde (como .btn-toolbar.peligro de fisio), para no competir con la principal */
   .boton.peligro { border-color: color-mix(in srgb, var(--md-error) 45%, var(--md-outline)); color: var(--md-error); }
   /* Confirmar algo que no se deshace (dentro del panel de confirmación) */
@@ -401,9 +472,8 @@
   /* ---------- Sección plegable (como details.md-seccion de fisio) ---------- */
   details.plegable {
     margin-top: 24px;
-    border-radius: var(--md-shape-md);
+    border-radius: var(--md-shape-lista);
     background: var(--md-surface);
-    border: 1px solid var(--md-outline);
   }
   details.plegable > summary {
     list-style: none;
@@ -412,7 +482,7 @@
     gap: 12px;
     min-height: var(--alto-boton);
     padding: 14px 16px;
-    border-radius: var(--md-shape-md);
+    border-radius: var(--md-shape-lista);
     font-size: var(--fs-lg);
     font-weight: 600;
     cursor: pointer;
@@ -429,7 +499,7 @@
     transition: transform var(--dur-2) var(--ease);
   }
   details.plegable[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
-  details.plegable[open] > summary { border-bottom: 1px solid var(--md-outline); border-radius: var(--md-shape-md) var(--md-shape-md) 0 0; }
+  details.plegable[open] > summary { border-bottom: 1px solid var(--md-outline); border-radius: var(--md-shape-lista) var(--md-shape-lista) 0 0; }
   .grupo-fila { padding: 14px 16px; }
   .grupo-fila + .grupo-fila { border-top: 1px solid var(--md-outline); }
   .grupo-fila .botones { margin-top: 10px; }
@@ -438,36 +508,74 @@
   /* ---------- Pase de lista ---------- */
   .avisos-sesion { margin-bottom: 12px; }
   .banda {
-    padding: 12px 16px;
-    border-radius: var(--md-shape-md);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: var(--md-shape-lg);
     margin-bottom: 8px;
     font-size: var(--fs-sm);
     font-weight: 500;
     line-height: 1.4;
   }
-  .banda.especial { background: var(--md-warning-bg); color: var(--md-warning-text); }
-  .banda.cancelada { background: var(--md-surface-variant); color: var(--md-on-surface-med); }
-  .banda.realizada { background: var(--md-success-bg); color: var(--md-success); }
+  /* Icono delante de cada aviso, con el color del texto */
+  .banda::before {
+    content: "";
+    flex: none;
+    width: 20px;
+    height: 20px;
+    background: currentColor;
+    -webkit-mask: var(--icono, var(--ic-alerta)) center / contain no-repeat;
+    mask: var(--icono, var(--ic-alerta)) center / contain no-repeat;
+  }
+  .banda.especial { --icono: var(--ic-calendario); background: var(--md-warning-bg); color: var(--md-warning-text); }
+  .banda.cancelada { --icono: var(--ic-bloqueo); background: var(--md-surface-container); color: var(--md-on-surface-med); }
+  .banda.realizada { --icono: var(--ic-hecho); background: var(--md-success-bg); color: var(--md-success); }
   .banda.info { background: var(--md-primary-light); color: var(--md-primary-dark); }
   .banda.error { background: var(--md-error-bg); color: var(--md-error); }
 
+  /* Fila de un usuario (elemento de lista de Material 3). Si su estado no es el de por defecto, la fila
+     entera toma un tinte muy suave del color del estado (--tinte), como las citas de la agenda de fisio. */
   .fila-usuario {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     min-height: var(--alto-fila);
     padding: 6px 6px 6px 16px;
-    margin-bottom: 6px;
-    border: 1px solid var(--md-outline);
+    margin-bottom: 2px;
+    border: 0;
     border-radius: var(--md-shape-md);
     background: var(--md-surface);
     cursor: pointer;
+    transition: background-color var(--dur-2) var(--ease);
   }
-  .fila-usuario .nombre { flex: 1; min-width: 0; font-size: var(--fs-lg); font-weight: 600; line-height: 1.3; }
-  .fila-usuario .obs { display: block; font-size: var(--fs-sm); font-weight: 400; color: var(--md-on-surface-med); }
-  /* Aviso de faltas seguidas (lo calcula el servidor) */
-  .fila-usuario .faltas-seguidas { display: block; font-size: var(--fs-sm); font-weight: 600; color: var(--md-error); }
+  .fila-usuario[style*="--tinte"] { background: color-mix(in oklab, var(--tinte) 7%, var(--md-surface)); }
+  .fila-usuario .nombre { flex: 1; min-width: 0; padding: 6px 4px 6px 0; font-size: var(--fs-md); font-weight: 600; line-height: 1.3; letter-spacing: .01em; }
+  .fila-usuario .obs { display: block; margin-top: 2px; font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--md-on-surface-med); }
+  /* Aviso de faltas seguidas (lo calcula el servidor): insignia roja con icono, como la de absentismo de fisio */
+  .fila-usuario .faltas-seguidas {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: fit-content;
+    margin-top: 4px;
+    padding: 2px 10px 2px 6px;
+    border-radius: var(--md-shape-full);
+    background: var(--md-error-bg);
+    color: var(--md-error);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .fila-usuario .faltas-seguidas::before {
+    content: "";
+    width: 16px;
+    height: 16px;
+    background: currentColor;
+    -webkit-mask: var(--ic-alerta) center / contain no-repeat;
+    mask: var(--ic-alerta) center / contain no-repeat;
+  }
   .obs-rapidas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   /* Chip del estado como botón: un toque alterna Asistido/Falta. Ocupa todo el alto de la fila para acertar con el dedo. */
   .alternar {
@@ -488,32 +596,40 @@
     -webkit-tap-highlight-color: transparent;
   }
   .alternar .chip { transition: transform var(--dur-1) var(--ease); }
-  .alternar:active .chip { transform: scale(.94); }
-  /* Color de cada estado: viene de la hoja Estados (estilo en línea) */
+  .alternar:active .chip { transform: scale(.95); }
+
+  /* Chip de estado (como los de asistencia de la agenda de fisio): pastilla de color suave con el icono
+     del estado delante. El icono lo elige Cliente.html por el tipo del estado (iconoEstado). */
   .chip {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 6px;
     min-height: 36px;
-    padding: 6px 14px;
+    min-width: 116px;
+    padding: 6px 14px 6px 10px;
     border-radius: var(--md-shape-full);
     font-size: var(--fs-sm);
     font-weight: 600;
     line-height: 1.2;
+    letter-spacing: .01em;
     white-space: nowrap;
-    min-width: 96px;
     text-align: center;
   }
+  .chip svg, .opcion-estado svg { flex: none; width: 20px; height: 20px; color: var(--estado-icono, currentColor); }
+  .chip.recien svg { animation: md-icono var(--dur-3) var(--ease); }
+  .chip .numero { font-variant-numeric: tabular-nums; }
   /* Color de los estados (chips, botones del panel y celdas del historial): llega en línea como --estado
-     (el de la hoja Estados) y aquí se suaviza: se le quita saturación mezclándolo con gris, el fondo es un
-     tono claro y la letra el mismo color oscurecido. Si el navegador no sabe mezclar colores, se usa tal cual. */
+     (el de la hoja Estados) y aquí se suaviza como en fisio: fondo con un 15 % del color (algo apagado),
+     letra del mismo color oscurecido e icono algo más vivo. Si el navegador no sabe mezclar colores, se usa tal cual. */
   [style*="--estado"] { background: var(--estado); color: var(--estado-texto); }
   @supports (color: color-mix(in oklab, red, blue)) {
     [style*="--estado"] {
-      --estado-suave: color-mix(in oklab, var(--estado) 70%, var(--md-on-surface-low));
-      background: color-mix(in oklab, var(--estado-suave) 32%, var(--md-surface));
+      --estado-suave: color-mix(in oklab, var(--estado) 85%, var(--md-on-surface-low));
+      --estado-fondo: color-mix(in oklab, var(--estado-suave) 15%, var(--md-surface));
+      --estado-icono: color-mix(in oklab, var(--estado) 85%, black);
+      background: var(--estado-fondo);
       color: color-mix(in oklab, var(--estado) 62%, black);
-      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--estado-suave) 40%, transparent);
     }
   }
   .llamar {
@@ -526,9 +642,18 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--md-success-bg);
+    background: transparent;
     color: var(--md-success);
     text-decoration: none;
+  }
+  .sin-telefono { flex: none; width: var(--alto-boton); }
+  .llamar::after {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+    background: var(--md-success-bg);
+    z-index: -1;
   }
 
   /* Pie fijo */
@@ -539,13 +664,13 @@
     bottom: 0;
     z-index: var(--z-pie);
     padding: 12px 16px 16px;
-    background: var(--md-surface);
-    border-top: 1px solid var(--md-outline);
-    box-shadow: var(--md-elev-arriba);
+    background: var(--md-surface-container);
+    border-radius: var(--md-shape-xl) var(--md-shape-xl) 0 0;
   }
   .pie > * { max-width: 720px; margin-left: auto; margin-right: auto; }
   .contadores { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-  .contadores .chip { min-width: 0; min-height: 30px; padding: 4px 12px; font-size: var(--fs-sm); }
+  .contadores .chip { min-width: 0; min-height: 32px; padding: 4px 12px 4px 8px; font-size: var(--fs-sm); }
+  .contadores .chip svg { width: 18px; height: 18px; }
   .pie .botones + .botones { margin-top: 8px; }
 
   /* Panel inferior (hoja que sube desde abajo) */
@@ -564,7 +689,7 @@
     max-height: 88vh;
     overflow-y: auto;
     padding: 28px 16px 20px;
-    background: var(--md-surface);
+    background: var(--md-surface-container-low);
     border-radius: var(--md-shape-xl) var(--md-shape-xl) 0 0;
     box-shadow: var(--md-elev-3);
     animation: md-sube var(--dur-3) var(--ease);
@@ -601,11 +726,19 @@
     font-size: var(--fs-lg);
     line-height: 1.2;
     cursor: pointer;
+    transition: border-radius var(--dur-2) var(--ease);
   }
-  .opcion-estado.elegido { box-shadow: 0 0 0 3px var(--md-surface), 0 0 0 5px var(--md-on-surface); }
-  .opcion-estado.elegido::before { content: "\2713"; }
+  .opcion-estado svg { width: 24px; height: 24px; }
+  /* Elegido: forma de pastilla, fondo algo más intenso y anillo del color del estado (como un chip seleccionado de M3) */
+  .opcion-estado.elegido {
+    border-radius: var(--md-shape-full);
+    background: color-mix(in oklab, var(--estado) 26%, var(--md-surface));
+    box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--estado) 70%, black);
+  }
   .resumen-lista { list-style: none; padding: 0; margin: 0 0 16px; }
-  .resumen-lista li { display: flex; justify-content: space-between; padding: 10px 2px; border-bottom: 1px solid var(--md-outline); }
+  .resumen-lista li { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 6px 2px; border-bottom: 1px solid var(--md-outline); }
+  .resumen-lista li strong { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+  .resumen-lista .chip { min-width: 0; }
   .resumen-lista li:last-child { border-bottom: 0; font-weight: 600; }
 
   /* ---------- Pestañas (botones segmentados) ---------- */
@@ -615,7 +748,7 @@
     padding: 4px;
     margin-bottom: 16px;
     border-radius: var(--md-shape-full);
-    background: var(--md-surface-variant);
+    background: var(--md-surface-container-high);
   }
   .pestana {
     position: relative;
@@ -640,14 +773,14 @@
     min-height: var(--alto-fila);
     padding: 8px 8px 8px 16px;
     margin-bottom: 6px;
-    border: 1px solid var(--md-outline);
+    border: 0;
     border-radius: var(--md-shape-md);
     background: var(--md-surface);
   }
   .resultado .cuerpo { flex: 1; min-width: 0; }
   .resultado strong { font-weight: 600; }
   .resultado .sub { color: var(--md-on-surface-med); font-size: var(--fs-sm); }
-  .bloque .resultado { background: var(--md-bg); }
+  .bloque .resultado { background: var(--md-surface-container-low); }
   .resultado.tocable { position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .resultado.tocable:active { background: var(--md-surface-variant); }
   /* Botones uno debajo de otro (panel de un usuario) */
@@ -656,8 +789,8 @@
   .bloque {
     padding: 16px;
     margin-bottom: 16px;
-    border: 1px solid var(--md-outline);
-    border-radius: var(--md-shape-md);
+    border: 0;
+    border-radius: var(--md-shape-lista);
     background: var(--md-surface);
   }
   .bloque h3 {
@@ -680,9 +813,7 @@
     justify-content: center;
     gap: 4px;
     padding: 0 8px;
-    background: var(--md-surface);
-    border-top: 1px solid var(--md-outline);
-    box-shadow: var(--md-elev-arriba);
+    background: var(--md-surface-container);
   }
   .nav-boton {
     flex: 1;
@@ -709,11 +840,11 @@
     transition: background-color var(--dur-2) var(--ease);
   }
   @media (hover: hover) {
-    .nav-boton:hover svg { background: var(--md-surface-variant); }
+    .nav-boton:hover svg { background: var(--md-surface-container-high); }
   }
-  .nav-boton:active svg { background: var(--md-surface-variant); }
+  .nav-boton:active svg { background: var(--md-surface-container-high); }
   .nav-boton.activa { color: var(--md-on-surface); font-weight: 600; }
-  .nav-boton.activa svg { background: var(--md-primary-container); color: var(--md-primary-dark); }
+  .nav-boton.activa svg { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
 
   /* ---------- Historial ---------- */
   .selector-mes {
@@ -724,15 +855,14 @@
     margin-bottom: 12px;
   }
   .selector-mes strong { font-size: var(--fs-title); font-weight: 600; text-transform: capitalize; }
-  .selector-mes .boton { width: var(--alto-boton); padding: 0; font-size: 26px; line-height: 1; }
   .resumen-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 
   /* Marco de tabla (como .md-tabla-marco de fisio) */
   .tabla-scroll {
     overflow-x: auto;
     margin-bottom: 16px;
-    border: 1px solid var(--md-outline);
-    border-radius: var(--md-shape-md);
+    border: 0;
+    border-radius: var(--md-shape-lg);
     background: var(--md-surface);
   }
   table.historial { border-collapse: collapse; font-size: var(--fs-sm); }
@@ -790,6 +920,10 @@
     font-size: var(--fs-sm);
     vertical-align: middle;
   }
+  /* En la cuadrícula el fondo es algo más intenso que en los chips, para leer el mes de un vistazo */
+  @supports (color: color-mix(in oklab, red, blue)) {
+    .celda[style*="--estado"] { background: color-mix(in oklab, var(--estado-suave) 24%, var(--md-surface)); }
+  }
   .celda.muestra { border: 1px solid var(--md-outline); }
   .leyenda { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: var(--fs-sm); color: var(--md-on-surface-med); margin-bottom: 16px; }
   .bloque h3 .celda { margin-right: 4px; }
@@ -798,8 +932,8 @@
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 4px; }
   .kpi {
     padding: 14px 16px;
-    border: 1px solid var(--md-outline);
-    border-radius: var(--md-shape-md);
+    border: 0;
+    border-radius: var(--md-shape-lg);
     background: var(--md-surface);
   }
   .kpi-valor { font-size: var(--fs-kpi); font-weight: 600; line-height: 1.15; color: var(--md-primary); }

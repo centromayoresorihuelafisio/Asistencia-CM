@@ -103,6 +103,35 @@
       return estiloColor(estadoInfo(codigo, lista).color);
     }
 
+    /**
+     * Icono de cada estado (SVG propios, relleno con currentColor). Se elige por el tipo de la hoja Estados,
+     * así un estado nuevo tiene icono sin tocar código: presente = marca, la falta (el primer «ausente») = aspa,
+     * otros «ausente» (Justificada…) = calendario tachado y «neutro» (Evento…) = estrella.
+     */
+    const ICONOS_ESTADO = {
+      presente: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-2 15-5-5 1.4-1.4 3.6 3.6 7.6-7.6L19 8z"/>',
+      falta: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm5 13.6L15.6 17 12 13.4 8.4 17 7 15.6 10.6 12 7 8.4 8.4 7l3.6 3.6L15.6 7 17 8.4 13.4 12z"/>',
+      justificada: '<path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14zM9.5 18.6l2.5-2.5 2.5 2.5 1.1-1.1-2.5-2.5 2.5-2.5-1.1-1.1-2.5 2.5-2.5-2.5-1.1 1.1 2.5 2.5-2.5 2.5z"/>',
+      neutro: '<path d="M12 17.3 18.2 21l-1.7-7 5.5-4.8-7.2-.6L12 2 9.2 8.6 2 9.2 7.5 14l-1.7 7z"/>',
+      otro: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 14a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/>'
+    };
+    function iconoEstado(e) {
+      let clave = 'otro';
+      if (e.tipo === 'presente') clave = 'presente';
+      else if (e.tipo === 'neutro') clave = 'neutro';
+      else if (e.tipo === 'ausente') {
+        const par = estadosAlternar();
+        clave = par && par.falta.codigo !== e.codigo ? 'justificada' : 'falta';
+      }
+      return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">' + ICONOS_ESTADO[clave] + '</svg>';
+    }
+    /** Chip de un estado: pastilla de color suave con su icono y el texto (por defecto, la etiqueta). */
+    function chipEstado(codigo, html, clase) {
+      const e = estadoInfo(codigo);
+      return '<span class="chip' + (clase ? ' ' + clase : '') + '" style="' + estiloEstado(codigo) + '">' + iconoEstado(e) +
+        (html === undefined ? esc(e.etiqueta) : html) + '</span>';
+    }
+
     function opciones(lista, valor, valorDe, textoDe) {
       return lista.map(function (x) {
         const v = valorDe ? valorDe(x) : x;
@@ -115,6 +144,8 @@
     function marcado(id) { const el = $(id); return !!(el && el.checked); }
 
     const ICONO_TELEFONO = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg>';
+
+    const ICONO_GUARDAR = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
 
     function enlaceLlamar(telefono) {
       if (!telefono) return '';
@@ -464,6 +495,13 @@
       return '<span class="etiqueta pendiente">Pendiente</span>';
     }
 
+    /** Cuadro de delante de un pendiente: día de la semana abreviado y número del día. */
+    function cuadroFecha(texto) {
+      const dia = aFecha(texto);
+      return '<span class="lead"><small>' + esc(dia.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '')) + '</small>' +
+        dia.getDate() + '</span>';
+    }
+
     function pintarInicio(d) {
       app.ultimoInicio = d;
       if (app.vista !== 'inicio') return;
@@ -476,31 +514,36 @@
       if (d.pendientes.length) {
         html += '<h2 class="seccion peligro">Pendientes (' + d.pendientes.length + ')</h2>';
         // Cada pendiente: la tarjeta abre el pase y «No hubo clase» la cancela sin abrirlo.
+        html += '<div class="lista">';
         d.pendientes.forEach(function (p) {
           const guardado = etiquetaGuardado(p.grupo_id, p.fecha);
           html += '<div class="tarjeta pendiente con-accion"><button type="button" class="tarjeta-abrir" data-accion="pase" data-grupo="' +
-            esc(p.grupo_id) + '" data-fecha="' + esc(p.fecha) + '"><div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(p.nombre) +
-            '</div><div class="tarjeta-detalle">' + esc(p.taller) + ' · ' + esc(fechaCorta(p.fecha)) + '</div></div>' + guardado + '</button>' +
+            esc(p.grupo_id) + '" data-fecha="' + esc(p.fecha) + '">' + cuadroFecha(p.fecha) + '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(p.nombre) +
+            '</div><div class="tarjeta-detalle">' + esc(p.taller) + (p.hora ? ' · ' + esc(p.hora) : '') + '</div></div>' + guardado + '</button>' +
             (guardado ? '' : '<button type="button" class="boton compacto" data-accion="no-hubo-clase" data-grupo="' + esc(p.grupo_id) +
               '" data-fecha="' + esc(p.fecha) + '">No hubo clase</button>') + '</div>';
         });
+        html += '</div>';
       }
 
       html += '<h2 class="seccion">' + (d.fecha === d.hoy ? 'Hoy' : esc(fechaLarga(d.fecha))) + '</h2>';
       if (!d.grupos.length) {
         html += '<p class="vacio">No hay clases este día.</p>';
       } else {
+        // Una lista agrupada por taller; delante de cada grupo, su hora.
         let tallerActual = null;
         d.grupos.forEach(function (g) {
           if (g.taller !== tallerActual) {
+            html += (tallerActual === null ? '' : '</div>') + '<h3 class="taller">' + esc(g.taller) + '</h3><div class="lista">';
             tallerActual = g.taller;
-            html += '<h3 class="taller">' + esc(g.taller) + '</h3>';
           }
           html += '<button type="button" class="tarjeta" data-accion="pase" data-grupo="' + esc(g.grupo_id) +
-            '" data-fecha="' + esc(d.fecha) + '"><div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(g.nombre) +
-            '</div><div class="tarjeta-detalle">' + (g.hora ? esc(g.hora) + ' · ' : '') + g.inscritos + ' usuarios</div></div>' +
+            '" data-fecha="' + esc(d.fecha) + '"><span class="lead">' + (g.hora ? esc(g.hora) : '—') + '</span>' +
+            '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(g.nombre) +
+            '</div><div class="tarjeta-detalle">' + g.inscritos + ' usuarios</div></div>' +
             etiquetaSesion(g, d.fecha) + '</button>';
         });
+        html += '</div>';
       }
 
       html += '<details class="plegable"><summary>Mis grupos (' + app.init.grupos.length + ')</summary>';
@@ -595,7 +638,7 @@
           html += '<p class="ayuda">Toca el estado para cambiar entre ' + esc(par.presente.etiqueta) + ' y ' + esc(par.falta.etiqueta) +
             '. Toca el nombre para los demás estados y las observaciones.</p>';
         }
-        html += '<div id="listaUsuarios">' + p.usuarios.map(filaUsuario).join('') + '</div>';
+        html += '<div id="listaUsuarios" class="lista">' + p.usuarios.map(function (u, i) { return filaUsuario(u, i); }).join('') + '</div>';
       }
       html += '<div class="campo" style="margin-top:14px"><label for="notaSesion">Nota de la sesión (opcional)</label>' +
         '<textarea id="notaSesion" rows="2">' + esc(p.nota) + '</textarea></div>';
@@ -603,15 +646,19 @@
       pintarPiePase();
     }
 
-    function filaUsuario(u, i) {
+    /** recien: el estado acaba de cambiar (el icono del chip aparece con una animación corta). */
+    function filaUsuario(u, i, recien) {
       const e = estadoInfo(u.estado);
-      return '<div class="fila-usuario" data-accion="usuario" data-indice="' + i + '" id="fila' + i + '">' +
+      // Si no está en el estado por defecto, la fila toma un tinte muy suave de su color (como las citas de fisio).
+      const tinte = u.estado !== app.init.estadoPorDefecto ? ' style="--tinte:' + esc(e.color) + '"' : '';
+      return '<div class="fila-usuario" data-accion="usuario" data-indice="' + i + '" id="fila' + i + '"' + tinte + '>' +
         '<div class="nombre">' + esc(u.nombre) +
         (u.faltasSeguidas ? '<span class="faltas-seguidas">' + u.faltasSeguidas + ' faltas seguidas</span>' : '') +
         (u.observaciones ? '<span class="obs">' + esc(u.observaciones) + '</span>' : '') + '</div>' +
         '<button type="button" class="alternar" data-accion="alternar" data-indice="' + i + '" aria-label="' + esc(e.etiqueta) + '. Cambiar estado">' +
-        '<span class="chip" style="' + estiloEstado(u.estado) + '">' + esc(e.etiqueta) + '</span></button>' +
-        enlaceLlamar(u.telefono) + '</div>';
+        chipEstado(u.estado, undefined, recien ? 'recien' : '') + '</button>' +
+        // Sin teléfono, un hueco del mismo ancho para que los chips queden alineados en columna.
+        (u.telefono ? enlaceLlamar(u.telefono) : '<span class="sin-telefono" aria-hidden="true"></span>') + '</div>';
     }
 
     /**
@@ -630,7 +677,7 @@
       if (!par) { abrirPanelUsuario(i); return; }
       const u = app.pase.usuarios[i];
       u.estado = u.estado === par.presente.codigo ? par.falta.codigo : par.presente.codigo;
-      $('fila' + i).outerHTML = filaUsuario(u, i);
+      $('fila' + i).outerHTML = filaUsuario(u, i, true);
       pintarPiePase();
       guardarBorrador();
     }
@@ -648,18 +695,19 @@
         return !app.init.estados.some(function (e) { return e.codigo === c; });
       }).map(function (c) { return estadoInfo(c); })).forEach(function (e) {
         if (!cuenta[e.codigo]) return;
-        html += '<span class="chip" style="' + estiloEstado(e.codigo) + '">' + esc(e.etiqueta) + ': ' + cuenta[e.codigo] + '</span>';
+        html += chipEstado(e.codigo, '<span class="numero">' + cuenta[e.codigo] + '</span> ' + esc(e.etiqueta));
       });
       html += '</div><div class="botones">' +
         '<button type="button" class="boton peligro" data-accion="cancelar-sesion">Sesión cancelada</button>' +
-        '<button type="button" class="boton primario" data-accion="guardar"' + (app.pase.usuarios.length ? '' : ' disabled') + '>Guardar</button></div>';
+        '<button type="button" class="boton lleno" data-accion="guardar"' + (app.pase.usuarios.length ? '' : ' disabled') + '>' +
+        ICONO_GUARDAR + 'Guardar</button></div>';
       pie(html);
     }
 
     function botonesEstados(accion) {
       return '<div class="opciones-estado">' + app.init.estados.map(function (e) {
         return '<button type="button" class="opcion-estado" data-accion="' + accion + '" data-estado="' + esc(e.codigo) +
-          '" style="' + estiloEstado(e.codigo) + '">' + esc(e.etiqueta) + '</button>';
+          '" style="' + estiloEstado(e.codigo) + '">' + iconoEstado(e) + esc(e.etiqueta) + '</button>';
       }).join('') + '</div>';
     }
 
@@ -696,7 +744,7 @@
       const obs = $('obsUsuario');
       if (obs) u.observaciones = obs.value.trim();
       cerrarPanel();
-      $('fila' + p.indice).outerHTML = filaUsuario(u, p.indice);
+      $('fila' + p.indice).outerHTML = filaUsuario(u, p.indice, !!nuevoEstado);
       pintarPiePase();
       guardarBorrador();
     }
@@ -738,12 +786,12 @@
       const cuenta = contadores();
       let lista = '<ul class="resumen-lista">';
       Object.keys(cuenta).forEach(function (c) {
-        lista += '<li><span>' + esc(estadoInfo(c).etiqueta) + '</span><strong>' + cuenta[c] + '</strong></li>';
+        lista += '<li>' + chipEstado(c) + '<strong>' + cuenta[c] + '</strong></li>';
       });
       lista += '<li><span>Total</span><strong>' + app.pase.usuarios.length + '</strong></li></ul>';
       abrirPanel('<div><h3>¿Guardar la lista?</h3><p>' + esc(app.pase.grupo.nombre) + ' · ' + esc(fechaLarga(app.pase.fecha)) + '</p>' +
         lista + '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
-        '<button type="button" class="boton primario" data-accion="confirmar-guardar">Sí, guardar</button></div>' +
+        '<button type="button" class="boton lleno" data-accion="confirmar-guardar">' + ICONO_GUARDAR + 'Sí, guardar</button></div>' +
         botonSiguiente('confirmar-guardar', 'Guardar y pasar a la siguiente') + '</div>');
     }
 
@@ -895,12 +943,12 @@
 
     function htmlLista(d) {
       if (!d.inscritos.length) return '<p class="vacio">Todavía no hay usuarios inscritos.</p>';
-      return '<p class="ayuda">Toca a un usuario para darle de baja o cambiarle de grupo.</p>' + d.inscritos.map(function (u) {
+      return '<p class="ayuda">Toca a un usuario para darle de baja o cambiarle de grupo.</p><div class="lista">' + d.inscritos.map(function (u) {
         return '<div class="resultado tocable" data-accion="inscrito" data-inscripcion="' + esc(u.inscripcion_id) + '">' +
           '<div class="cuerpo"><div><strong>' + esc(u.nombre) + '</strong></div>' +
           '<div class="sub">ID ' + esc(u.usuario_id) + ' · alta ' + esc(fechaNumerica(u.fecha_alta)) +
           (u.fecha_baja ? ' · baja ' + esc(fechaNumerica(u.fecha_baja)) : '') + '</div></div>' + enlaceLlamar(u.telefono) + '</div>';
-      }).join('');
+      }).join('') + '</div>';
     }
 
     /** Panel de un usuario de la pestaña Lista: baja, cambio de grupo y llamada, con el usuario ya elegido. */
@@ -1342,13 +1390,13 @@
           '<div class="tarjeta-titulo">' + esc(titulo) + '</div><div class="tarjeta-detalle">' + esc(detalle) + '</div></div>' +
           '<span class="flecha" aria-hidden="true">›</span></button>';
       };
-      pintar(
+      pintar('<div class="lista">' +
         entrada('g-grupos', 'Grupos y talleres', activos + ' grupos activos') +
         entrada('g-usuarios', 'Usuarios', g.totalUsuarios + ' en la base de datos') +
         entrada('g-dias', 'Días sin clase', proximos + ' próximos (festivos, vacaciones, asuntos propios…)') +
         entrada('g-estados', 'Estados de asistencia', g.estados.map(function (e) { return e.etiqueta; }).join(', ')) +
         entrada('g-curso', 'Curso', g.config.curso + ' · ' + fechaNumerica(g.config.inicio) + ' a ' + fechaNumerica(g.config.fin)) +
-        entrada('g-listas', 'Listas', 'Motivos de baja y tipos de día sin clase')
+        entrada('g-listas', 'Listas', 'Motivos de baja y tipos de día sin clase') + '</div>'
       );
     }
 
@@ -1714,7 +1762,7 @@
         case 'aplicar-estado':
           app.pase.usuarios.forEach(function (u) { u.estado = dato('estado'); });
           cerrarPanel();
-          $('listaUsuarios').innerHTML = app.pase.usuarios.map(filaUsuario).join('');
+          $('listaUsuarios').innerHTML = app.pase.usuarios.map(function (u, i) { return filaUsuario(u, i, true); }).join('');
           pintarPiePase();
           guardarBorrador();
           break;
@@ -1827,6 +1875,11 @@
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden && app.init && Date.now() - memoriaDesde > REFRESCO_MS) refrescarTodo();
     });
+
+    // Barra superior de Material 3: al desplazar la pantalla toma el color del contenedor (sin línea ni sombra).
+    window.addEventListener('scroll', function () {
+      $('barra').classList.toggle('elevada', window.scrollY > 4);
+    }, { passive: true });
 
     // ---------- Arranque ----------
 
