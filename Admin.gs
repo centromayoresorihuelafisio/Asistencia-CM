@@ -167,7 +167,7 @@ function fichaUsuario_(monitora, usuarioId) {
 
   // Resumen de asistencia del curso actual, por grupo.
   const porGrupo = {};
-  leerTabla_(HOJAS.ASISTENCIA).forEach(function (a) {
+  asistenciaQueCuenta_().forEach(function (a) {   // sin las de sesiones canceladas (regla 5)
     if (normalizarId_(a.usuario_id) !== id) return;
     if (cfg.inicio && a.fecha < cfg.inicio) return;
     if (cfg.fin && a.fecha > cfg.fin) return;

@@ -17,6 +17,7 @@
       gest: null,        // datos de api_gestion
       usuarios: { texto: '' },
       guardando: {},     // pases de lista guardándose en segundo plano: 'grupo|fecha' → 'guardando' o 'error'
+      porGuardar: {},    // listas enviadas aún sin confirmar: 'grupo|fecha' → { payload, nombre, intentos, rechazo… } (enviarGuardado)
       hechos: {},        // pases guardados o cancelados en esta visita: 'grupo|fecha' → true
       ultimoInicio: null // últimos datos de api_inicio recibidos (para el siguiente pase mientras se vuelven a pedir)
     };
@@ -220,7 +221,9 @@
           })
           .withFailureHandler(function () {
             if (conCarga) cargando(-1);
-            rechazar(new Error('No se ha podido conectar con el servidor. Comprueba la conexión e inténtalo de nuevo.'));
+            const e = new Error('No se ha podido conectar con el servidor. Comprueba la conexión e inténtalo de nuevo.');
+            e.conexion = true;   // fallo de conexión (no un rechazo del servidor): se puede reintentar tal cual
+            rechazar(e);
           });
         runner[funcion].apply(runner, args);
       });
@@ -545,6 +548,8 @@
         '<button type="button" class="boton flecha-dia" data-accion="dia" data-salto="1" aria-label="Día siguiente"' +
         (app.fecha >= d.hoy ? ' disabled' : '') + '>›</button></div>';
 
+      html += htmlPorGuardar();
+
       if (d.pendientes.length) {
         html += '<h2 class="seccion peligro">Pendientes (' + d.pendientes.length + ')</h2>';
         // Cada pendiente: la tarjeta abre el pase y «No hubo clase» la cancela sin abrirlo.
@@ -627,6 +632,8 @@
         d.nota = d.sesion ? (d.sesion.nota || '') : '';
         d.borradorRecuperado = false;
         d.volver = volver || irInicio;
+        // Observaciones tal como están guardadas, para saber al guardar si se han escrito nuevas (motivosResumen).
+        d.usuarios.forEach(function (u) { u.obsGuardada = u.observaciones || ''; });
         const b = leerBorrador(claveBorrador(grupoId, fecha));
         if (b && b.usuarios) {
           d.usuarios.forEach(function (u) {
@@ -647,7 +654,14 @@
       let html = '<div class="avisos-sesion">';
       const guardado = app.guardando[claveBorrador(p.grupo.grupo_id, p.fecha)];
       if (guardado === 'guardando') html += '<div class="banda info">Se está guardando esta lista. Espera a que termine antes de cambiarla.</div>';
-      else if (guardado === 'error') html += '<div class="banda error">No se pudo guardar esta lista. Tus marcas se conservan: revísalas y pulsa Guardar otra vez.</div>';
+      else if (guardado === 'error') {
+        const t = app.porGuardar[claveBorrador(p.grupo.grupo_id, p.fecha)];
+        html += '<div class="banda error">' + (t && t.rechazo
+          ? 'No se pudo guardar esta lista: ' + esc(t.rechazo) + ' Tus marcas se conservan: revísalas y pulsa Guardar otra vez.'
+          : t && !t.recuperada
+            ? 'Esta lista aún no se ha guardado por falta de conexión; se vuelve a intentar sola. Tus marcas se conservan.'
+            : 'Esta lista se quedó sin guardar. Tus marcas se conservan: revísalas y pulsa Guardar otra vez.') + '</div>';
+      }
       else if (p.borradorRecuperado) html += '<div class="banda info">Se han recuperado cambios sin guardar de la última vez.</div>';
       if (p.diaEspecial) {
         html += '<div class="banda especial">Día sin clase: ' + esc(p.diaEspecial.tipo || '') +
@@ -659,7 +673,7 @@
       }
       if (p.sesion && p.sesion.estado === 'cancelada') {
         html += '<div class="banda cancelada">Sesión cancelada' + (p.sesion.nota ? ': ' + esc(p.sesion.nota) : '') +
-          '. Si guardas la lista, volverá a contar como realizada.</div>';
+          '. Si tenía marcas guardadas, se conservan (salen abajo) pero no cuentan; si guardas la lista, volverá a contar como realizada.</div>';
       }
       html += '</div>';
 
@@ -669,8 +683,8 @@
         html += '<button type="button" class="boton ancho" data-accion="aplicar-todos" style="margin-bottom:10px">Aplicar un estado a todos…</button>';
         const par = estadosAlternar();
         if (par) {
-          html += '<p class="ayuda">Toca el estado para cambiar entre ' + esc(par.presente.etiqueta) + ' y ' + esc(par.falta.etiqueta) +
-            '. Toca el nombre para los demás estados y las observaciones.</p>';
+          html += '<p class="ayuda">Toca a un usuario para cambiar entre ' + esc(par.presente.etiqueta) + ' y ' + esc(par.falta.etiqueta) +
+            '. Para los demás estados y las observaciones, toca ⋮ o mantén pulsado.</p>';
         }
         html += '<div id="listaUsuarios" class="lista">' + p.usuarios.map(function (u, i) { return filaUsuario(u, i); }).join('') + '</div>';
       }
@@ -680,19 +694,27 @@
       pintarPiePase();
     }
 
-    /** recien: el estado acaba de cambiar (el icono del chip aparece con una animación corta). */
+    const ICONO_MAS_OPCIONES = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>';
+
+    /**
+     * Fila de un usuario en el pase de lista (4-nov-2026): un toque en cualquier punto alterna Asistido/Falta;
+     * el botón «⋮» del final (o mantener pulsada la fila) abre el panel con los demás estados y las observaciones.
+     * Sin círculo de iniciales, para que el nombre tenga sitio. recien: el estado acaba de cambiar (animación corta del icono).
+     */
     function filaUsuario(u, i, recien) {
       const e = estadoInfo(u.estado);
-      // Si no está en el estado por defecto, la fila toma un tinte muy suave de su color (como las citas de fisio).
+      // Si no está en el estado por defecto, la fila toma un tinte de su color y el chip va relleno (Estilos.html).
       const tinte = u.estado !== app.init.estadoPorDefecto ? ' style="--tinte:' + esc(e.color) + '"' : '';
-      return '<div class="fila-usuario" data-accion="usuario" data-indice="' + i + '" id="fila' + i + '"' + tinte + '>' +
-        avatar(u.nombre) + '<div class="nombre">' + esc(nombreVisible(u.nombre)) +
+      const nombre = nombreVisible(u.nombre);
+      return '<div class="fila-usuario" role="button" tabindex="0" data-accion="alternar" data-indice="' + i + '" id="fila' + i + '"' + tinte +
+        ' aria-label="' + esc(nombre) + ': ' + esc(e.etiqueta) + '. Tocar para cambiar">' +
+        '<div class="nombre">' + esc(nombre) +
         (u.faltasSeguidas ? '<span class="faltas-seguidas">' + u.faltasSeguidas + ' faltas seguidas</span>' : '') +
         (u.observaciones ? '<span class="obs">' + esc(u.observaciones) + '</span>' : '') + '</div>' +
-        '<button type="button" class="alternar" data-accion="alternar" data-indice="' + i + '" aria-label="' + esc(e.etiqueta) + '. Cambiar estado">' +
-        chipEstado(u.estado, undefined, recien ? 'recien' : '') + '</button>' +
-        // Sin teléfono, un hueco del mismo ancho para que los chips queden alineados en columna.
-        (u.telefono ? enlaceLlamar(u.telefono) : '<span class="sin-telefono" aria-hidden="true"></span>') + '</div>';
+        '<span class="estado-fila">' + chipEstado(u.estado, undefined, recien ? 'recien' : '') + '</span>' +
+        // La llamada está en el panel de «⋮» (abrirPanelUsuario), para dejar sitio al nombre.
+        '<button type="button" class="mas-opciones" data-accion="usuario" data-indice="' + i + '" aria-label="Más opciones de ' + esc(nombre) + '">' +
+        ICONO_MAS_OPCIONES + '</button></div>';
     }
 
     /**
@@ -705,7 +727,7 @@
       return presente && falta ? { presente: presente, falta: falta } : null;
     }
 
-    /** Un toque en el chip: presente → falta; cualquier otro estado → presente. Sin pareja, abre el panel. */
+    /** Un toque en la fila: presente → falta; cualquier otro estado → presente. Sin pareja, abre el panel. */
     function alternarEstado(i) {
       const par = estadosAlternar();
       if (!par) { abrirPanelUsuario(i); return; }
@@ -732,11 +754,44 @@
         if (!cuenta[e.codigo]) return;
         html += chipEstado(e.codigo, '<span class="numero">' + cuenta[e.codigo] + '</span> ' + esc(e.etiqueta));
       });
+      // Si queda otro pase por hacer (abierto desde Inicio), Guardar abre ese a continuación (guardarPase).
+      const haySiguiente = app.pase.usuarios.length && siguientePase(app.pase);
       html += '</div><div class="botones">' +
         '<button type="button" class="boton peligro" data-accion="cancelar-sesion">Sesión cancelada</button>' +
         '<button type="button" class="boton lleno" data-accion="guardar"' + (app.pase.usuarios.length ? '' : ' disabled') + '>' +
-        ICONO_GUARDAR + 'Guardar</button></div>';
+        // Sin icono en «Guardar y seguir», para que quepa en una línea en un móvil estrecho.
+        (haySiguiente ? 'Guardar y seguir' : ICONO_GUARDAR + 'Guardar') + '</button></div>';
       pie(html);
+    }
+
+    /**
+     * Motivos para enseñar el resumen antes de guardar (4-nov-2026). Normalmente se guarda con un toque; el resumen
+     * solo sale si algo se sale de lo normal: sesión cancelada o día sin clase, muchas faltas, todo el grupo en el
+     * mismo estado distinto del habitual u observaciones nuevas. Devuelve los textos (vacío = guardar directamente).
+     */
+    function motivosResumen() {
+      const p = app.pase;
+      const n = p.usuarios.length;
+      const motivos = [];
+      if (p.sesion && p.sesion.estado === 'cancelada') motivos.push('Esta sesión estaba cancelada: al guardar contará como realizada.');
+      if (p.diaEspecial) motivos.push('Es un día sin clase (' + (p.diaEspecial.tipo || 'día especial') + '). Guarda solo si hubo clase.');
+      const faltas = p.usuarios.filter(function (u) { return estadoInfo(u.estado).tipo === 'ausente'; }).length;
+      const primero = n ? p.usuarios[0].estado : '';
+      if (n >= 2 && faltas >= Math.max(2, Math.ceil(n / 2))) {
+        motivos.push('Faltan ' + faltas + ' de ' + n + ' usuarios.');
+      } else if (n >= 2 && primero !== app.init.estadoPorDefecto && p.usuarios.every(function (u) { return u.estado === primero; })) {
+        motivos.push('Todo el grupo está como «' + estadoInfo(primero).etiqueta + '».');
+      }
+      const conObs = p.usuarios.filter(function (u) { return (u.observaciones || '') !== (u.obsGuardada || ''); }).length;
+      if (conObs) motivos.push('Hay observaciones nuevas en ' + (conObs === 1 ? '1 usuario.' : conObs + ' usuarios.'));
+      return motivos;
+    }
+
+    /** Botón Guardar del pie: guarda con un toque (y sigue con el siguiente pase, si lo hay) o, si hay motivos, enseña el resumen. */
+    function pedirGuardar() {
+      const motivos = motivosResumen();
+      if (motivos.length) abrirResumenGuardar(motivos);
+      else guardarPase(true);
     }
 
     function botonesEstados(accion) {
@@ -766,6 +821,7 @@
           return '<button type="button" class="boton compacto" data-accion="obs-rapida" data-texto="' + esc(t) + '">' + esc(t) + '</button>';
         }).join('') + '</div>' : '') + '</div>' +
         '<button type="button" class="boton ancho" data-accion="cerrar-usuario">Hecho</button>' +
+        (u.telefono ? '<a class="boton ancho separado" href="tel:' + esc(u.telefono) + '">' + ICONO_TELEFONO + ' Llamar al ' + esc(u.telefono) + '</a>' : '') +
         (u.inscripcion_id && !u.fecha_baja ? '<button type="button" class="boton peligro ancho separado" data-accion="pase-baja">Dar de baja de este grupo…</button>' : '') +
         '</div>');
       const elegido = $('panel').querySelector('[data-elegido]');
@@ -817,7 +873,7 @@
       else p.volver();
     }
 
-    function abrirResumenGuardar() {
+    function abrirResumenGuardar(motivos) {
       const cuenta = contadores();
       let lista = '<ul class="resumen-lista">';
       Object.keys(cuenta).forEach(function (c) {
@@ -825,6 +881,7 @@
       });
       lista += '<li><span>Total</span><strong>' + app.pase.usuarios.length + '</strong></li></ul>';
       abrirPanel('<div><h3>¿Guardar la lista?</h3><p>' + esc(app.pase.grupo.nombre) + ' · ' + esc(fechaLarga(app.pase.fecha)) + '</p>' +
+        ((motivos || []).length ? '<div class="banda especial">' + motivos.map(esc).join('<br>') + '</div>' : '') +
         lista + '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
         '<button type="button" class="boton lleno" data-accion="confirmar-guardar">' + ICONO_GUARDAR + 'Sí, guardar</button></div>' +
         botonSiguiente('confirmar-guardar', 'Guardar y pasar a la siguiente') + '</div>');
@@ -847,25 +904,125 @@
         })
       };
       guardarBorrador();
-      const borradorEnviado = leerBorradorTexto(clave);
       const siguiente = conSiguiente ? siguientePase(p) : null;
       app.guardando[clave] = 'guardando';
       seguirTrasPase(p, siguiente);
+      enviarGuardado({ clave: clave, payload: payload, nombre: p.grupo.nombre, borrador: leerBorradorTexto(clave) });
+    }
 
-      llamarSinCarga(false, 'api_guardarSesion', [payload]).then(function () {
-        delete app.guardando[clave];
-        app.hechos[clave] = true;
+    // ---------- Listas por guardar (4-nov-2026) ----------
+    // Cada lista enviada queda en app.porGuardar hasta que el servidor la confirma. Si falla la conexión, se
+    // reintenta sola (cada vez más espaciado, al recuperar la conexión y al volver a la app); si el servidor la
+    // rechaza (por ejemplo, porque ha cambiado la lista de inscritos), espera a que se abra y se revise.
+    // Se apunta también en localStorage: si se cierra la app, al volver a abrirla sale en Inicio para reintentarla
+    // a mano (no se envía sola, por si mientras tanto se ha corregido desde otro aparato).
+
+    const CLAVE_POR_GUARDAR = 'asistencia|porGuardar';
+    const ESPERAS_REINTENTO = [5000, 15000, 30000, 60000, 120000];
+
+    function recordarPorGuardar() {
+      const o = {};
+      Object.keys(app.porGuardar).forEach(function (k) { o[k] = { payload: app.porGuardar[k].payload, nombre: app.porGuardar[k].nombre }; });
+      try {
+        if (Object.keys(o).length) window.localStorage.setItem(CLAVE_POR_GUARDAR, JSON.stringify(o));
+        else window.localStorage.removeItem(CLAVE_POR_GUARDAR);
+      } catch (e) { /* sin localStorage: solo queda en memoria */ }
+    }
+
+    /** Al abrir la app: las listas que quedaron sin guardar la última vez salen como «Sin guardar», sin enviarse solas. */
+    function recuperarPorGuardar() {
+      let o = null;
+      try { o = JSON.parse(window.localStorage.getItem(CLAVE_POR_GUARDAR) || 'null'); } catch (e) { o = null; }
+      if (!o) return;
+      Object.keys(o).forEach(function (k) {
+        if (!o[k] || !o[k].payload || app.porGuardar[k]) return;
+        app.porGuardar[k] = { clave: k, payload: o[k].payload, nombre: o[k].nombre || o[k].payload.grupo_id,
+          borrador: leerBorradorTexto(k), intentos: 0, rechazo: '', recuperada: true };
+        app.guardando[k] = 'error';
+      });
+    }
+
+    /** Envía (o reenvía) una lista: t = { clave, payload, nombre, borrador }. */
+    function enviarGuardado(t) {
+      const anterior = app.porGuardar[t.clave];
+      if (anterior) clearTimeout(anterior.temporizador);
+      t.intentos = t.intentos || 0;
+      t.rechazo = '';
+      t.recuperada = false;
+      app.porGuardar[t.clave] = t;
+      app.guardando[t.clave] = 'guardando';
+      recordarPorGuardar();
+      const grupoId = t.payload.grupo_id;
+      const fecha = t.payload.fecha;
+
+      llamarSinCarga(false, 'api_guardarSesion', [t.payload]).then(function () {
+        if (app.porGuardar[t.clave] !== t) return;   // se ha vuelto a guardar después: manda la última
+        delete app.porGuardar[t.clave];
+        recordarPorGuardar();
+        delete app.guardando[t.clave];
+        app.hechos[t.clave] = true;
         // Si se ha vuelto a abrir y cambiar mientras se guardaba, se conserva el borrador nuevo.
-        if (leerBorradorTexto(clave) === borradorEnviado) borrarBorrador(grupoId, p.fecha);
-        anticuar('sesion', grupoId, p.fecha);
-        aviso('Lista guardada: ' + p.grupo.nombre + ', ' + fechaCorta(p.fecha) + '.');
-        trasGuardarEnFondo(clave);
+        if (leerBorradorTexto(t.clave) === t.borrador) borrarBorrador(grupoId, fecha);
+        anticuar('sesion', grupoId, fecha);
+        aviso('Lista guardada: ' + t.nombre + ', ' + fechaCorta(fecha) + '.');
+        trasGuardarEnFondo(t.clave);
         precargar();
       }).catch(function (e) {
-        app.guardando[clave] = 'error';
-        aviso('No se ha guardado ' + p.grupo.nombre + ' (' + fechaCorta(p.fecha) + '). ' + e.message, true);
-        trasGuardarEnFondo(clave);
+        if (app.porGuardar[t.clave] !== t) return;
+        app.guardando[t.clave] = 'error';
+        t.intentos++;
+        if (e.conexion) {
+          const espera = ESPERAS_REINTENTO[Math.min(t.intentos, ESPERAS_REINTENTO.length) - 1];
+          t.temporizador = setTimeout(function () { if (app.porGuardar[t.clave] === t) enviarGuardado(t); }, espera);
+          if (t.intentos === 1) {
+            aviso('No se ha guardado ' + t.nombre + ' (' + fechaCorta(fecha) + '): no hay conexión. Se volverá a intentar sola.', true);
+          }
+        } else {
+          t.rechazo = e.message;
+          // Lo más probable es que haya cambiado la lista de inscritos: al reabrir el pase se pide de nuevo.
+          olvidar('api_sesion', function (g, f) { return g === grupoId && f === fecha; });
+          aviso('No se ha guardado ' + t.nombre + ' (' + fechaCorta(fecha) + '). ' + e.message, true);
+        }
+        trasGuardarEnFondo(t.clave);
       });
+    }
+
+    /** Reenvía las listas que fallaron por la conexión. todas: también las rechazadas y las de la visita anterior (botón «Reintentar»). */
+    function reintentarGuardados(todas) {
+      Object.keys(app.porGuardar).forEach(function (k) {
+        const t = app.porGuardar[k];
+        if (app.guardando[k] !== 'error') return;
+        if (!todas && (t.rechazo || t.recuperada)) return;
+        enviarGuardado(t);
+      });
+      if (todas) refrescarVista();
+    }
+
+    /** Al cancelar una sesión, lo que quedara por guardar de ella ya no se envía. */
+    function olvidarPorGuardar(clave) {
+      const t = app.porGuardar[clave];
+      if (!t) return;
+      clearTimeout(t.temporizador);
+      delete app.porGuardar[clave];
+      delete app.guardando[clave];
+      recordarPorGuardar();
+    }
+
+    /** Aviso fijo de Inicio mientras quede alguna lista sin guardar, con cada una para abrirla y «Reintentar». */
+    function htmlPorGuardar() {
+      const lista = Object.keys(app.porGuardar).map(function (k) { return app.porGuardar[k]; })
+        .filter(function (t) { return app.guardando[t.clave] === 'error'; });
+      if (!lista.length) return '';
+      const soloConexion = lista.every(function (t) { return !t.rechazo && !t.recuperada; });
+      return '<div class="banda error por-guardar"><div class="por-guardar-cuerpo"><strong>' +
+        (lista.length === 1 ? 'Hay 1 lista sin guardar' : 'Hay ' + lista.length + ' listas sin guardar') + '</strong>' +
+        (soloConexion ? '<div>Se vuelve a intentar sola cuando haya conexión.</div>' : '') +
+        lista.map(function (t) {
+          return '<button type="button" class="por-guardar-item" data-accion="pase" data-grupo="' + esc(t.payload.grupo_id) +
+            '" data-fecha="' + esc(t.payload.fecha) + '"><span>' + esc(t.nombre) + ' · ' + esc(fechaCorta(t.payload.fecha)) +
+            (t.rechazo ? '<small>' + esc(t.rechazo) + '</small>' : '') + '</span><span class="flecha" aria-hidden="true">›</span></button>';
+        }).join('') +
+        '<button type="button" class="boton compacto" data-accion="reintentar-guardados">Reintentar ahora</button></div></div>';
     }
 
     function trasGuardarEnFondo(clave) {
@@ -891,7 +1048,7 @@
 
     function abrirCancelarSesion() {
       abrirPanel('<div><h3>¿Marcar la sesión como cancelada?</h3>' +
-        '<p>No contará como clase realizada y se borrarán las marcas guardadas de este día.</p>' +
+        '<p>No contará como clase realizada. Si ya había marcas guardadas, se conservan pero no cuentan; si después guardas la lista, vuelven a contar.</p>' +
         '<div class="campo"><label for="motivoCancelar">Motivo (opcional)</label><textarea id="motivoCancelar" rows="2"></textarea></div>' +
         '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">No</button>' +
         '<button type="button" class="boton peligro-lleno" data-accion="confirmar-cancelar">Sí, cancelar</button></div>' +
@@ -904,6 +1061,7 @@
       const siguiente = conSiguiente ? siguientePase(p) : null;
       llamar('api_cancelarSesion', p.grupo.grupo_id, p.fecha, $('motivoCancelar').value.trim()).then(function () {
         app.hechos[claveBorrador(p.grupo.grupo_id, p.fecha)] = true;
+        olvidarPorGuardar(claveBorrador(p.grupo.grupo_id, p.fecha));
         borrarBorrador(p.grupo.grupo_id, p.fecha);
         anticuar('sesion', p.grupo.grupo_id, p.fecha);
         aviso('Sesión marcada como cancelada.');
@@ -933,6 +1091,7 @@
       llamar('api_cancelarSesion', c.grupo_id, c.fecha, $('motivoCancelar').value.trim()).then(function () {
         cancelarPendiente = null;
         app.hechos[clave] = true;
+        olvidarPorGuardar(clave);
         borrarBorrador(c.grupo_id, c.fecha);
         anticuar('sesion', c.grupo_id, c.fecha);
         cerrarPanel();
@@ -1789,7 +1948,49 @@
 
     function volverAHistorial() { irHistorial(); }
 
+    // Mantener pulsada una fila del pase de lista abre su panel (como «⋮»). El clic que llega al soltar se descarta.
+    let pulsacionLarga = null;
+    let saltarClic = false;
+    const MS_PULSACION_LARGA = 500;
+    function cortarPulsacion() {
+      if (pulsacionLarga) { clearTimeout(pulsacionLarga.temporizador); pulsacionLarga = null; }
+    }
+    document.addEventListener('pointerdown', function (ev) {
+      saltarClic = false;
+      cortarPulsacion();
+      if (ev.button !== 0) return;
+      const fila = ev.target.closest('.fila-usuario');
+      if (!fila || ev.target.closest('a.llamar, .mas-opciones')) return;
+      pulsacionLarga = {
+        x: ev.clientX,
+        y: ev.clientY,
+        temporizador: setTimeout(function () {
+          pulsacionLarga = null;
+          saltarClic = true;
+          vibrar();
+          abrirPanelUsuario(Number(fila.getAttribute('data-indice')));
+        }, MS_PULSACION_LARGA)
+      };
+    }, { passive: true });
+    document.addEventListener('pointermove', function (ev) {
+      if (pulsacionLarga && Math.hypot(ev.clientX - pulsacionLarga.x, ev.clientY - pulsacionLarga.y) > 10) cortarPulsacion();
+    }, { passive: true });
+    document.addEventListener('pointerup', cortarPulsacion, { passive: true });
+    document.addEventListener('pointercancel', cortarPulsacion, { passive: true });
+    // Sin menú del navegador al mantener pulsada una fila.
+    document.addEventListener('contextmenu', function (ev) {
+      if (ev.target.closest('.fila-usuario')) ev.preventDefault();
+    });
+    // Las filas con role="button" responden también a Intro y Espacio.
+    document.addEventListener('keydown', function (ev) {
+      if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches && ev.target.matches('[role="button"][data-accion]')) {
+        ev.preventDefault();
+        ev.target.click();
+      }
+    });
+
     document.addEventListener('click', function (ev) {
+      if (saltarClic) { saltarClic = false; return; }
       if (ev.target.closest('a.llamar')) return;
       const el = ev.target.closest('[data-accion]');
       if (!el) return;
@@ -1815,7 +2016,7 @@
           pintarPiePase();
           guardarBorrador();
           break;
-        case 'guardar': abrirResumenGuardar(); break;
+        case 'guardar': pedirGuardar(); break;
         case 'confirmar-guardar': guardarPase(!!dato('siguiente')); break;
         case 'cancelar-sesion': abrirCancelarSesion(); break;
         case 'confirmar-cancelar': cancelarPase(!!dato('siguiente')); break;
@@ -1827,6 +2028,7 @@
         }
         case 'no-hubo-clase': abrirNoHuboClase(dato('grupo'), dato('fecha')); break;
         case 'confirmar-no-hubo': cancelarDesdeInicio(); break;
+        case 'reintentar-guardados': reintentarGuardados(true); break;
         case 'cerrar-panel': cerrarPanel(); break;
         case 'confirmar-si': if (confirmacionPendiente) confirmacionPendiente(); break;
         case 'parecido-usar': cerrarPanel(); if (parecidosPendiente) parecidosPendiente.usar(dato('usuario')); break;
@@ -1914,16 +2116,19 @@
       if (app.alVolver) app.alVolver();
     });
 
-    // Si se intenta cerrar la app con una lista guardándose, el navegador pide confirmación.
+    // Si se intenta cerrar la app con una lista guardándose o sin guardar, el navegador pide confirmación.
     window.addEventListener('beforeunload', function (ev) {
-      const pendiente = Object.keys(app.guardando).some(function (k) { return app.guardando[k] === 'guardando'; });
-      if (pendiente) { ev.preventDefault(); ev.returnValue = ''; }
+      if (Object.keys(app.porGuardar).length) { ev.preventDefault(); ev.returnValue = ''; }
     });
 
-    // Al volver a la app tras un rato sin usarla, se refrescan los datos en segundo plano.
+    // Al volver a la app tras un rato sin usarla, se refrescan los datos en segundo plano;
+    // y, al volver a la app o recuperar la conexión, se reenvían las listas que fallaron por la conexión.
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden && app.init && Date.now() - memoriaDesde > REFRESCO_MS) refrescarTodo();
+      if (document.hidden || !app.init) return;
+      reintentarGuardados(false);
+      if (Date.now() - memoriaDesde > REFRESCO_MS) refrescarTodo();
     });
+    window.addEventListener('online', function () { if (app.init) reintentarGuardados(false); });
 
     // Barra superior de Material 3: al desplazar la pantalla toma el color del contenedor (sin línea ni sombra).
     window.addEventListener('scroll', function () {
@@ -1936,8 +2141,8 @@
     const sinMovimiento = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
     document.addEventListener('pointerdown', function (ev) {
       if (ev.button !== 0 || (sinMovimiento && sinMovimiento.matches)) return;
-      // El chip y el teléfono tienen su propio toque: no se dibuja la onda de la fila debajo.
-      if (ev.target.closest('.alternar, a.llamar')) return;
+      // El teléfono y «⋮» tienen su propio toque: no se dibuja la onda de la fila debajo.
+      if (ev.target.closest('.mas-opciones, a.llamar')) return;
       const el = ev.target.closest(CON_ONDA);
       if (!el || el.disabled) return;
       const caja = el.getBoundingClientRect();
@@ -1957,6 +2162,7 @@
       app.init = d;
       app.fecha = d.hoy;
       memoriaDesde = Date.now();
+      recuperarPorGuardar();
       irInicio();
       precargar();
     }).catch(function (e) {

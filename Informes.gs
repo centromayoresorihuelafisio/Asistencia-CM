@@ -81,7 +81,7 @@ function historialGrupo_(monitora, grupoId, mes) {
     (periodos[id] = periodos[id] || []).push(i);
   });
   const marcas = {};
-  leerTabla_(HOJAS.ASISTENCIA).forEach(function (a) {
+  asistenciaQueCuenta_().forEach(function (a) {   // sin las de sesiones canceladas (regla 5)
     if (a.grupo_id !== grupoId || indice[a.fecha] === undefined) return;
     const id = normalizarId_(a.usuario_id);
     (marcas[id] = marcas[id] || {})[a.fecha] = a.estado;
@@ -183,7 +183,7 @@ function informe_(monitora, desde, hasta, tallerId) {
   });
 
   const detalle = [];
-  leerTabla_(HOJAS.ASISTENCIA).forEach(function (a) {
+  asistenciaQueCuenta_().forEach(function (a) {   // sin las de sesiones canceladas (regla 5)
     if (!grupos[a.grupo_id] || a.fecha < desde || a.fecha > hasta) return;
     const destinos = destinosDe(a.grupo_id, a.fecha.substring(0, 7));
     const id = normalizarId_(a.usuario_id);

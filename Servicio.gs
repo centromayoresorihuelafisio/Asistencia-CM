@@ -307,18 +307,19 @@ function datosSesion_(monitora, grupoId, fecha) {
 
   const usuarios = usuariosPorId_();
   const sesion = sesionesPorClave_()[fecha + '|' + grupoId] || null;
-  const realizada = !!(sesion && sesion.estado === ESTADO_SESION.REALIZADA);
   const avisoFaltas = config_().faltasSeguidas;
+  const canceladas = sesionesCanceladas_();
   const tipos = {};
   leerTabla_(HOJAS.ESTADOS).forEach(function (e) { tipos[e.codigo] = e.tipo; });
   const guardados = {};
-  const anteriores = {};   // usuario_id → registros de este grupo anteriores a la fecha
+  const anteriores = {};   // usuario_id → registros de este grupo anteriores a la fecha (sin los de sesiones canceladas)
   leerTabla_(HOJAS.ASISTENCIA).forEach(function (a) {
     if (a.grupo_id !== grupoId) return;
     const id = normalizarId_(a.usuario_id);
     if (a.fecha === fecha) {
-      if (realizada) guardados[id] = a;
-    } else if (a.fecha < fecha) {
+      // Si la sesión está cancelada, se muestran las marcas que se conservan, por si se vuelve a guardar.
+      if (sesion) guardados[id] = a;
+    } else if (a.fecha < fecha && !canceladas[a.fecha + '|' + grupoId]) {
       (anteriores[id] = anteriores[id] || []).push({ fecha: a.fecha, tipo: tipos[a.estado] });
     }
   });
@@ -446,19 +447,36 @@ function guardarFilaSesion_(grupoId, fecha, estado, nota, email, ahora) {
   }
 }
 
-/** Regla 5: cancelar la sesión. */
+/**
+ * Regla 5: cancelar la sesión. Desde el 4-nov-2026 no se borra nada: las filas de Asistencia de esa sesión se
+ * conservan (por si se canceló por error) y dejan de contar porque la sesión está cancelada (asistenciaQueCuenta_).
+ */
 function cancelarSesion_(monitora, grupoId, fecha, nota) {
   comprobarFecha_(fecha, 'de la clase');
   return conBloqueo_(function () {
     const grupo = grupoPorId_(grupoId);
     comprobarAccesoGrupo_(monitora, grupo);
-    const filas = leerTabla_(HOJAS.ASISTENCIA)
-      .filter(function (a) { return a.fecha === fecha && a.grupo_id === grupoId; })
-      .map(function (a) { return a._fila; });
     guardarFilaSesion_(grupoId, fecha, ESTADO_SESION.CANCELADA, String(nota || '').trim(), monitora.email, marcaDeTiempo_());
-    borrarFilas_(HOJAS.ASISTENCIA, filas);
-    return { borrados: filas.length };
+    return { cancelada: true };
   });
+}
+
+/** Claves fecha|grupo_id de las sesiones canceladas. */
+function sesionesCanceladas_() {
+  const canceladas = {};
+  leerTabla_(HOJAS.SESIONES).forEach(function (s) {
+    if (s.estado === ESTADO_SESION.CANCELADA) canceladas[s.fecha + '|' + s.grupo_id] = true;
+  });
+  return canceladas;
+}
+
+/**
+ * Filas de Asistencia que cuentan: todas salvo las de sesiones canceladas (regla 5). Historial, informe, ficha
+ * del usuario y faltas seguidas leen siempre de aquí.
+ */
+function asistenciaQueCuenta_() {
+  const canceladas = sesionesCanceladas_();
+  return leerTabla_(HOJAS.ASISTENCIA).filter(function (a) { return !canceladas[a.fecha + '|' + a.grupo_id]; });
 }
 
 function datosGrupo_(monitora, grupoId) {

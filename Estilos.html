@@ -603,6 +603,29 @@
   .banda.realizada { --icono: var(--ic-hecho); background: var(--md-success-bg); color: var(--md-success); }
   .banda.info { background: var(--md-primary-light); color: var(--md-primary-dark); }
   .banda.error { background: var(--md-error-bg); color: var(--md-error); }
+  /* Inicio: listas sin guardar (4-nov-2026). Cada una se abre con un toque; debajo, «Reintentar ahora». */
+  .banda.por-guardar { margin-bottom: 16px; }
+  .por-guardar-cuerpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .por-guardar-cuerpo strong { font-size: var(--fs-md); }
+  .por-guardar-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-height: var(--alto-boton);
+    padding: 6px 12px;
+    border: 0;
+    border-radius: var(--md-shape-md);
+    background: var(--md-surface);
+    color: var(--md-on-surface);
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+  .por-guardar-item small { display: block; font-weight: 400; color: var(--md-error); }
+  .por-guardar-cuerpo .boton { align-self: flex-start; margin-top: 4px; }
 
   /* Fila de un usuario (elemento de lista de Material 3). Si su estado no es el de por defecto, la fila
      entera toma un tinte muy suave del color del estado (--tinte), como las citas de la agenda de fisio. */
@@ -620,8 +643,14 @@
     cursor: pointer;
     transition: background-color var(--dur-2) var(--ease);
   }
-  .fila-usuario[style*="--tinte"] { background: color-mix(in oklab, var(--tinte) 7%, var(--md-surface)); }
-  .fila-usuario .avatar { width: 36px; height: 36px; margin-right: 6px; font-size: var(--fs-xs); }
+  /* Toda la fila es el botón de alternar (4-nov-2026): sin selección de texto ni menú al mantener pulsado. */
+  .fila-usuario { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  /* Estado distinto del habitual: tinte más marcado y una franja del color del estado a la izquierda,
+     para distinguir de un vistazo quién falta (el chip va relleno, más abajo). */
+  .fila-usuario[style*="--tinte"] {
+    background: color-mix(in oklab, var(--tinte) 14%, var(--md-surface));
+    box-shadow: inset 5px 0 0 var(--tinte);
+  }
   .fila-usuario .nombre { flex: 1; min-width: 0; padding: 6px 4px 6px 0; font-size: var(--fs-md); font-weight: 600; line-height: 1.3; letter-spacing: .01em; }
   .fila-usuario .obs { display: block; margin-top: 2px; font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--md-on-surface-med); }
   /* Aviso de faltas seguidas (lo calcula el servidor): insignia roja con icono, como la de absentismo de fisio */
@@ -649,26 +678,36 @@
     mask: var(--ic-alerta) center / contain no-repeat;
   }
   .obs-rapidas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-  /* Chip del estado como botón: un toque alterna Asistido/Falta. Ocupa todo el alto de la fila para acertar con el dedo. */
-  .alternar {
+  /* Chip del estado dentro de la fila (solo muestra: el toque lo recibe la fila entera). */
+  .estado-fila {
     position: relative;
     z-index: var(--z-base);
-    align-self: stretch;
+    display: flex;
+    align-items: center;
+    flex: none;
+    padding: 0 2px;
+  }
+  .estado-fila .chip { transition: transform var(--dur-1) var(--ease); }
+  .fila-usuario:active .estado-fila .chip { transform: scale(.95); }
+  /* «⋮»: abre el panel con los demás estados, observaciones y baja. Estrecho, para dejar sitio al nombre. */
+  .mas-opciones {
+    position: relative;
+    z-index: var(--z-base);
+    flex: none;
+    width: 36px;
+    height: var(--alto-boton);
     display: flex;
     align-items: center;
     justify-content: center;
-    flex: none;
-    min-height: var(--alto-boton);
-    padding: 0 2px;
+    padding: 0;
     border: 0;
+    border-radius: var(--md-shape-full);
     background: none;
-    font: inherit;
-    color: inherit;
+    color: var(--md-on-surface-med);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
-  .alternar .chip { transition: transform var(--dur-1) var(--ease); }
-  .alternar:active .chip { transform: scale(.95); }
+  .mas-opciones:active { background: var(--md-surface-container-high); }
 
   /* Chip de estado (como los de asistencia de la agenda de fisio): pastilla de color suave con el icono
      del estado delante. El icono lo elige Cliente.html por el tipo del estado (iconoEstado). */
@@ -704,6 +743,13 @@
       color: color-mix(in oklab, var(--estado) 62%, black);
     }
   }
+  /* En el pase de lista, el chip de un estado distinto del habitual (Falta, Justificada…) va relleno con el color
+     de la hoja Estados y letra legible encima (--estado-texto): Asistido queda discreto y lo demás salta a la vista. */
+  .fila-usuario[style*="--tinte"] .chip {
+    --estado-icono: currentColor;
+    background: var(--estado);
+    color: var(--estado-texto);
+  }
   .llamar {
     position: relative;
     z-index: var(--z-base);
@@ -718,7 +764,6 @@
     color: var(--md-success);
     text-decoration: none;
   }
-  .sin-telefono { flex: none; width: 44px; }
   .llamar::after {
     content: "";
     position: absolute;
