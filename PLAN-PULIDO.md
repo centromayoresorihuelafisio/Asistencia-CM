@@ -209,7 +209,7 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
 |---|---|---|---|
 | 1 · Pase de lista más limpio y textos | Hecha | 4-nov-2026 | `ef176a6` |
 | 2 · Navegación nativa | Hecha | 4-nov-2026 | `022b70f` |
-| 3 · Carga, errores y progreso | Hecha | 4-nov-2026 | |
+| 3 · Carga, errores y progreso | Hecha | 4-nov-2026 | `31059e2` |
 | 4 · Avisos abajo y «Deshacer» | Pendiente | | |
 | 5 · Pase de lista e Inicio | Pendiente | | |
 | 6 · Historial e Informe | Pendiente | | |
