@@ -223,6 +223,8 @@
 
     const ICONO_MAS = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>';
     const ICONO_INFO = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/></svg>';
+    const ICONO_PERIODO = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V10h14zM7 12h5v5H7z"/></svg>';
+    const ICONO_ELEGIDO = '<svg class="marca-elegida" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
     const ICONO_GUARDAR ='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
 
     function enlaceLlamar(telefono) {
@@ -2127,9 +2129,31 @@
       pantallaPrincipal('historial', 'Historial', 'Asistencia por grupo y mes');
       const grupos = app.init.grupos;
       if (!grupos.length) { pintar('<p class="vacio">No tienes grupos todavía.</p>'); return; }
-      if (!grupos.some(function (g) { return g.grupo_id === app.hist.grupo_id; })) app.hist.grupo_id = grupos[0].grupo_id;
       if (!app.hist.mes) app.hist.mes = app.init.hoy.substring(0, 7);
+      if (!grupos.some(function (g) { return g.grupo_id === app.hist.grupo_id; })) app.hist.grupo_id = grupoInicialHistorial(app.hist.mes);
       cargarHistorial();
+    }
+
+    /**
+     * Grupo que abre el Historial la primera vez: el primero con usuarios en el mes (si su cuadrícula ya está en
+     * memoria) y, si no se sabe, el primero de Inicio con alguien inscrito (Hoy, por hora; luego los pendientes).
+     * Así no se abre un grupo vacío (Costura) por ir primero por orden alfabético.
+     */
+    function grupoInicialHistorial(mes) {
+      const grupos = app.init.grupos;
+      const existe = function (id) { return grupos.some(function (g) { return g.grupo_id === id; }); };
+      for (let k = 0; k < grupos.length; k++) {
+        const e = memoria[claveMemoria('api_historial', [grupos[k].grupo_id, mes])];
+        if (e && e.listo && e.datos.filas.length && e.datos.columnas.length) return grupos[k].grupo_id;
+      }
+      const d = app.ultimoInicio;
+      if (d) {
+        const hoy = d.grupos.filter(function (g) { return g.inscritos > 0 && existe(g.grupo_id); });
+        if (hoy.length) return hoy[0].grupo_id;
+        const pend = d.pendientes.filter(function (p) { return existe(p.grupo_id); });
+        if (pend.length) return pend[0].grupo_id;
+      }
+      return grupos[0].grupo_id;
     }
 
     /**
@@ -2172,12 +2196,14 @@
 
       const r = d.resumen;
       const cuantas = function (n, una, varias) { return n + ' ' + (n === 1 ? una : varias); };
+      html += '<div class="resumen-mes"><div class="cifra-mes"><strong>' + esc(porcentaje(r.porcentaje)) + '</strong>' +
+        '<span>de asistencia en el mes</span></div>';
       html += '<div class="resumen-chips">' +
         '<span class="etiqueta realizada">' + cuantas(r.realizadas, 'hecha', 'hechas') + '</span>' +
         (r.canceladas ? '<span class="etiqueta cancelada">' + r.canceladas + ' sin clase</span>' : '') +
         (r.pendientes ? '<span class="etiqueta pendiente">' + r.pendientes + ' sin pasar lista</span>' : '') +
         (r.especiales ? '<span class="etiqueta especial">' + cuantas(r.especiales, 'día libre', 'días libres') + '</span>' : '') +
-        '<span class="etiqueta">Asistencia ' + porcentaje(r.porcentaje) + '</span></div>';
+        '</div></div>';
 
       if (!d.columnas.length || !d.filas.length) {
         html += '<p class="vacio">' + (d.columnas.length ? 'No hubo usuarios inscritos en este mes.' : 'No hay clases en este mes.') + '</p>';
@@ -2189,7 +2215,7 @@
         return c.estado === 'realizada' ? '' : ' col-' + c.estado;
       };
       html += '<p class="ayuda">Toca un día para abrir o corregir su pase de lista.</p>';
-      html += '<div class="tabla-scroll"><table class="historial"><thead><tr><th class="fija">Usuario</th>';
+      html += '<div class="tabla-scroll marco-historial"><table class="historial"><thead><tr><th class="fija">Usuario</th>';
       d.columnas.forEach(function (c) {
         const dia = aFecha(c.fecha);
         const titulo = c.estado === 'cancelada' ? 'Sin clase' + (c.nota ? ': ' + c.nota : '')
@@ -2201,7 +2227,7 @@
       html += '<th class="pct">%</th></tr></thead><tbody>';
       d.filas.forEach(function (f) {
         html += '<tr><th class="fija nombre-hist"' + (esAdmin() ? ' data-accion="ficha" data-usuario="' + esc(f.usuario_id) + '" data-nombre="' + esc(f.nombre) + '"' : '') + '>' +
-          esc(nombreVisible(f.nombre)) + '</th>';
+          esc(nombreVisible(f.nombre)) + (esAdmin() ? '<span class="abre-ficha" aria-hidden="true">›</span>' : '') + '</th>';
         f.celdas.forEach(function (codigo, i) {
           const c = d.columnas[i];
           if (codigo === '-') { html += '<td class="no-inscrito" title="No estaba en el grupo">·</td>'; return; }
@@ -2251,21 +2277,79 @@
       cargarInforme();
     }
 
+    /** «1 sep – 4 nov» (con el año si las dos fechas son de años distintos). */
+    function textoPeriodo(desde, hasta) {
+      const corto = function (t, conAnio) {
+        const d = aFecha(t);
+        return d.getDate() + ' ' + MESES[d.getMonth()].substring(0, 3) + (conAnio ? ' ' + d.getFullYear() : '');
+      };
+      const anios = desde.substring(0, 4) !== hasta.substring(0, 4);
+      return desde === hasta ? corto(desde, false) : corto(desde, anios) + ' – ' + corto(hasta, anios);
+    }
+
+    /**
+     * Periodos rápidos del Informe, hasta hoy y sin empezar antes del curso: el curso, el trimestre del curso
+     * (sep–dic, ene–mar y abr–ago) y el mes.
+     */
+    function periodosInforme() {
+      const hoy = app.init.hoy;
+      const curso = periodoInforme();
+      const desdeCurso = function (t) { return t < curso.desde ? curso.desde : t; };
+      const anio = hoy.substring(0, 4);
+      const mes = Number(hoy.substring(5, 7));
+      const inicioTrimestre = mes >= 9 ? anio + '-09-01' : mes >= 4 ? anio + '-04-01' : anio + '-01-01';
+      return [
+        { texto: 'Este curso', desde: curso.desde, hasta: hoy },
+        { texto: 'Este trimestre', desde: desdeCurso(inicioTrimestre), hasta: hoy },
+        { texto: 'Este mes', desde: desdeCurso(hoy.substring(0, 8) + '01'), hasta: hoy }
+      ];
+    }
+
+    /** Panel del botón del periodo: los periodos rápidos y, debajo, las fechas a mano. */
+    function abrirPanelPeriodo() {
+      const inf = app.inf;
+      let marcado = false;   // si dos periodos coinciden (en el primer trimestre, curso y trimestre), se marca el primero
+      const html = '<div><h3>Periodo del informe</h3><div class="menu-opciones">' +
+        periodosInforme().map(function (p) {
+          const elegido = !marcado && p.desde === inf.desde && p.hasta === inf.hasta;
+          if (elegido) marcado = true;
+          return '<button type="button" class="opcion-menu' + (elegido ? ' elegida' : '') + '" data-accion="periodo" data-desde="' + esc(p.desde) +
+            '" data-hasta="' + esc(p.hasta) + '"' + (elegido ? ' aria-current="true"' : '') + '>' + ICONO_PERIODO +
+            '<span class="opcion-texto">' + esc(p.texto) + '<small>' + esc(textoPeriodo(p.desde, p.hasta)) + '</small></span>' +
+            (elegido ? ICONO_ELEGIDO : '') + '</button>';
+        }).join('') + '</div>' +
+        '<h4 class="subtitulo-panel">Otras fechas</h4><div class="fila-campos">' +
+        '<div class="campo"><label for="infDesde">Desde</label><input type="date" id="infDesde" value="' + esc(inf.desde) + '" max="' + esc(app.init.hoy) + '"></div>' +
+        '<div class="campo"><label for="infHasta">Hasta</label><input type="date" id="infHasta" value="' + esc(inf.hasta) + '" max="' + esc(app.init.hoy) + '"></div></div>' +
+        '<button type="button" class="boton primario ancho" data-accion="ver-informe">Ver estas fechas</button></div>';
+      abrirPanel(html);
+    }
+
+    /** Cambia el periodo del informe y lo carga (al momento si ya está en memoria). */
+    function elegirPeriodo(desde, hasta) {
+      const inf = app.inf;
+      cerrarPanel();
+      if (desde === inf.desde && hasta === inf.hasta) return;
+      inf.desde = desde;
+      inf.hasta = hasta;
+      inf.enlace = null;
+      cargarInforme();
+    }
+
     function pintarInforme() {
       const inf = app.inf;
-      let html = '<div class="bloque"><div class="fila-campos">' +
-        '<div class="campo"><label for="infDesde">Desde</label><input type="date" id="infDesde" value="' + esc(inf.desde) + '"></div>' +
-        '<div class="campo"><label for="infHasta">Hasta</label><input type="date" id="infHasta" value="' + esc(inf.hasta) + '"></div></div>' +
+      const periodo = textoPeriodo(inf.desde, inf.hasta);
+      let html = '<div class="filtros-informe">' +
+        '<button type="button" class="boton boton-periodo" data-accion="abrir-periodo" aria-label="Periodo: ' + esc(periodo) + '. Cambiar el periodo">' +
+        ICONO_PERIODO + '<span>' + esc(periodo) + '</span><span class="flecha-abajo" aria-hidden="true"></span></button>' +
         '<div class="campo"><label for="infTaller">Taller</label><select id="infTaller"><option value="">Todos los talleres</option>' +
-        opciones(talleresDeMisGrupos(), inf.taller_id, function (t) { return t.taller_id; }, function (t) { return t.taller; }) + '</select></div>' +
-        '<button type="button" class="boton primario ancho" data-accion="ver-informe">Ver informe</button></div>';
+        opciones(talleresDeMisGrupos(), inf.taller_id, function (t) { return t.taller_id; }, function (t) { return t.taller; }) + '</select></div></div>';
 
       const d = inf.datos;
       if (d) {
         const t = d.total;
         const altas = d.altasBajas.reduce(function (s, m) { return s + m.altas; }, 0);
         const bajas = d.altasBajas.reduce(function (s, m) { return s + m.bajas; }, 0);
-        html += '<h2 class="seccion">' + esc(fechaNumerica(d.desde)) + ' a ' + esc(fechaNumerica(d.hasta)) + (d.taller ? ' · ' + esc(d.taller) : '') + '</h2>';
         html += '<div class="kpis">' +
           kpi(t.usuarios, 'usuarios distintos atendidos') + kpi(t.realizadas, 'clases hechas') +
           kpi(porcentaje(t.porcentaje), 'de asistencia', '<button type="button" class="info-kpi" data-accion="info-porcentaje" aria-label="Cómo se calcula el % de asistencia">' +
@@ -2277,27 +2361,27 @@
           html += '<div class="bloque"><h3>Exportar para la memoria</h3>' +
             '<p class="ayuda">Crea una hoja de cálculo nueva en tu Google Drive con todas estas tablas y el detalle de cada registro. Desde ella puedes copiar a Word o descargar en Excel.</p>' +
             (inf.enlace ? '<a class="boton ancho" href="' + esc(inf.enlace.url) + '" target="_blank" rel="noopener">Abrir «' + esc(inf.enlace.nombre) + '»</a>' : '') +
-            '<button type="button" class="boton primario ancho" data-accion="exportar-informe" style="margin-top:8px">Crear hoja de cálculo con el informe</button></div>';
+            '<button type="button" class="boton primario ancho" data-accion="exportar-informe" style="margin-top:8px">Crear hoja de cálculo</button></div>';
         }
 
-        html += tabla('Por taller', ['Taller'], d.porTaller, function (r) { return [r.taller]; });
-        html += tabla('Por grupo', ['Taller', 'Grupo'], d.porGrupo, function (r) { return [r.taller, r.grupo]; });
+        html += tarjetasInforme('Por taller', d.porTaller, function (r) { return [r.taller, '']; });
+        html += tarjetasInforme('Por grupo', d.porGrupo, function (r) { return [r.grupo, tallerSiHaceFalta(r.taller, r.grupo)]; });
         html += tabla('Por mes', ['Mes'], d.porMes, function (r) { return [nombreMesCorto(r.mes)]; });
 
         html += '<h3 class="taller">Registros por estado</h3>';
-        html += d.porEstado.length ? '<div class="tabla-scroll"><table class="datos"><thead><tr><th>Estado</th><th>Registros</th></tr></thead><tbody>' +
+        html += d.porEstado.length ? '<div class="tabla-scroll"><table class="datos"><thead><tr><th class="texto">Estado</th><th>Registros</th></tr></thead><tbody>' +
           d.porEstado.map(function (e) {
-            return '<tr><td><span class="celda" style="' + estiloColor(e.color) + '"></span> ' + esc(e.etiqueta) + '</td><td>' + e.registros + '</td></tr>';
+            return '<tr><td class="texto"><span class="celda" style="' + estiloColor(e.color) + '"></span> ' + esc(e.etiqueta) + '</td><td>' + e.registros + '</td></tr>';
           }).join('') + '</tbody></table></div>' : '<p class="vacio">Sin registros.</p>';
 
         html += '<h3 class="taller">Altas y bajas por mes</h3>';
-        html += d.altasBajas.length ? '<div class="tabla-scroll"><table class="datos"><thead><tr><th>Mes</th><th>Altas</th><th>Bajas</th></tr></thead><tbody>' +
-          d.altasBajas.map(function (m) { return '<tr><td>' + esc(nombreMesCorto(m.mes)) + '</td><td>' + m.altas + '</td><td>' + m.bajas + '</td></tr>'; }).join('') +
+        html += d.altasBajas.length ? '<div class="tabla-scroll"><table class="datos"><thead><tr><th class="texto">Mes</th><th>Altas</th><th>Bajas</th></tr></thead><tbody>' +
+          d.altasBajas.map(function (m) { return '<tr><td class="texto">' + esc(nombreMesCorto(m.mes)) + '</td><td>' + m.altas + '</td><td>' + m.bajas + '</td></tr>'; }).join('') +
           '</tbody></table></div>' : '<p class="vacio">No hay altas ni bajas en este periodo.</p>';
 
         if (d.motivosBaja.length) {
-          html += '<h3 class="taller">Motivos de baja</h3><div class="tabla-scroll"><table class="datos"><thead><tr><th>Motivo</th><th>Bajas</th></tr></thead><tbody>' +
-            d.motivosBaja.map(function (m) { return '<tr><td>' + esc(m.motivo) + '</td><td>' + m.bajas + '</td></tr>'; }).join('') +
+          html += '<h3 class="taller">Motivos de baja</h3><div class="tabla-scroll"><table class="datos"><thead><tr><th class="texto">Motivo</th><th>Bajas</th></tr></thead><tbody>' +
+            d.motivosBaja.map(function (m) { return '<tr><td class="texto">' + esc(m.motivo) + '</td><td>' + m.bajas + '</td></tr>'; }).join('') +
             '</tbody></table></div>';
         }
       } else if (inf.error) {
@@ -2325,23 +2409,42 @@
     function tabla(titulo, primeras, filas, celdasIniciales) {
       if (!filas.length) return '<h3 class="taller">' + esc(titulo) + '</h3><p class="vacio">Sin datos en este periodo.</p>';
       return '<h3 class="taller">' + esc(titulo) + '</h3><div class="tabla-scroll"><table class="datos"><thead><tr>' +
-        primeras.map(function (p) { return '<th>' + esc(p) + '</th>'; }).join('') +
+        primeras.map(function (p) { return '<th class="texto">' + esc(p) + '</th>'; }).join('') +
         '<th>Sesiones</th><th>Sin clase</th><th>Asistencias</th><th>Faltas</th><th>Otros</th><th>% asist.</th><th>Usuarios</th></tr></thead><tbody>' +
         filas.map(function (r) {
-          return '<tr>' + celdasIniciales(r).map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') +
+          return '<tr>' + celdasIniciales(r).map(function (c) { return '<td class="texto">' + esc(c) + '</td>'; }).join('') +
             '<td>' + r.realizadas + '</td><td>' + r.canceladas + '</td><td>' + r.presentes + '</td><td>' + r.ausentes + '</td><td>' +
             r.neutros + '</td><td>' + porcentaje(r.porcentaje) + '</td><td>' + r.usuarios + '</td></tr>';
         }).join('') + '</tbody></table></div>';
     }
 
+    /**
+     * «Por taller» y «Por grupo» como tarjetas: el nombre arriba y tres cifras grandes (sesiones, % y usuarios).
+     * Al tocar una, se despliega el desglose (sin clase, asistencias, faltas y otros). nombres(r): [nombre, detalle].
+     */
+    function tarjetasInforme(titulo, filas, nombres) {
+      if (!filas.length) return '<h3 class="taller">' + esc(titulo) + '</h3><p class="vacio">Sin datos en este periodo.</p>';
+      const cifra = function (v, texto) { return '<span class="cifra"><strong>' + esc(v) + '</strong><span>' + esc(texto) + '</span></span>'; };
+      const linea = function (texto, v) { return '<div><dt>' + esc(texto) + '</dt><dd>' + esc(v) + '</dd></div>'; };
+      return '<h3 class="taller">' + esc(titulo) + '</h3><div class="lista">' + filas.map(function (r) {
+        const n = nombres(r);
+        return '<details class="tarjeta-informe"><summary>' +
+          '<span class="ti-nombre">' + esc(n[0]) + (n[1] ? '<small>' + esc(n[1]) + '</small>' : '') + '</span>' +
+          '<span class="ti-cifras">' + cifra(r.realizadas, r.realizadas === 1 ? 'sesión' : 'sesiones') +
+          cifra(porcentaje(r.porcentaje), 'asistencia') + cifra(r.usuarios, r.usuarios === 1 ? 'usuario' : 'usuarios') + '</span>' +
+          '</summary><dl class="ti-desglose">' +
+          linea('Sin clase', r.canceladas) + linea('Asistencias', r.presentes) + linea('Faltas', r.ausentes) + linea('Otros (no cuentan)', r.neutros) +
+          '</dl></details>';
+      }).join('') + '</div>';
+    }
+
+    /** «Ver estas fechas» del panel del periodo. */
     function verInforme() {
-      const inf = app.inf;
-      inf.desde = valor('infDesde');
-      inf.hasta = valor('infHasta');
-      inf.taller_id = valor('infTaller');
-      if (!inf.desde || !inf.hasta) return aviso('Indica las dos fechas.', true);
-      inf.enlace = null;
-      cargarInforme();
+      const desde = valor('infDesde');
+      const hasta = valor('infHasta');
+      if (!desde || !hasta) return aviso('Indica las dos fechas.', true);
+      if (hasta < desde) return aviso('La fecha final es anterior a la inicial.', true);
+      elegirPeriodo(desde, hasta);
     }
 
     /** Pide el informe del periodo y taller elegidos (al momento si ya está en memoria). */
@@ -2921,6 +3024,8 @@
         case 'ficha': abrirFicha(dato('usuario'), app.vista === 'historial' ? volverAHistorial : irUsuarios, dato('nombre')); break;
         // Informe
         case 'ver-informe': verInforme(); break;
+        case 'abrir-periodo': abrirPanelPeriodo(); break;
+        case 'periodo': elegirPeriodo(dato('desde'), dato('hasta')); break;
         case 'exportar-informe': exportarInforme(); break;
         case 'info-porcentaje': abrirInfoPorcentaje(); break;
         // Gestión
@@ -2964,6 +3069,11 @@
       if (ev.target.id === 'histGrupo') {
         app.hist.grupo_id = ev.target.value;
         cargarHistorial();
+      }
+      if (ev.target.id === 'infTaller') {
+        app.inf.taller_id = ev.target.value;
+        app.inf.enlace = null;
+        cargarInforme();
       }
       if (ev.target.id === 'gTaller') {
         $('campoTallerNuevo').classList.toggle('oculto', ev.target.value !== '__nuevo__');

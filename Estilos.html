@@ -1053,7 +1053,22 @@
     margin-bottom: 12px;
   }
   .selector-mes strong { font-size: var(--fs-title); font-weight: 600; text-transform: capitalize; }
+  /* Resumen del mes: la asistencia como cifra grande y, al lado, los contadores de sesiones */
+  .resumen-mes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    margin-bottom: 12px;
+    padding: 12px 16px;
+    border-radius: var(--md-shape-lg);
+    background: var(--md-surface);
+  }
+  .cifra-mes { display: flex; flex-direction: column; }
+  .cifra-mes strong { font-size: var(--fs-kpi); font-weight: 600; line-height: 1.15; color: var(--md-primary); font-variant-numeric: tabular-nums; }
+  .cifra-mes span { font-size: var(--fs-sm); color: var(--md-on-surface-med); }
   .resumen-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .resumen-mes .resumen-chips { margin-bottom: 0; }
 
   /* Marco de tabla (como .md-tabla-marco de fisio) */
   .tabla-scroll {
@@ -1063,16 +1078,30 @@
     border-radius: var(--md-shape-lg);
     background: var(--md-surface);
   }
-  table.historial { border-collapse: collapse; font-size: var(--fs-sm); }
+  /*
+   * La cuadrícula se desplaza dentro de su marco (en los dos sentidos), con un alto máximo que deja ver la barra
+   * de arriba y la de abajo: así la cabecera de los días se queda fija al bajar (el sticky solo funciona dentro
+   * del elemento que se desplaza) y la columna de nombres, al ir a los lados.
+   */
+  .tabla-scroll.marco-historial {
+    overflow: auto;
+    max-height: calc(100vh - 180px);
+    max-height: calc(100dvh - 180px);
+    min-height: 240px;
+    overscroll-behavior: contain;
+  }
+  table.historial { border-collapse: separate; border-spacing: 0; font-size: var(--fs-sm); }
   table.historial th, table.historial td {
     border-bottom: 1px solid var(--md-outline);
-    padding: 4px;
+    padding: 4px 2px;
     text-align: center;
-    min-width: 36px;
+    width: 44px;
+    min-width: 44px;
   }
   table.historial thead th {
     position: sticky;
     top: 0;
+    z-index: calc(var(--z-base) + 1);
     background: var(--md-surface-variant);
     color: var(--md-on-surface-med);
     font-size: var(--fs-xs);
@@ -1094,10 +1123,13 @@
     font-weight: 600;
     box-shadow: var(--md-elev-lateral);
   }
-  table.historial thead .fija { background: var(--md-surface-variant); }
-  table.historial .nombre-hist { font-size: var(--fs-sm); white-space: normal; line-height: 1.25; }
-  table.historial .nombre-hist[data-accion] { cursor: pointer; color: var(--md-primary); }
-  table.historial .pct { font-weight: 600; min-width: 52px; font-variant-numeric: tabular-nums; }
+  table.historial thead .fija { background: var(--md-surface-variant); z-index: calc(var(--z-base) + 2); }
+  table.historial .fija { width: auto; }
+  /* Nombres en el color del texto; el admin ve «›» porque al tocarlo se abre la ficha */
+  table.historial .nombre-hist { font-size: var(--fs-sm); white-space: normal; line-height: 1.25; color: var(--md-on-surface); }
+  table.historial .nombre-hist[data-accion] { cursor: pointer; }
+  .abre-ficha { margin-left: 4px; color: var(--md-on-surface-med); font-weight: 400; }
+  table.historial .pct { font-weight: 600; width: 56px; min-width: 56px; padding-right: 8px; font-variant-numeric: tabular-nums; }
   /* Barrita del % de asistencia del usuario en el mes */
   .pct-barra { display: block; width: 36px; height: 4px; margin: 4px auto 0; border-radius: var(--md-shape-full); background: var(--md-surface-container-high); overflow: hidden; }
   .pct-barra > span { display: block; height: 100%; border-radius: inherit; background: var(--md-success); }
@@ -1159,10 +1191,79 @@
   .info-kpi:active { background: var(--md-surface-container-high); }
   .kpi-texto { font-size: var(--fs-sm); color: var(--md-on-surface-med); margin-top: 2px; }
 
+  /* Periodo (botón que abre un panel) y taller */
+  .filtros-informe { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 16px; }
+  .filtros-informe .campo { flex: 1 1 180px; margin-bottom: 0; }
+  .boton.boton-periodo {
+    flex: 0 0 auto;
+    padding-left: 16px;
+    padding-right: 16px;
+    border-color: transparent;
+    background: var(--md-secondary-container);
+    color: var(--md-on-secondary-container);
+    white-space: nowrap;
+  }
+  .boton-periodo svg { width: 20px; height: 20px; }
+  .flecha-abajo {
+    width: 8px;
+    height: 8px;
+    margin: 0 2px 0 4px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-3px) rotate(45deg);
+  }
+  .opcion-texto { display: flex; flex-direction: column; }
+  .opcion-texto small { font-size: var(--fs-sm); color: var(--md-on-surface-med); }
+  .opcion-menu.elegida { background: var(--md-secondary-container); color: var(--md-on-secondary-container); font-weight: 600; }
+  .opcion-menu.elegida svg { color: var(--md-on-secondary-container); }
+  .opcion-menu .marca-elegida { margin-left: auto; }
+  .panel h4.subtitulo-panel { margin: 20px 0 10px; font-size: var(--fs-sm); font-weight: 600; color: var(--md-on-surface-med); }
+
+  /* «Por taller» y «Por grupo»: una tarjeta por fila con 3 cifras; al tocarla, el desglose */
+  details.tarjeta-informe { background: var(--md-surface); }
+  details.tarjeta-informe > summary {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: var(--alto-fila);
+    padding: 14px 48px 14px 16px;
+    list-style: none;
+    cursor: pointer;
+    border-radius: inherit;
+    -webkit-tap-highlight-color: transparent;
+  }
+  details.tarjeta-informe > summary::-webkit-details-marker { display: none; }
+  details.tarjeta-informe > summary::after {
+    content: "";
+    position: absolute;
+    top: 22px;
+    right: 20px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--md-on-surface-med);
+    border-bottom: 2px solid var(--md-on-surface-med);
+    transform: rotate(45deg);
+    transition: transform var(--dur-2) var(--ease);
+  }
+  details.tarjeta-informe[open] > summary::after { transform: translateY(4px) rotate(-135deg); }
+  details.tarjeta-informe > summary:active { background: var(--md-surface-container-low); }
+  .ti-nombre { display: flex; flex-direction: column; font-size: var(--fs-lg); font-weight: 600; line-height: 1.25; }
+  .ti-nombre small { font-size: var(--fs-sm); font-weight: 400; color: var(--md-on-surface-med); }
+  .ti-cifras { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .ti-cifras .cifra { display: flex; flex-direction: column; min-width: 0; }
+  .ti-cifras strong { font-size: var(--fs-title); font-weight: 600; line-height: 1.2; color: var(--md-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ti-cifras .cifra > span { font-size: var(--fs-sm); color: var(--md-on-surface-med); }
+  .ti-desglose { margin: 0; padding: 4px 16px 12px; border-top: 1px solid var(--md-outline); }
+  .ti-desglose > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: var(--fs-md); }
+  .ti-desglose > div + div { border-top: 1px solid var(--md-outline); }
+  .ti-desglose dt { color: var(--md-on-surface-med); }
+  .ti-desglose dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
   /* Tabla de datos (como .md-tabla de fisio) */
   table.datos { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); }
   table.datos th, table.datos td { padding: 10px 12px; border-bottom: 1px solid var(--md-outline); text-align: right; white-space: nowrap; }
-  table.datos th:first-child, table.datos td:first-child { text-align: left; }
+  table.datos th:first-child, table.datos td:first-child, table.datos .texto { text-align: left; }
   table.datos thead th { background: var(--md-surface-variant); color: var(--md-on-surface-med); font-size: var(--fs-xs); font-weight: 600; }
   table.datos tbody tr:last-child td { border-bottom: 0; }
   table.datos .celda { width: 14px; height: 14px; border-radius: var(--md-shape-xs); }
