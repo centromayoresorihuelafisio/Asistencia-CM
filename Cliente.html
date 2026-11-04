@@ -739,6 +739,8 @@
       $('barraSub').textContent = sub || '';
       app.alVolver = alVolver || null;
       $('btnVolver').classList.toggle('oculto', !alVolver);
+      // El menú «⋮» de la barra solo lo usa el pase de lista (pintarPase lo vuelve a mostrar).
+      $('btnMenuBarra').classList.add('oculto');
       // En las pantallas secundarias el título puede ocupar dos líneas (nombres de grupo largos).
       $('barra').classList.toggle('secundaria', !!alVolver);
     }
@@ -959,14 +961,9 @@
       if (g.estadoSesion === 'realizada') return '<span class="etiqueta realizada">Hecha</span>';
       if (g.estadoSesion === 'cancelada') return '<span class="etiqueta cancelada">Sin clase</span>';
       if (g.diaEspecial) return '<span class="etiqueta especial">' + esc(g.diaEspecial.tipo || 'Día libre') + '</span>';
+      // Sin nadie inscrito no hay lista que pasar (4-nov-2026): no se marca como pendiente.
+      if (g.inscritos === 0) return '';
       return '<span class="etiqueta pendiente">Pendiente</span>';
-    }
-
-    /** Cuadro de delante de un pendiente: día de la semana abreviado y número del día. */
-    function cuadroFecha(texto) {
-      const dia = aFecha(texto);
-      return '<span class="lead"><small>' + esc(dia.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '')) + '</small>' +
-        dia.getDate() + '</span>';
     }
 
     function pintarInicio(d) {
@@ -978,16 +975,22 @@
 
       if (d.pendientes.length) {
         html += '<h2 class="seccion peligro">Pendientes (' + d.pendientes.length + ')</h2>';
-        // Cada pendiente: la tarjeta abre el pase y «No hubo clase» la cancela sin abrirlo.
-        html += '<div class="lista">';
+        // Agrupados por día («Lun 2 nov») y, dentro, por hora (4-nov-2026). La tarjeta entera abre el pase;
+        // «⋮» abre un menú con «No hubo clase» (abrirMenuPendiente).
+        let diaActual = null;
         d.pendientes.forEach(function (p) {
+          if (p.fecha !== diaActual) {
+            html += (diaActual === null ? '' : '</div>') + '<h3 class="subtitulo-lista">' + esc(mayuscula(fechaCorta(p.fecha))) + '</h3><div class="lista">';
+            diaActual = p.fecha;
+          }
           const guardado = etiquetaGuardado(p.grupo_id, p.fecha);
-          const detalle = [tallerSiHaceFalta(p.taller, p.nombre), p.hora || ''].filter(Boolean).join(' · ');
-          html +='<div class="tarjeta pendiente con-accion"><button type="button" class="tarjeta-abrir" data-accion="pase" data-grupo="' +
-            esc(p.grupo_id) + '" data-fecha="' + esc(p.fecha) + '">' + cuadroFecha(p.fecha) + '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(p.nombre) +
+          const detalle = [p.hora || '', tallerSiHaceFalta(p.taller, p.nombre)].filter(Boolean).join(' · ');
+          html += '<div class="tarjeta pendiente con-accion"><button type="button" class="tarjeta-abrir" data-accion="pase" data-grupo="' +
+            esc(p.grupo_id) + '" data-fecha="' + esc(p.fecha) + '"><div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(p.nombre) +
             '</div>' + (detalle ? '<div class="tarjeta-detalle">' + esc(detalle) + '</div>' : '') + '</div>' + guardado + '</button>' +
-            (guardado ? '' : '<button type="button" class="boton compacto" data-accion="no-hubo-clase" data-grupo="' + esc(p.grupo_id) +
-              '" data-fecha="' + esc(p.fecha) + '">No hubo clase</button>') + '</div>';
+            (guardado ? '' : '<button type="button" class="mas-opciones" data-accion="menu-pendiente" data-grupo="' + esc(p.grupo_id) +
+              '" data-fecha="' + esc(p.fecha) + '" aria-label="Más opciones de ' + esc(p.nombre) + ', ' + esc(fechaLarga(p.fecha)) + '">' +
+              ICONO_MAS_OPCIONES + '</button>') + '</div>';
         });
         html += '</div>';
       }
@@ -996,17 +999,16 @@
       if (!d.grupos.length) {
         html += '<p class="vacio">No hay clases este día.</p>';
       } else {
-        // Una lista agrupada por taller; delante de cada grupo, su hora.
-        let tallerActual = null;
+        // Una sola lista por hora, como la agenda del día (4-nov-2026; el servidor la manda ordenada).
+        // El taller va en el detalle solo si no está ya en el nombre del grupo.
+        html += '<div class="lista">';
         d.grupos.forEach(function (g) {
-          if (g.taller !== tallerActual) {
-            html += (tallerActual === null ? '' : '</div>') + '<h3 class="taller">' + esc(g.taller) + '</h3><div class="lista">';
-            tallerActual = g.taller;
-          }
+          const detalle = [tallerSiHaceFalta(g.taller, g.nombre), g.inscritos ? g.inscritos + (g.inscritos === 1 ? ' usuario' : ' usuarios') : 'Sin usuarios']
+            .filter(Boolean).join(' · ');
           html += '<button type="button" class="tarjeta" data-accion="pase" data-grupo="' + esc(g.grupo_id) +
             '" data-fecha="' + esc(d.fecha) + '"><span class="lead">' + (g.hora ? esc(g.hora) : '—') + '</span>' +
             '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(g.nombre) +
-            '</div><div class="tarjeta-detalle">' + g.inscritos + ' usuarios</div></div>' +
+            '</div><div class="tarjeta-detalle">' + esc(detalle) + '</div></div>' +
             etiquetaSesion(g, d.fecha) + '</button>';
         });
         html += '</div>';
@@ -1079,9 +1081,25 @@
         // Con esqueleto, la pantalla ya está abierta: solo se pone el nombre que manda el servidor.
         if (conEsqueleto) barra(d.grupo.nombre, fechaTitulo(fecha), vuelta);
         else pantallaSecundaria('pase', titulo, fechaTitulo(fecha), vuelta);
+        d.mostrarAyuda = d.usuarios.length > 0 && ayudaPaseVista();
         app.pase = d;
         pintarPase();
       }, function () { abrirPase(grupoId, fecha, vuelta, sinAvisoBorrador); });
+    }
+
+    /**
+     * La ayuda del pase («Toca para marcar falta…») sale solo las 2 primeras veces que se abre un pase (4-nov-2026).
+     * Cuenta en localStorage; si no está disponible, sale siempre.
+     */
+    const CLAVE_AYUDA_PASE = 'asistencia|ayudaPase';
+    const VECES_AYUDA_PASE = 2;
+    function ayudaPaseVista() {
+      try {
+        const n = Number(window.localStorage.getItem(CLAVE_AYUDA_PASE)) || 0;
+        if (n >= VECES_AYUDA_PASE) return false;
+        window.localStorage.setItem(CLAVE_AYUDA_PASE, String(n + 1));
+      } catch (e) { /* sin localStorage: se enseña */ }
+      return true;
     }
 
     function pintarPase() {
@@ -1111,23 +1129,76 @@
         html += '<div class="banda cancelada">No hubo clase' + (p.sesion.nota ? ': ' + esc(p.sesion.nota) : '') +
           '. Si guardas la lista, contará como clase hecha.</div>';
       }
-      html += '</div>';
+      // La nota de la sesión se escribe desde el menú «⋮» de la barra; si hay, se ve aquí y se edita con un toque.
+      html += htmlNotaPase(p.nota) + '</div>';
 
       if (!p.usuarios.length) {
-        html += '<p class="vacio">No hay usuarios inscritos en este grupo en esta fecha.</p>';
+        // Grupo sin nadie inscrito ese día (4-nov-2026): no hay lista que pasar; se ofrece inscribir.
+        html += '<div class="estado-vacio">' + ICONO_SIN_USUARIOS +
+          '<h2>Sin usuarios</h2><p>Este grupo no tiene a nadie inscrito ' + esc(diaParaFrase(p.fecha)) + '.</p>' +
+          '<button type="button" class="boton primario" data-accion="pase-inscribir">Inscribir usuarios</button></div>';
       } else {
-        html += '<button type="button" class="boton ancho" data-accion="aplicar-todos" style="margin-bottom:10px">Aplicar un estado a todos…</button>';
+        // Primero los nombres: «Aplicar a todos» y la nota están en el menú «⋮»; la ayuda, solo las primeras veces.
         const par = estadosAlternar();
-        if (par) {
-          html += '<p class="ayuda">Toca a un usuario para cambiar entre ' + esc(par.presente.etiqueta) + ' y ' + esc(par.falta.etiqueta) +
-            '. Para los demás estados y las observaciones, toca ⋮ o mantén pulsado.</p>';
+        if (par && p.mostrarAyuda) {
+          html += '<p class="ayuda una-linea">Toca para marcar ' + esc(par.falta.etiqueta.toLowerCase()) + ' · Mantén pulsado para más</p>';
         }
         html += '<div id="listaUsuarios" class="lista">' + p.usuarios.map(function (u, i) { return filaUsuario(u, i); }).join('') + '</div>';
       }
-      html += '<div class="campo" style="margin-top:14px"><label for="notaSesion">Nota de la sesión (opcional)</label>' +
-        '<textarea id="notaSesion" rows="2">' + esc(p.nota) + '</textarea></div>';
       pintar(html);
+      $('btnMenuBarra').classList.remove('oculto');
       pintarPiePase();
+    }
+
+    /** «hoy» o «el 21 oct.», para una frase. */
+    function diaParaFrase(fecha) {
+      if (fecha === app.init.hoy) return 'hoy';
+      const d = aFecha(fecha);
+      return 'el ' + d.getDate() + ' ' + MESES[d.getMonth()].substring(0, 3) + '.';
+    }
+
+    const ICONO_SIN_USUARIOS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05A4.2 4.2 0 0 1 17 16.5V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>';
+    const ICONO_TODOS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z"/></svg>';
+    const ICONO_NOTA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+    const ICONO_SIN_CLASE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14v11zM8.5 11.5l1.4-1.4 2.1 2.1 2.1-2.1 1.4 1.4-2.1 2.1 2.1 2.1-1.4 1.4-2.1-2.1-2.1 2.1-1.4-1.4 2.1-2.1-2.1-2.1z"/></svg>';
+    const ICONO_ABRIR_PASE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 3h-4.18A3 3 0 0 0 12 1a3 3 0 0 0-2.82 2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-7 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm-2 14l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>';
+
+    function htmlNotaPase(nota) {
+      return nota ? '<button type="button" class="nota-pase" data-accion="nota-sesion"><span class="etiqueta-nota">Nota</span>' + esc(nota) + '</button>' : '';
+    }
+
+    /** Menú «⋮» de la barra del pase: aplicar un estado a todos, nota de la sesión y «No hubo clase». */
+    function abrirMenuPase() {
+      const p = app.pase;
+      if (!p || app.vista !== 'pase') return;
+      const hay = p.usuarios.length > 0;
+      abrirPanel('<div><h3>' + esc(p.grupo.nombre) + '</h3><div class="menu-opciones">' +
+        (hay ? '<button type="button" class="opcion-menu" data-accion="aplicar-todos">' + ICONO_TODOS + '<span>Aplicar un estado a todos…</span></button>' +
+          '<button type="button" class="opcion-menu" data-accion="nota-sesion">' + ICONO_NOTA + '<span>' +
+          (p.nota ? 'Cambiar la nota de la sesión' : 'Nota de la sesión') + '</span></button>' : '') +
+        '<button type="button" class="opcion-menu peligro" data-accion="cancelar-sesion">' + ICONO_SIN_CLASE + '<span>No hubo clase…</span></button>' +
+        '</div></div>');
+    }
+
+    /** Nota de la sesión, en un panel (antes, un campo al final del pase). Se guarda en el borrador al escribir. */
+    function abrirNotaSesion() {
+      abrirPanel('<div><h3>Nota de la sesión</h3>' +
+        '<div class="campo"><label for="notaSesion">Nota (opcional)</label><textarea id="notaSesion" rows="3">' + esc(app.pase.nota) + '</textarea></div>' +
+        '<button type="button" class="boton primario ancho" data-accion="nota-hecho">Hecho</button></div>');
+    }
+    function cerrarNotaSesion() {
+      const caja = $('notaSesion');
+      if (caja) { app.pase.nota = caja.value.trim(); guardarBorrador(); }
+      cerrarPanel();
+      pintarNotaPase();
+    }
+    /** Vuelve a pintar solo la línea de la nota, sin tocar las marcas ni el scroll. */
+    function pintarNotaPase() {
+      const zona = $('vista').querySelector('.avisos-sesion');
+      if (!zona || !app.pase || app.vista !== 'pase') return;
+      const vieja = zona.querySelector('.nota-pase');
+      if (vieja) vieja.remove();
+      zona.insertAdjacentHTML('beforeend', htmlNotaPase(app.pase.nota));
     }
 
     const ICONO_MAS_OPCIONES = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>';
@@ -1213,13 +1284,13 @@
         if (!cuenta[e.codigo]) return;
         html += chipEstado(e.codigo, '<span class="numero">' + cuenta[e.codigo] + '</span> ' + esc(e.etiqueta));
       });
+      // Sin nadie inscrito no hay pie: la pantalla ofrece «Inscribir usuarios» (pintarPase).
+      if (!app.pase.usuarios.length) { pie(''); return; }
+      // Un solo botón a todo el ancho (4-nov-2026); «No hubo clase» está en el menú «⋮» de la barra.
       // Si queda otro pase por hacer (abierto desde Inicio), Guardar abre ese a continuación (guardarPase).
-      const haySiguiente = app.pase.usuarios.length && siguientePase(app.pase);
-      html += '</div><div class="botones">' +
-        '<button type="button" class="boton peligro" data-accion="cancelar-sesion">No hubo clase</button>' +
-        '<button type="button" class="boton lleno" data-accion="guardar"' + (app.pase.usuarios.length ? '' : ' disabled') + '>' +
-        // Sin icono en «Guardar y seguir», para que quepa en una línea en un móvil estrecho.
-        (haySiguiente ? 'Guardar y seguir' : ICONO_GUARDAR + 'Guardar') + '</button></div>';
+      const haySiguiente = siguientePase(app.pase);
+      html += '</div><button type="button" class="boton lleno ancho" data-accion="guardar">' + ICONO_GUARDAR +
+        (haySiguiente ? 'Guardar y seguir' : 'Guardar') + '</button>';
       pie(html);
     }
 
@@ -1315,7 +1386,10 @@
       };
       const pendiente = d.pendientes.find(function (x) { return libre(x.grupo_id, x.fecha); });
       if (pendiente) return { grupo_id: pendiente.grupo_id, fecha: pendiente.fecha, nombre: pendiente.nombre };
-      const delDia = d.grupos.find(function (g) { return g.estadoSesion === 'pendiente' && !g.diaEspecial && libre(g.grupo_id, d.fecha); });
+      // Un grupo sin nadie inscrito no tiene lista que pasar (4-nov-2026); los pendientes ya vienen sin ellos.
+      const delDia = d.grupos.find(function (g) {
+        return g.estadoSesion === 'pendiente' && !g.diaEspecial && g.inscritos > 0 && libre(g.grupo_id, d.fecha);
+      });
       return delDia ? { grupo_id: delDia.grupo_id, fecha: d.fecha, nombre: delDia.nombre } : null;
     }
 
@@ -1534,6 +1608,17 @@
         if (app.pase === p && app.vista === 'pase') seguirTrasPase(p, siguiente);
         precargar();
       }).catch(avisoError);
+    }
+
+    /** Menú «⋮» de un pendiente de Inicio (4-nov-2026): pasar lista o «No hubo clase». */
+    function abrirMenuPendiente(grupoId, fecha) {
+      const d = app.ultimoInicio;
+      const p = d && d.pendientes.find(function (x) { return x.grupo_id === grupoId && x.fecha === fecha; });
+      abrirPanel('<div><h3>' + esc(p ? p.nombre : grupoId) + '</h3><p class="sub-panel">' + esc(fechaLarga(fecha)) + '</p><div class="menu-opciones">' +
+        '<button type="button" class="opcion-menu" data-accion="pase-desde-menu" data-grupo="' + esc(grupoId) + '" data-fecha="' + esc(fecha) + '">' +
+        ICONO_ABRIR_PASE + '<span>Pasar lista</span></button>' +
+        '<button type="button" class="opcion-menu peligro" data-accion="no-hubo-clase" data-grupo="' + esc(grupoId) + '" data-fecha="' + esc(fecha) + '">' +
+        ICONO_SIN_CLASE + '<span>No hubo clase…</span></button></div></div>');
     }
 
     /** «No hubo clase» en un pendiente de Inicio: cancela la sesión sin abrir el pase de lista. */
@@ -2758,6 +2843,13 @@
         case 'reintentar-carga': if (app.reintentar) app.reintentar(); break;
         case 'nav': irSeccion(dato('destino')); break;
         case 'pase': abrirPase(dato('grupo'), dato('fecha'), irInicio); break;
+        case 'pase-desde-menu': {
+          const g = dato('grupo');
+          const f = dato('fecha');
+          cerrarPanel();
+          abrirPase(g, f, irInicio);
+          break;
+        }
         case 'grupo': abrirGrupo(dato('grupo'), 'lista', irInicio); break;
         case 'usuario': abrirPanelUsuario(Number(dato('indice'))); break;
         case 'alternar': alternarEstado(Number(dato('indice'))); break;
@@ -2769,6 +2861,15 @@
             botonesEstados('aplicar-estado') + '<button type="button" class="boton ancho" data-accion="cerrar-panel">Cancelar</button></div>');
           break;
         case 'aplicar-estado': aplicarATodos(dato('estado')); break;
+        case 'menu-pase': abrirMenuPase(); break;
+        case 'nota-sesion': abrirNotaSesion(); break;
+        case 'nota-hecho': cerrarNotaSesion(); break;
+        case 'pase-inscribir': {
+          const p = app.pase;
+          abrirGrupo(p.grupo.grupo_id, 'alta', function () { abrirPase(p.grupo.grupo_id, p.fecha, p.volver); });
+          break;
+        }
+        case 'menu-pendiente': abrirMenuPendiente(dato('grupo'), dato('fecha')); break;
         case 'aviso-accion': {
           const a = accionAviso;
           cerrarAviso();
@@ -2852,7 +2953,7 @@
     document.addEventListener('input', function (ev) {
       if (ev.target.id === 'textoBuscar') buscar();
       if (ev.target.id === 'gBuscarUsuario') programar(buscarUsuariosGestion);
-      if (ev.target.id === 'notaSesion' && app.pase) { app.pase.nota = ev.target.value; guardarBorrador(); }
+      if (ev.target.id === 'notaSesion' && app.pase) { app.pase.nota = ev.target.value.trim(); guardarBorrador(); pintarNotaPase(); }
     });
 
     document.addEventListener('change', function (ev) {

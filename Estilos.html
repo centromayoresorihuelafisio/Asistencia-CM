@@ -187,6 +187,25 @@
     justify-content: center;
   }
   .barra-titulo { min-width: 0; flex: 1; }
+  /* «⋮» de la barra (pase de lista, 4-nov-2026): 48 px, a la derecha */
+  .barra-menu {
+    position: relative;
+    flex: none;
+    width: 48px;
+    height: 48px;
+    margin-right: -8px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--md-on-surface-med);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .barra-menu:active { background: var(--md-surface-container-high); }
   .barra-principal {
     font-size: var(--fs-title);
     font-weight: 600;
@@ -207,7 +226,7 @@
   }
 
   .vista { padding: 12px 16px 24px; max-width: 720px; margin: 0 auto; }
-  .vista.con-pie { padding-bottom: 190px; }
+  .vista.con-pie { padding-bottom: 160px; }
   .vista.con-nav { padding-bottom: 104px; }
 
   h2.seccion {
@@ -219,7 +238,7 @@
   }
   h2.seccion.peligro { color: var(--md-error); }
   /* Subtítulo de lista (como en los ajustes de Android): pequeño y en el color principal */
-  h3.taller {
+  h3.taller, h3.subtitulo-lista {
     font-size: var(--fs-sm);
     font-weight: 600;
     letter-spacing: .02em;
@@ -357,8 +376,8 @@
   .lead small { font-size: var(--fs-xs); font-weight: 500; text-transform: capitalize; }
   .tarjeta.pendiente .lead { background: color-mix(in srgb, var(--md-error) 16%, var(--md-surface)); color: var(--md-error); }
   .tarjeta.inactiva { opacity: .6; }
-  /* Tarjeta con un botón propio (pendientes: «No hubo clase»): la parte que abre es otro botón por dentro */
-  .tarjeta.con-accion { padding: 0 12px 0 0; cursor: default; }
+  /* Tarjeta con un botón propio (pendientes: «⋮» con «No hubo clase»): la parte que abre es otro botón por dentro */
+  .tarjeta.con-accion { padding: 0 4px 0 0; cursor: default; }
   .tarjeta-abrir {
     flex: 1;
     min-width: 0;
@@ -487,6 +506,8 @@
   .campo:focus-within > label { color: var(--md-primary); }
 
   .ayuda { color: var(--md-on-surface-med); font-size: var(--fs-sm); margin: 6px 4px 12px; line-height: 1.4; }
+  /* Ayuda del pase (solo las primeras veces): una frase corta, en una línea a partir de unos 370 px */
+  .ayuda.una-linea { margin: 2px 4px 10px; }
   .fila-campos { display: flex; gap: 12px; flex-wrap: wrap; }
   .fila-campos > .campo { flex: 1 1 140px; }
   .fila-campos > .campo.estrecho { flex: 0 0 90px; }
@@ -1192,6 +1213,58 @@
   .estado-error h2 { margin: 8px 0 0; font-size: var(--fs-title); font-weight: 600; color: var(--md-on-surface); }
   .estado-error p { margin: 0 0 12px; max-width: 320px; color: var(--md-on-surface-med); line-height: 1.4; }
   .estado-error .boton { min-width: 160px; }
+  /* Estado vacío (pase de un grupo sin nadie inscrito, 4-nov-2026): como el de error, con su acción */
+  .estado-vacio { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 16px; text-align: center; }
+  .estado-vacio svg { width: 48px; height: 48px; color: var(--md-on-surface-med); }
+  .estado-vacio h2 { margin: 8px 0 0; font-size: var(--fs-title); font-weight: 600; color: var(--md-on-surface); }
+  .estado-vacio p { margin: 0 0 12px; max-width: 320px; color: var(--md-on-surface-med); line-height: 1.4; }
+  .estado-vacio .boton { min-width: 200px; }
+
+  /* Menú en un panel inferior (⋮ del pase y de los pendientes, 4-nov-2026): filas de 56 px con icono */
+  .panel .sub-panel { margin: -8px 0 12px; }
+  .menu-opciones { display: flex; flex-direction: column; margin: 0 -8px; }
+  .opcion-menu {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 56px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: var(--md-shape-md);
+    background: none;
+    color: var(--md-on-surface);
+    font: inherit;
+    font-size: var(--fs-md);
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .opcion-menu svg { flex: none; width: 24px; height: 24px; color: var(--md-on-surface-med); }
+  .opcion-menu:active { background: var(--md-surface-container-high); }
+  .opcion-menu.peligro, .opcion-menu.peligro svg { color: var(--md-error); }
+
+  /* Nota de la sesión en el pase: una línea que se toca para cambiarla */
+  .nota-pase {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    min-height: 48px;
+    margin: 0 0 10px;
+    padding: 12px 16px;
+    border: 0;
+    border-radius: var(--md-shape-md);
+    background: var(--md-surface);
+    color: var(--md-on-surface);
+    font: inherit;
+    text-align: left;
+    line-height: 1.4;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+  }
+  .nota-pase .etiqueta-nota { flex: none; font-size: var(--fs-sm); font-weight: 600; color: var(--md-primary); }
 
   /* Botón esperando al servidor (4-nov-2026): desactivado, con un círculo de 18 px y el texto en gerundio */
   .boton.ocupado { gap: 10px; white-space: nowrap; }

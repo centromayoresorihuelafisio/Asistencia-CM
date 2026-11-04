@@ -263,6 +263,15 @@ function datosIniciales_(monitora) {
   };
 }
 
+/** Orden de Inicio: por hora («9:30» antes que «10:00»; sin hora, al final) y después por nombre. */
+function claveHora_(hora) {
+  const m = String(hora || '').trim().match(/^(\d{1,2})[:.h]?(\d{2})?/);
+  return m ? ('0' + m[1]).slice(-2) + ':' + (m[2] || '00') : '~';
+}
+function compararPorHora_(a, b) {
+  return (claveHora_(a.hora) + ' ' + a.nombre).localeCompare(claveHora_(b.hora) + ' ' + b.nombre, 'es');
+}
+
 function datosInicio_(monitora, fecha) {
   comprobarFecha_(fecha, 'elegida');
   const cfg = config_();
@@ -271,13 +280,14 @@ function datosInicio_(monitora, fecha) {
   const grupos = gruposAccesibles_(monitora);
   const sesiones = sesionesPorClave_();
 
-  // Regla 3: pendientes de los últimos días, sin contar hoy.
+  // Regla 3: pendientes de los últimos días, sin contar hoy. Un grupo sin nadie inscrito ese día no genera
+  // pendiente (4-nov-2026): no hay lista que pasar.
   const pendientes = [];
   let desde = sumarDias_(hoy, -cfg.diasPendientes);
   if (cfg.inicio && desde < cfg.inicio) desde = cfg.inicio;
   for (let f = desde; f < hoy; f = sumarDias_(f, 1)) {
     grupos.forEach(function (g) {
-      if (sesionEsperada_(g, f, cfg) && !sesiones[f + '|' + g.grupo_id]) {
+      if (sesionEsperada_(g, f, cfg) && !sesiones[f + '|' + g.grupo_id] && inscritosEn_(g.grupo_id, f).length) {
         const c = grupoParaCliente_(g, talleres);
         c.fecha = f;
         pendientes.push(c);
@@ -294,7 +304,10 @@ function datosInicio_(monitora, fecha) {
       c.diaEspecial = diaEspecial_(g.grupo_id, fecha);
       return c;
     })
-    .sort(function (a, b) { return (a.taller + a.hora + a.nombre).localeCompare(b.taller + b.hora + b.nombre, 'es'); });
+    // Por hora (4-nov-2026, Inicio como la agenda del día); los que no tienen hora, al final.
+    .sort(compararPorHora_);
+  // Pendientes por día (del más antiguo al más reciente, como antes) y, dentro de cada día, por hora.
+  pendientes.sort(function (a, b) { return a.fecha !== b.fecha ? (a.fecha < b.fecha ? -1 : 1) : compararPorHora_(a, b); });
 
   return { fecha: fecha, hoy: hoy, pendientes: pendientes, grupos: delDia };
 }
