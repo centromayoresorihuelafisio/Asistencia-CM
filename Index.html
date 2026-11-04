@@ -17,8 +17,13 @@
       </div>
     </header>
 
-    <main id="vista" class="vista">
-      <p class="vacio">Cargando…</p>
+    <main id="vista" class="vista" aria-busy="true">
+      <!-- Esqueleto de Inicio mientras llega api_init (Cliente.html lo sustituye) -->
+      <div class="esqueleto" aria-hidden="true">
+        <div class="esq esq-campo"></div>
+        <div class="esq esq-titulo"></div>
+        <div class="lista"><div class="esq esq-tarjeta"></div><div class="esq esq-tarjeta"></div><div class="esq esq-tarjeta"></div></div>
+      </div>
     </main>
 
     <div id="pie" class="pie oculto"></div>
@@ -28,9 +33,7 @@
     <div id="fondoPanel" class="fondo-panel oculto"></div>
     <section id="panel" class="panel oculto" role="dialog" aria-modal="true"></section>
 
-    <div id="cargando" class="cargando oculto" aria-live="polite">
-      <div class="girador"></div>
-    </div>
+    <div id="barraCarga" class="barra-carga oculto" role="progressbar" aria-label="Cargando"></div>
 
     <div id="aviso" class="aviso oculto" role="status"></div>
 

@@ -55,7 +55,8 @@
     --md-on-disabled:    #6b6f74;
 
     --md-scrim:       rgba(32, 33, 36, .50);
-    --md-velo:        rgba(248, 249, 250, .60);   /* fondo del indicador de carga: deja ver la pantalla */
+    --md-esqueleto:   #e4e9f1;   /* huecos grises de los esqueletos de carga */
+    --md-brillo:      rgba(255, 255, 255, .55);   /* brillo que recorre los esqueletos */
     --md-toast-bg:    #323232;
     --md-toast-fg:    #ffffff;
     --md-toast-error: #8c1d18;
@@ -107,6 +108,7 @@
     --dur-panel:    200ms;   /* el panel inferior al bajar (Cliente.html, MS_PANEL) */
     --dur-giro:    .8s;
     --dur-barrido: 1s;
+    --dur-brillo:  1.4s;     /* brillo de los esqueletos de carga */
     --ease: cubic-bezier(.2, 0, 0, 1);
 
     /* --- Capas --- */
@@ -127,6 +129,9 @@
   @keyframes md-desde-izquierda { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
   @keyframes md-fundido { from { opacity: 0; } to { opacity: 1; } }
   @keyframes md-latido  { from { opacity: .35; } to { opacity: 1; } }
+  @keyframes md-brillo  { from { background-position: -150% 0; } to { background-position: 250% 0; } }
+  /* Fila que se va de una lista (baja, cambio de grupo): MS_SALIDA en Cliente.html */
+  @keyframes md-sale    { to { opacity: 0; transform: translateX(24px); } }
   /* Icono del chip al cambiar de estado: aparece desde pequeño (corto y sin rebote) */
   @keyframes md-icono   { from { opacity: 0; transform: scale(.4) rotate(-45deg); } to { opacity: 1; transform: none; } }
 
@@ -1139,36 +1144,79 @@
   table.datos .celda { width: 14px; height: 14px; border-radius: var(--md-shape-xs); }
 
   /* ---------- Carga y avisos ---------- */
-  .cargando {
+  /* Barra fina de actividad arriba (como .barra-progreso de fisio). Sin velo: la pantalla se puede seguir usando */
+  .barra-carga {
     position: fixed;
-    inset: 0;
-    z-index: var(--z-carga);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--md-velo);
-  }
-  /* Barra fina de actividad arriba (como .barra-progreso de fisio) */
-  .cargando::before {
-    content: "";
-    position: absolute;
     top: 0;
     left: 0;
     right: 0;
     height: 3px;
+    z-index: var(--z-carga);
+    pointer-events: none;
     background: linear-gradient(90deg, transparent, var(--md-primary), transparent);
     background-size: 40% 100%;
     background-repeat: no-repeat;
     animation: md-barrido var(--dur-barrido) linear infinite;
   }
-  .girador {
-    width: 40px;
-    height: 40px;
-    border: 4px solid color-mix(in srgb, var(--md-primary) 25%, transparent);
-    border-top-color: var(--md-primary);
+
+  /* Esqueletos (4-nov-2026): la forma de la pantalla mientras llegan los datos, con un brillo suave */
+  .esq {
+    position: relative;
+    border-radius: var(--md-shape-sm);
+    background: var(--md-esqueleto) linear-gradient(90deg, transparent, var(--md-brillo), transparent) no-repeat;
+    background-size: 50% 100%;
+    animation: md-brillo var(--dur-brillo) linear infinite;
+  }
+  .esq-campo { height: var(--alto-boton); border-radius: var(--md-shape-md); margin-bottom: 20px; }
+  .esq-titulo { width: 40%; height: 18px; margin: 8px 4px 14px; }
+  .esq-texto { width: 70%; height: 14px; margin: 4px 4px 14px; }
+  .esq-tarjeta { height: var(--alto-fila); border-radius: var(--md-shape-xs); }
+  .esq-fila { height: var(--alto-fila); border-radius: var(--md-shape-xs); }
+  .esq-bloque { height: 120px; border-radius: var(--md-shape-lg); margin-bottom: 12px; }
+  .esq-kpi { height: 84px; border-radius: var(--md-shape-lg); }
+  .hueco-esq { height: 12px; }
+  .esqueleto .lista > .esq:first-child { border-top-left-radius: var(--md-shape-lista); border-top-right-radius: var(--md-shape-lista); }
+  .esqueleto .lista > .esq:last-child { border-bottom-left-radius: var(--md-shape-lista); border-bottom-right-radius: var(--md-shape-lista); }
+  /* Historial: la cuadrícula vacía (nombre y círculos de los días) */
+  .esq-cuadricula { overflow: hidden; padding: 12px; margin-bottom: 16px; border-radius: var(--md-shape-lg); background: var(--md-surface); }
+  .esq-cuadricula .esq-linea { display: flex; align-items: center; gap: 8px; height: 44px; }
+  .esq-cuadricula .esq-nombre { flex: none; width: 96px; height: 14px; }
+  .esq-cuadricula .esq-celda { flex: none; width: 28px; height: 28px; border-radius: var(--md-shape-full); }
+
+  /* Error al cargar (sin conexión o fallo del servidor), con «Reintentar» */
+  .estado-error { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 16px; text-align: center; }
+  .estado-error svg { width: 48px; height: 48px; color: var(--md-on-surface-med); }
+  .estado-error h2 { margin: 8px 0 0; font-size: var(--fs-title); font-weight: 600; color: var(--md-on-surface); }
+  .estado-error p { margin: 0 0 12px; max-width: 320px; color: var(--md-on-surface-med); line-height: 1.4; }
+  .estado-error .boton { min-width: 160px; }
+
+  /* Botón esperando al servidor (4-nov-2026): desactivado, con un círculo de 18 px y el texto en gerundio */
+  .boton.ocupado { gap: 10px; white-space: nowrap; }
+  /* En una pareja de botones («No» / «Sí, dar de baja»), el ocupado toma más sitio para que el texto quepa en una línea */
+  .botones > .boton.ocupado { flex-grow: 2; }
+  .girador-boton {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
     border-radius: 50%;
     animation: md-spin var(--dur-giro) linear infinite;
   }
+
+  /* Filas que se van o llegan al cambiar una lista en el sitio (baja, alta) */
+  /* Se desvanece y su hueco se cierra (Cliente.html fija antes su alto, para que se pueda animar hasta 0) */
+  .sale {
+    overflow: hidden;
+    height: 0 !important;
+    min-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    pointer-events: none;
+    animation: md-sale var(--dur-2) var(--ease) forwards;
+    transition: height var(--dur-2) var(--ease), min-height var(--dur-2) var(--ease), padding var(--dur-2) var(--ease);
+  }
+  .entra { animation: md-entra var(--dur-2) var(--ease); }
 
   /* Aviso (como .toast-aviso de fisio; arriba, para no tapar los botones del pie) */
   .aviso {
@@ -1194,6 +1242,6 @@
   /* Reducir movimiento: una sola llave. El girador sigue girando (es información), más despacio */
   @media (prefers-reduced-motion: reduce) {
     :root { --dur-1: .01ms; --dur-2: .01ms; --dur-3: .01ms; --dur-pantalla: .01ms; --dur-seccion: .01ms; --dur-panel: .01ms; --dur-giro: 1.6s; }
-    .panel, .fondo-panel, .aviso, .fab, .vista[class*="anim-"] > * { animation: none; }
+    .panel, .fondo-panel, .aviso, .fab, .vista[class*="anim-"] > *, .esq, .sale, .entra { animation: none; }
   }
 </style>

@@ -22,7 +22,9 @@
       ultimoInicio: null, // últimos datos de api_inicio recibidos (para el siguiente pase mientras se vuelven a pedir)
       pila: [],          // pantallas abiertas, de la principal a la actual (cambiarPantalla)
       scrolls: {},       // scroll de cada pantalla de la pila, para recuperarlo al volver
-      pantallaNueva: null // scroll y transición pendientes para el próximo pintar()
+      pantallaNueva: null, // scroll y transición pendientes para el próximo pintar()
+      nav: 0,            // sube con cada cambio de pantalla: una respuesta que llega tarde a otra pantalla se ignora
+      reintentar: null   // qué hace «Reintentar» en un error de carga (htmlError)
     };
 
     const $ = function (id) { return document.getElementById(id); };
@@ -229,23 +231,59 @@
     let llamadasEnCurso = 0;
     let temporizadorCarga = null;
 
+    /** Barra fina de arriba mientras se espera al servidor (sin velo: la pantalla se puede seguir usando). */
     function cargando(sumar) {
       llamadasEnCurso += sumar;
       if (llamadasEnCurso > 0 && !temporizadorCarga) {
-        temporizadorCarga = setTimeout(function () { $('cargando').classList.remove('oculto'); }, 150);
+        temporizadorCarga = setTimeout(function () { $('barraCarga').classList.remove('oculto'); }, 150);
       }
       if (llamadasEnCurso <= 0) {
         llamadasEnCurso = 0;
         clearTimeout(temporizadorCarga);
         temporizadorCarga = null;
-        $('cargando').classList.add('oculto');
+        $('barraCarga').classList.add('oculto');
       }
     }
 
-    /** Llama a una función api_* y devuelve una promesa con sus datos. */
+    // --- Botón esperando al servidor (4-nov-2026) ---
+    // Una escritura (llamar) ocupa el botón que se acaba de pulsar: queda desactivado, con un círculo y el texto en
+    // gerundio (data-en-curso, EN_CURSO o «Guardando…»), así no se puede pulsar dos veces. Si falla, vuelve a estar
+    // como antes (soltarBotones); si va bien, desaparece al pintar la pantalla o cerrar el panel. Donde no se vuelve
+    // a pintar nada, se suelta a mano.
+
+    let botonPulsado = null;   // botón del toque en curso (lo pone el manejador de clics)
+    const ocupados = [];       // { el, html } de los botones ocupados
+    const EN_CURSO = {
+      'inscribir': 'Inscribiendo…', 'crear-usuario': 'Inscribiendo…', 'g-inscribir-usuario': 'Inscribiendo…',
+      'g-crear-usuario': 'Creando…', 'exportar-informe': 'Creando la hoja…'
+    };
+
+    function ocuparBoton() {
+      const b = botonPulsado;
+      botonPulsado = null;
+      if (!b || !b.isConnected || b.disabled) return;
+      ocupados.push({ el: b, html: b.innerHTML });
+      b.disabled = true;
+      b.classList.add('ocupado');
+      b.setAttribute('aria-busy', 'true');
+      b.innerHTML = '<span class="girador-boton" aria-hidden="true"></span>' +
+        esc(b.getAttribute('data-en-curso') || EN_CURSO[b.getAttribute('data-accion')] || 'Guardando…');
+    }
+    function soltarBotones() {
+      ocupados.splice(0).forEach(function (o) {
+        if (!o.el.isConnected) return;
+        o.el.disabled = false;
+        o.el.classList.remove('ocupado');
+        o.el.removeAttribute('aria-busy');
+        o.el.innerHTML = o.html;
+      });
+    }
+
+    /** Llama a una función api_* y devuelve una promesa con sus datos. Ocupa el botón pulsado hasta que responde. */
     function llamar(funcion) {
       const args = Array.prototype.slice.call(arguments, 1);
-      return llamarSinCarga(true, funcion, args);
+      ocuparBoton();
+      return llamarSinCarga(true, funcion, args).catch(function (e) { soltarBotones(); throw e; });
     }
     function llamarSinCarga(conCarga, funcion, args) {
       if (conCarga) cargando(1);
@@ -301,6 +339,11 @@
         function (err) { cargando(-1); throw err; });
     }
     function tieneMemoria(funcion, args) { return !!memoria[claveMemoria(funcion, args)]; }
+    /** Ya está la respuesta (no solo pedida): la pantalla se puede pintar sin esqueleto. */
+    function estaEnMemoria(funcion, args) {
+      const e = memoria[claveMemoria(funcion, args)];
+      return !!(e && e.listo);
+    }
 
     /** Olvida las respuestas de una función (todas, o las que cumplan el filtro sobre sus argumentos). */
     function olvidar(funcion, filtro) {
@@ -426,7 +469,94 @@
       clearTimeout(temporizadorAviso);
       temporizadorAviso = setTimeout(function () { a.classList.add('oculto'); }, esError ? 7000 : 3500);
     }
-    function avisoError(e) { aviso(e.message, true); }
+    function avisoError(e) { soltarBotones(); aviso(e.message, true); }
+
+    // ---------- Carga de pantallas: esqueletos y errores (4-nov-2026) ----------
+    // Una pantalla cuyos datos no están en memoria se abre al momento con su esqueleto (la forma gris de lo que
+    // va a salir) y se pinta al llegar los datos. Si están en memoria, se pinta directamente, sin esqueleto.
+    // Si la carga falla, la propia pantalla dice qué pasa y ofrece «Reintentar» (htmlError).
+
+    /** Esqueleto de una pantalla: 'inicio', 'pase', 'historial', 'informe', 'gestion', 'grupo' o bloques. */
+    function esqueleto(tipo) {
+      const varias = function (n, clase) {
+        let h = '';
+        for (let k = 0; k < n; k++) h += '<div class="esq ' + clase + '"></div>';
+        return h;
+      };
+      let h;
+      if (tipo === 'inicio') {
+        h = '<div class="esq esq-titulo"></div><div class="lista">' + varias(3, 'esq-tarjeta') + '</div>';
+      } else if (tipo === 'pase') {
+        h = '<div class="esq esq-campo"></div><div class="esq esq-texto"></div><div class="lista">' + varias(8, 'esq-fila') + '</div>';
+      } else if (tipo === 'historial') {
+        let lineas = '';
+        for (let k = 0; k < 8; k++) lineas += '<div class="esq-linea"><div class="esq esq-nombre"></div>' + varias(6, 'esq-celda') + '</div>';
+        h = '<div class="esq esq-texto"></div><div class="esq-cuadricula">' + lineas + '</div>';
+      } else if (tipo === 'informe') {
+        h = '<div class="esq esq-titulo"></div><div class="kpis">' + varias(6, 'esq-kpi') + '</div><div class="hueco-esq"></div>' + varias(2, 'esq-bloque');
+      } else if (tipo === 'gestion') {
+        h = '<div class="lista">' + varias(6, 'esq-tarjeta') + '</div>';
+      } else if (tipo === 'grupo') {
+        h = '<div class="esq esq-campo"></div><div class="esq esq-texto"></div><div class="lista">' + varias(6, 'esq-fila') + '</div>';
+      } else {
+        h = varias(3, 'esq-bloque');
+      }
+      return '<div class="esqueleto" aria-hidden="true">' + h + '</div>';
+    }
+
+    const ICONO_SIN_CONEXION = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.35 10.04A7.49 7.49 0 0 0 12 4c-1.48 0-2.85.43-4.01 1.17l1.46 1.46A5.5 5.5 0 0 1 17.5 11.5v.5H19a3 3 0 0 1 3 3c0 1.13-.64 2.11-1.56 2.62l1.45 1.45A4.98 4.98 0 0 0 24 15c0-2.64-2.05-4.78-4.65-4.96zM3 5.27l2.75 2.74C2.56 8.15 0 10.77 0 14a6 6 0 0 0 6 6h11.73l2 2L21 20.73 4.27 4 3 5.27zM7.73 10l8 8H6a4 4 0 0 1 0-8h1.73z"/></svg>';
+    const ICONO_FALLO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2zm0-4h-2V7h2z"/></svg>';
+
+    /** Error de carga: sin conexión o fallo del servidor, con una línea de qué hacer y «Reintentar» (app.reintentar). */
+    function htmlError(e) {
+      const sinConexion = !!(e && e.conexion);
+      return '<div class="estado-error" role="alert">' + (sinConexion ? ICONO_SIN_CONEXION : ICONO_FALLO) +
+        '<h2>' + (sinConexion ? 'Sin conexión' : 'Algo ha fallado') + '</h2>' +
+        '<p>' + esc(sinConexion ? 'Comprueba que tienes internet y vuelve a intentarlo.'
+          : ((e && e.message) || 'No se han podido cargar los datos.')) + '</p>' +
+        '<button type="button" class="boton primario" data-accion="reintentar-carga">Reintentar</button></div>';
+    }
+    function errorEnVista(e, reintentar) {
+      app.reintentar = reintentar;
+      pintar(htmlError(e));
+    }
+
+    /**
+     * Carga los datos de una pantalla. Si ya están en memoria, llama a alPintar(d, false) al momento. Si no,
+     * llama a alPreparar (abre la pantalla y pinta su esqueleto) y, cuando llegan, a alPintar(d, true); si falla,
+     * pinta el error con «Reintentar» (reintentar). Si mientras tanto se ha ido a otra pantalla, se ignora.
+     * refresco: vuelve a cargar la pantalla abierta tras guardar algo; sin esqueleto, y un fallo sale en un aviso.
+     */
+    function cargarPantalla(funcion, args, alPreparar, alPintar, reintentar, refresco) {
+      const lista = estaEnMemoria(funcion, args);
+      if (!lista && !refresco) alPreparar();
+      const n = app.nav;
+      return pedirCon(true, funcion, args).then(function (d) {
+        if (n !== app.nav) return;
+        alPintar(d, !lista && !refresco);
+      }, function (e) {
+        if (n !== app.nav) return;
+        if (lista || refresco) avisoError(e);
+        else errorEnVista(e, reintentar);
+      });
+    }
+
+    /** Envuelve lo que se hace tras una escritura: solo se hace si se sigue en la misma pantalla. */
+    function siSigue(fn) {
+      const n = app.nav;
+      return function () { if (n === app.nav) return fn.apply(null, arguments); };
+    }
+    /** Lo mismo, para decidirlo más tarde: const sigue = siSiguePara(); … sigue(fn)(). */
+    function siSiguePara() {
+      const n = app.nav;
+      return function (fn) { return function () { if (n === app.nav) return fn.apply(null, arguments); }; };
+    }
+
+    /** Nombre y taller de un grupo que ya conoce el cliente (para el título de su pantalla antes de cargarla). */
+    function grupoConocido(grupoId) {
+      const buscarEn = function (lista) { return (lista || []).find(function (g) { return g.grupo_id === grupoId; }); };
+      return buscarEn(app.init && app.init.grupos) || buscarEn(app.gest && app.gest.grupos) || null;
+    }
 
     // ---------- Panel inferior ----------
     // Sube desde abajo al abrirse y baja al cerrarse (MS_PANEL). Si se abre otro mientras está abierto o bajando
@@ -520,12 +650,13 @@
 
     /** Panel de confirmación: al aceptar se ejecuta alAceptar. */
     let confirmacionPendiente = null;
-    function confirmar(titulo, texto, botonSi, peligro, alAceptar) {
+    /** enCurso: texto del botón «Sí» mientras espera al servidor («Dando de baja…»). */
+    function confirmar(titulo, texto, botonSi, peligro, alAceptar, enCurso) {
       confirmacionPendiente = alAceptar;
       abrirPanel('<div><h3>' + esc(titulo) + '</h3>' + (texto ? '<p>' + texto + '</p>' : '') +
         '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">No</button>' +
-        '<button type="button" class="boton ' + (peligro ? 'peligro-lleno' : 'primario') + '" data-accion="confirmar-si">' +
-        esc(botonSi) + '</button></div></div>');
+        '<button type="button" class="boton ' + (peligro ? 'peligro-lleno' : 'primario') + '" data-accion="confirmar-si"' +
+        (enCurso ? ' data-en-curso="' + esc(enCurso) + '"' : '') + '>' + esc(botonSi) + '</button></div></div>');
     }
 
     /**
@@ -534,6 +665,7 @@
      */
     let parecidosPendiente = null;
     function avisarParecidos(nombre, parecidos, textoUsar, alUsar, alCrear) {
+      soltarBotones();
       parecidosPendiente = { usar: alUsar, crear: alCrear };
       abrirPanel('<div><h3>¿Es la misma persona?</h3>' +
         '<p>Ya hay ' + (parecidos.length === 1 ? 'un usuario' : 'usuarios') + ' con un nombre parecido a <strong>' + esc(nombreVisible(nombre)) + '</strong>:</p>' +
@@ -607,9 +739,12 @@
       sincronizarHistorial();
     }
 
-    /** Prepara una pantalla secundaria (con «Volver» y sin barra inferior). */
-    function pantallaSecundaria(vista, titulo, sub, alVolver) {
-      cambiarPantalla(false, vista, vista + '|' + titulo);
+    /**
+     * Prepara una pantalla secundaria (con «Volver» y sin barra inferior).
+     * clave: lo que la distingue en la pila de pantallas (por defecto, su título).
+     */
+    function pantallaSecundaria(vista, titulo, sub, alVolver, clave) {
+      cambiarPantalla(false, vista, vista + '|' + (clave || titulo));
       app.vista = vista;
       cerrarPanel();
       pie('');
@@ -629,6 +764,7 @@
     let temporizadorTransicion = null;
 
     function cambiarPantalla(principal, vista, clave) {
+      app.nav++;
       const pila = app.pila;
       const actual = pila.length ? pila[pila.length - 1] : null;
       if (actual) app.scrolls[actual] = window.scrollY;
@@ -708,12 +844,18 @@
       else irInicio();
     }
 
-    /** Pinta la vista. La primera vez tras cambiar de pantalla, con su scroll y su transición (cambiarPantalla). */
-    function pintar(html) {
-      $('vista').innerHTML = html;
+    /**
+     * Pinta la vista. La primera vez tras cambiar de pantalla, con su scroll y su transición (cambiarPantalla).
+     * esEsqueleto: es el esqueleto de carga; la transición se hace ya y el scroll recordado se guarda para
+     * cuando lleguen los datos.
+     */
+    function pintar(html, esEsqueleto) {
+      const v = $('vista');
+      v.innerHTML = html;
+      v.setAttribute('aria-busy', esEsqueleto ? 'true' : 'false');
       const n = app.pantallaNueva;
-      app.pantallaNueva = null;
-      window.scrollTo(0, n ? n.y : 0);
+      app.pantallaNueva = esEsqueleto && n ? { anim: null, y: n.y } : null;
+      window.scrollTo(0, n && !esEsqueleto ? n.y : 0);
       if (n && n.anim) animarVista(n.anim);
     }
 
@@ -721,14 +863,24 @@
 
     function irInicio() {
       pantallaPrincipal('inicio', saludo(),app.init.curso ? 'Curso ' + app.init.curso : '');
-      pedir('api_inicio', app.fecha).then(function (d) {
+      cargarPantalla('api_inicio', [app.fecha], function () {
+        // El selector de fecha ya funciona mientras llegan los grupos (se puede seguir pulsando ‹).
+        pintar(htmlSelectorFecha(app.init.hoy) + htmlPorGuardar() + esqueleto('inicio'), true);
+      }, function (d) {
         pintarInicio(d);
         precargarSesiones(d);
         // La flecha ‹ suele ser lo siguiente: el día anterior se pide ya en segundo plano.
         enCola('api_inicio', [sumarDias(app.fecha, -1)]);
-      }).catch(function (e) {
-        $('vista').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>';
-      });
+      }, irInicio);
+    }
+
+    /** Fecha de Inicio con las flechas ‹ › (› no pasa de hoy). */
+    function htmlSelectorFecha(hoy) {
+      return '<div class="selector-fecha"><label for="fechaInicio">Fecha</label>' +
+        '<button type="button" class="boton flecha-dia" data-accion="dia" data-salto="-1" aria-label="Día anterior">‹</button>' +
+        '<input type="date" id="fechaInicio" value="' + esc(app.fecha) + '" max="' + esc(hoy) + '">' +
+        '<button type="button" class="boton flecha-dia" data-accion="dia" data-salto="1" aria-label="Día siguiente"' +
+        (app.fecha >= hoy ? ' disabled' : '') + '>›</button></div>';
     }
 
     /** Etiqueta de un pase de lista que se está guardando en segundo plano o cuyo guardado ha fallado. */
@@ -759,11 +911,7 @@
     function pintarInicio(d) {
       app.ultimoInicio = d;
       if (app.vista !== 'inicio') return;
-      let html = '<div class="selector-fecha"><label for="fechaInicio">Fecha</label>' +
-        '<button type="button" class="boton flecha-dia" data-accion="dia" data-salto="-1" aria-label="Día anterior">‹</button>' +
-        '<input type="date" id="fechaInicio" value="' + esc(app.fecha) + '" max="' + esc(d.hoy) + '">' +
-        '<button type="button" class="boton flecha-dia" data-accion="dia" data-salto="1" aria-label="Día siguiente"' +
-        (app.fecha >= d.hoy ? ' disabled' : '') + '>›</button></div>';
+      let html = htmlSelectorFecha(d.hoy);
 
       html += htmlPorGuardar();
 
@@ -846,10 +994,16 @@
      * sinAvisoBorrador: al reabrirlo tras una baja hecha desde el propio pase no se avisa de las marcas recuperadas.
      */
     function abrirPase(grupoId, fecha, volver, sinAvisoBorrador) {
-      pedir('api_sesion', grupoId, fecha).then(function (d) {
+      const vuelta = volver || irInicio;
+      const conocido = grupoConocido(grupoId);
+      const titulo = conocido ? conocido.nombre : 'Pase de lista';
+      cargarPantalla('api_sesion', [grupoId, fecha], function () {
+        pantallaSecundaria('pase', titulo, fechaTitulo(fecha), vuelta);
+        pintar(esqueleto('pase'), true);
+      }, function (d, conEsqueleto) {
         d.nota = d.sesion ? (d.sesion.nota || '') : '';
         d.borradorRecuperado = false;
-        d.volver = volver || irInicio;
+        d.volver = vuelta;
         // Observaciones tal como están guardadas, para saber al guardar si se han escrito nuevas (motivosResumen).
         d.usuarios.forEach(function (u) { u.obsGuardada = u.observaciones || ''; });
         const b = leerBorrador(claveBorrador(grupoId, fecha));
@@ -861,10 +1015,12 @@
           if (typeof b.nota === 'string') d.nota = b.nota;
           d.borradorRecuperado = !sinAvisoBorrador;
         }
-        pantallaSecundaria('pase', d.grupo.nombre, fechaTitulo(fecha), d.volver);
+        // Con esqueleto, la pantalla ya está abierta: solo se pone el nombre que manda el servidor.
+        if (conEsqueleto) barra(d.grupo.nombre, fechaTitulo(fecha), vuelta);
+        else pantallaSecundaria('pase', titulo, fechaTitulo(fecha), vuelta);
         app.pase = d;
         pintarPase();
-      }).catch(avisoError);
+      }, function () { abrirPase(grupoId, fecha, vuelta, sinAvisoBorrador); });
     }
 
     function pintarPase() {
@@ -1287,7 +1443,8 @@
         borrarBorrador(p.grupo.grupo_id, p.fecha);
         anticuar('sesion', p.grupo.grupo_id, p.fecha);
         aviso('Marcada sin clase.');
-        seguirTrasPase(p, siguiente);
+        // Si mientras tanto se ha ido a otra pantalla, no se la cambia.
+        if (app.pase === p && app.vista === 'pase') seguirTrasPase(p, siguiente);
         precargar();
       }).catch(avisoError);
     }
@@ -1334,13 +1491,107 @@
     // ---------- Altas y bajas de un grupo ----------
 
     function abrirGrupo(grupoId, pestana, volver) {
-      pedir('api_grupo', grupoId).then(function (d) {
-        d.volver = volver || (app.grupo && app.grupo.grupo.grupo_id === grupoId ? app.grupo.volver : irInicio);
+      const vuelta = volver || (app.grupo && app.grupo.grupo.grupo_id === grupoId ? app.grupo.volver : irInicio);
+      const conocido = grupoConocido(grupoId);
+      const titulo = conocido ? conocido.nombre : 'Altas y bajas';
+      cargarPantalla('api_grupo', [grupoId], function () {
+        pantallaSecundaria('grupo', titulo, conocido ? tallerSiHaceFalta(conocido.taller, conocido.nombre) : '', vuelta);
+        pintar(esqueleto('grupo'), true);
+      }, function (d, conEsqueleto) {
+        d.volver = vuelta;
         app.grupo = d;
         app.pestana = pestana || 'lista';
-        pantallaSecundaria('grupo', d.grupo.nombre, [tallerSiHaceFalta(d.grupo.taller, d.grupo.nombre), d.inscritos.length + ' inscritos'].filter(Boolean).join(' · '), d.volver);
+        if (conEsqueleto) barra(d.grupo.nombre, subGrupo(d), vuelta);
+        else pantallaSecundaria('grupo', titulo, subGrupo(d), vuelta);
         pintarGrupo();
-      }).catch(avisoError);
+      }, function () { abrirGrupo(grupoId, pestana, vuelta); });
+    }
+
+    /** Subtítulo de Altas y bajas: el taller (si no está ya en el nombre) y cuántos inscritos hay. */
+    function subGrupo(d) {
+      return [tallerSiHaceFalta(d.grupo.taller, d.grupo.nombre), d.inscritos.length + ' inscritos'].filter(Boolean).join(' · ');
+    }
+
+    /**
+     * Vuelve a pedir el grupo en segundo plano tras un alta o una baja (ya se ha cambiado en el sitio) y,
+     * si sigue abierto, actualiza el subtítulo y la Lista; las filas nuevas aparecen con una animación corta.
+     */
+    let cambiosGrupo = 0;   // cambios hechos en el sitio: una respuesta pedida antes de otro cambio llega vieja
+    function refrescarGrupo(grupoId) {
+      const version = ++cambiosGrupo;
+      pedirCon(false, 'api_grupo', [grupoId]).then(function (d) {
+        if (version !== cambiosGrupo) return;
+        const actual = app.grupo;
+        if (!actual || actual.grupo.grupo_id !== grupoId) return;
+        const antes = {};
+        actual.inscritos.forEach(function (u) { antes[u.inscripcion_id] = true; });
+        const igual = JSON.stringify(actual.inscritos) === JSON.stringify(d.inscritos);
+        d.volver = actual.volver;
+        app.grupo = d;
+        if (app.vista !== 'grupo' || igual) return;
+        $('barraSub').textContent = subGrupo(d);
+        if (app.pestana === 'lista' && $('zonaLista')) {
+          const nuevos = {};
+          d.inscritos.forEach(function (u) { if (!antes[u.inscripcion_id]) nuevos[u.inscripcion_id] = true; });
+          $('zonaLista').outerHTML = htmlLista(d, nuevos);
+        }
+      }).catch(function () { /* se queda como está; al volver a abrir el grupo se pedirá de nuevo */ });
+    }
+
+    const MS_SALIDA = 180;   // animación de una fila que se va (--dur-2, md-sale)
+
+    /** La fila se va con una animación corta y después se llama a despues (que vuelve a pintar la lista). */
+    function sacarFila(fila, despues) {
+      if (!fila) { despues(); return; }
+      fila.style.height = fila.offsetHeight + 'px';   // alto de partida para que el hueco se cierre poco a poco
+      void fila.offsetHeight;
+      fila.classList.add('sale');
+      setTimeout(despues, MS_SALIDA);
+    }
+
+    /** Tras una baja o un cambio de grupo en Altas y bajas: la fila se va (o se marca la baja) sin esperar a recargar. */
+    function quitarDelGrupo(grupoId, insc, ultimoDia) {
+      // app.grupo puede ser ya otro objeto (refrescarGrupo lo cambia al llegar): se busca por el id.
+      const grupo = app.grupo;
+      if (!grupo || grupo.grupo.grupo_id !== grupoId) { refrescarGrupo(grupoId); return; }
+      const u = grupo.inscritos.find(function (x) { return x.inscripcion_id === insc; });
+      if (u) {
+        // El servidor solo manda las inscripciones que siguen hoy o después (datosGrupo_).
+        if (ultimoDia < app.init.hoy) grupo.inscritos = grupo.inscritos.filter(function (x) { return x !== u; });
+        else u.fecha_baja = ultimoDia;
+      }
+      if (app.vista === 'grupo') {
+        $('barraSub').textContent = subGrupo(grupo);
+        if (app.pestana === 'lista' && $('zonaLista')) {
+          const sale = !grupo.inscritos.some(function (x) { return x.inscripcion_id === insc; });
+          const fila = sale ? $('zonaLista').querySelector('[data-inscripcion="' + insc + '"]') : null;
+          sacarFila(fila, function () {
+            if (app.grupo && app.vista === 'grupo' && app.pestana === 'lista' && $('zonaLista')) $('zonaLista').outerHTML = htmlLista(app.grupo);
+          });
+        } else {
+          // Pestaña Baja: el formulario vuelve a empezar, sin ese usuario.
+          const y = window.scrollY;
+          pintarGrupo();
+          window.scrollTo(0, y);
+        }
+      }
+      refrescarGrupo(grupoId);
+    }
+
+    /** Tras dar de baja desde el pase de lista: si su último día es anterior al del pase, su fila se va. */
+    function quitarDelPase(pase, insc, ultimoDia) {
+      const i = pase.usuarios.findIndex(function (u) { return u.inscripcion_id === insc; });
+      if (i < 0) return;
+      if (ultimoDia >= pase.fecha) { pase.usuarios[i].fecha_baja = ultimoDia; return; }
+      pase.usuarios.splice(i, 1);
+      if (app.pase !== pase || app.vista !== 'pase') return;
+      guardarBorrador();
+      sacarFila($('fila' + i), function () {
+        if (app.pase !== pase || app.vista !== 'pase') return;
+        if (!pase.usuarios.length || !$('listaUsuarios')) { pintarPase(); return; }
+        $('listaUsuarios').innerHTML = pase.usuarios.map(function (u, k) { return filaUsuario(u, k); }).join('');
+        pintarPiePase();
+      });
     }
 
     function pintarGrupo() {
@@ -1363,18 +1614,22 @@
       if (app.pestana === 'alta' && app.enfocarBuscador) { app.enfocarBuscador = false; $('textoBuscar').focus(); }
     }
 
-    function htmlLista(d) {
-      if (!d.inscritos.length) return '<p class="vacio">Todavía no hay usuarios inscritos.</p>';
-      return '<p class="ayuda">Toca a un usuario para darle de baja o cambiarle de grupo.</p><div class="lista">' + d.inscritos.map(function (u) {
-        return '<div class="resultado tocable" data-accion="inscrito" data-inscripcion="' + esc(u.inscripcion_id) + '">' + avatar(u.nombre) +
+    /** Pestaña Lista (en #zonaLista, que se cambia en el sitio tras un alta o una baja). nuevos: ids que llegan (animación). */
+    function htmlLista(d, nuevos) {
+      if (!d.inscritos.length) return '<div id="zonaLista"><p class="vacio">Todavía no hay usuarios inscritos.</p></div>';
+      return '<div id="zonaLista"><p class="ayuda">Toca a un usuario para darle de baja o cambiarle de grupo.</p><div class="lista">' + d.inscritos.map(function (u) {
+        return '<div class="resultado tocable' + (nuevos && nuevos[u.inscripcion_id] ? ' entra' : '') + '" data-accion="inscrito" data-inscripcion="' +
+          esc(u.inscripcion_id) + '">' + avatar(u.nombre) +
           '<div class="cuerpo"><div><strong>' + esc(nombreVisible(u.nombre)) + '</strong></div>' +
           '<div class="sub">ID ' + esc(u.usuario_id) + ' · alta ' + esc(fechaNumerica(u.fecha_alta)) +
           (u.fecha_baja ? ' · baja ' + esc(fechaNumerica(u.fecha_baja)) : '') + '</div></div>' + enlaceLlamar(u.telefono) + '</div>';
-      }).join('') + '</div>';
+      }).join('') + '</div></div>';
     }
 
     /** Panel de un usuario de la pestaña Lista: baja, cambio de grupo y llamada, con el usuario ya elegido. */
     function abrirPanelInscrito(inscripcionId) {
+      // Recién inscrito: hasta que llega la lista del servidor no se sabe su inscripción (inscribir).
+      if (!inscripcionId) { aviso('Un momento: se está actualizando la lista.'); return; }
       const u = app.grupo.inscritos.find(function (x) { return x.inscripcion_id === inscripcionId; });
       if (!u) return;
       let html = '<div><h3>' + esc(nombreVisible(u.nombre)) + '</h3><p>ID ' + esc(u.usuario_id) + ' · alta ' + esc(fechaNumerica(u.fecha_alta)) +
@@ -1505,19 +1760,41 @@
       });
     }
 
+    /**
+     * Inscribe (y crea, si hace falta) desde la pestaña Alta. Al responder, el resultado pasa a «Ya está en el grupo»
+     * en el sitio, sin perder la búsqueda, y el subtítulo cuenta uno más; la lista se vuelve a pedir en segundo plano.
+     */
     function inscribir(datos) {
-      datos.fecha_alta = $('fechaAlta').value;
-      llamar('api_altaUsuario', app.grupo.grupo.grupo_id, datos).then(function (r) {
+      const grupoId = app.grupo.grupo.grupo_id;
+      datos.fecha_alta = datos.fecha_alta || valor('fechaAlta');
+      llamar('api_altaUsuario', grupoId, datos).then(function (r) {
         if (r.parecidos) {
           avisarParecidos(String(datos.nombre).toUpperCase(), r.parecidos, 'Inscribir a este',
-            function (id) { inscribir({ usuario_id: id }); },
+            function (id) { inscribir({ usuario_id: id, fecha_alta: datos.fecha_alta }); },
             function () { datos.crear_aunque_parecido = true; inscribir(datos); });
           return;
         }
         anticuar('inscripciones');
         if (r.creado) anticuar('usuario-nuevo');
         aviso((r.creado ? 'Usuario creado e inscrito: ' : 'Inscripción hecha: ') + nombreVisible(r.nombre));
-        abrirGrupo(app.grupo.grupo.grupo_id, 'alta');
+        soltarBotones();
+        // app.grupo puede ser ya otro objeto (refrescarGrupo lo cambia al llegar): se busca por el id.
+        const grupo = app.grupo;
+        if (grupo && grupo.grupo.grupo_id === grupoId && app.vista === 'grupo') {
+          // Hasta que llegue la lista del servidor, sin inscripcion_id (abrirPanelInscrito lo tiene en cuenta).
+          grupo.inscritos.push({ inscripcion_id: '', usuario_id: String(datos.usuario_id).trim(), nombre: r.nombre,
+            telefono: datos.telefono || '', fecha_alta: datos.fecha_alta, fecha_baja: '' });
+          grupo.inscritos.sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); });
+          $('barraSub').textContent = subGrupo(grupo);
+          $('vista').querySelectorAll('[data-accion="inscribir"]').forEach(function (b) {
+            if (b.getAttribute('data-usuario') === String(datos.usuario_id)) {
+              b.outerHTML = '<span class="etiqueta realizada entra">Ya está en el grupo</span>';
+            }
+          });
+          if (datos.nombre) ['nuevoId', 'nuevoNombre', 'nuevoTelefono'].forEach(function (id) { if ($(id)) $(id).value = ''; });
+          if (app.pestana === 'lista' && $('zonaLista')) $('zonaLista').outerHTML = htmlLista(grupo);
+        }
+        refrescarGrupo(grupoId);
         precargar();
       }).catch(avisoError);
     }
@@ -1538,8 +1815,8 @@
       if (!motivo) return aviso('Elige el motivo de la baja.', true);
       confirmar('¿Dar de baja?', '<strong>' + esc(nombreVisible(nombreInscripcion(insc))) + '</strong><br>Último día: ' +
         esc(fechaNumerica(fecha)) + '<br>Motivo: ' + esc(motivo), 'Sí, dar de baja', true, function () {
-        accionGrupo(llamar('api_baja', insc, fecha, motivo), 'Baja registrada.');
-      });
+        accionGrupo(llamar('api_baja', insc, fecha, motivo), 'Baja registrada.', insc, fecha);
+      }, 'Dando de baja…');
     }
 
     function pedirCambio() {
@@ -1552,23 +1829,25 @@
       const g = app.grupo.destinos.find(function (x) { return x.grupo_id === destino; });
       confirmar('¿Cambiar de grupo?', '<strong>' + esc(nombreVisible(nombreInscripcion(insc))) + '</strong><br>Pasa a: ' +
         esc(g ? tallerYGrupo(g.taller, g.nombre) : destino) + '<br>Desde el ' + esc(fechaNumerica(fecha)), 'Sí, cambiar', false, function () {
-        accionGrupo(llamar('api_cambiarGrupo', insc, destino, fecha), 'Cambio de grupo registrado.');
-      });
+        // El último día en el grupo de origen es el anterior al cambio (regla 8).
+        accionGrupo(llamar('api_cambiarGrupo', insc, destino, fecha), 'Cambio de grupo registrado.', insc, sumarDias(fecha, -1));
+      }, 'Cambiando de grupo…');
     }
 
-    /** Tras una baja o un cambio: vuelve a abrir el pase de lista (si se hizo desde él, con sus marcas) o la lista del grupo. */
-    function accionGrupo(promesa, mensaje) {
+    /**
+     * Tras una baja o un cambio de grupo (insc, con ultimoDia como último día en el grupo): el panel se cierra en
+     * cuanto responde el servidor y la lista se cambia en el sitio, en el pase de lista (conservando sus marcas)
+     * o en Altas y bajas.
+     */
+    function accionGrupo(promesa, mensaje, insc, ultimoDia) {
       const pase = app.vista === 'pase' ? app.pase : null;
-      const grupoId = pase ? pase.grupo.grupo_id : app.grupo.grupo.grupo_id;
+      const grupoId = pase || !app.grupo ? '' : app.grupo.grupo.grupo_id;
       promesa.then(function () {
         anticuar('inscripciones');
+        cerrarPanel();
         aviso(mensaje);
-        if (pase) {
-          cerrarPanel();
-          abrirPase(grupoId, pase.fecha, pase.volver, true);
-        } else {
-          abrirGrupo(grupoId, 'lista');
-        }
+        if (pase) quitarDelPase(pase, insc, ultimoDia);
+        else if (grupoId) quitarDelGrupo(grupoId, insc, ultimoDia);
         precargar();
       }).catch(function (e) { cerrarPanel(); avisoError(e); });
     }
@@ -1584,12 +1863,18 @@
       cargarHistorial();
     }
 
+    /**
+     * Pide la cuadrícula del grupo y mes elegidos. Si no está en memoria, se pinta al momento la cabecera nueva
+     * (grupo y mes) con la cuadrícula vacía, para no enseñar los datos del grupo o mes anterior mientras llega.
+     */
     function cargarHistorial() {
       const grupoId = app.hist.grupo_id;
       const mes = app.hist.mes;
+      const sigue = function () { return app.vista === 'historial' && app.hist.grupo_id === grupoId && app.hist.mes === mes; };
+      if (!estaEnMemoria('api_historial', [grupoId, mes])) pintarHistorial(null);
       pedir('api_historial', grupoId, mes).then(function (d) {
-        if (app.vista === 'historial' && app.hist.grupo_id === grupoId && app.hist.mes === mes) pintarHistorial(d);
-      }).catch(function (e) { pintarHistorial(null); avisoError(e); });
+        if (sigue()) pintarHistorial(d);
+      }).catch(function (e) { if (sigue()) pintarHistorial(null, e); });
     }
 
     /** % de asistencia con una barrita debajo: verde desde el 75 %, ámbar desde el 50 % y roja por debajo. */
@@ -1600,7 +1885,8 @@
       return n + '<span class="pct-barra ' + nivel + '"><span style="width:' + Math.max(0, Math.min(100, n)) + '%"></span></span>';
     }
 
-    function pintarHistorial(d) {
+    /** d: datos de api_historial; sin datos, la cabecera con la cuadrícula vacía (cargando) o el error de carga. */
+    function pintarHistorial(d, error) {
       const mesActual = app.init.hoy.substring(0, 7);
       let html = '<div class="campo"><label for="histGrupo">Grupo</label><select id="histGrupo">' +
         opciones(app.init.grupos, app.hist.grupo_id, function (g) { return g.grupo_id; }, function (g) { return tallerYGrupo(g.taller, g.nombre); }) +
@@ -1609,7 +1895,11 @@
         '<strong>' + esc(nombreMes(app.hist.mes)) + '</strong>' +
         '<button type="button" class="boton" data-accion="mes" data-salto="1" aria-label="Mes siguiente"' +
         (app.hist.mes >= mesActual ? ' disabled' : '') + '>›</button></div>';
-      if (!d) { pintar(html); return; }
+      if (!d) {
+        if (error) { app.reintentar = cargarHistorial; pintar(html + htmlError(error)); }
+        else pintar(html + esqueleto('historial'), true);
+        return;
+      }
 
       const r = d.resumen;
       const cuantas = function (n, una, varias) { return n + ' ' + (n === 1 ? una : varias); };
@@ -1641,7 +1931,7 @@
       });
       html += '<th class="pct">%</th></tr></thead><tbody>';
       d.filas.forEach(function (f) {
-        html += '<tr><th class="fija nombre-hist"' + (esAdmin() ? ' data-accion="ficha" data-usuario="' + esc(f.usuario_id) + '"' : '') + '>' +
+        html += '<tr><th class="fija nombre-hist"' + (esAdmin() ? ' data-accion="ficha" data-usuario="' + esc(f.usuario_id) + '" data-nombre="' + esc(f.nombre) + '"' : '') + '>' +
           esc(nombreVisible(f.nombre)) + '</th>';
         f.celdas.forEach(function (codigo, i) {
           const c = d.columnas[i];
@@ -1689,7 +1979,6 @@
       if (!inf.desde) inf.desde = p.desde;
       if (!inf.hasta) inf.hasta = p.hasta;
       inf.datos = null;
-      pintarInforme();
       cargarInforme();
     }
 
@@ -1742,8 +2031,13 @@
             d.motivosBaja.map(function (m) { return '<tr><td>' + esc(m.motivo) + '</td><td>' + m.bajas + '</td></tr>'; }).join('') +
             '</tbody></table></div>';
         }
+      } else if (inf.error) {
+        app.reintentar = cargarInforme;
+        html += htmlError(inf.error);
+      } else {
+        html += esqueleto('informe');
       }
-      pintar(html);
+      pintar(html, !d && !inf.error);
     }
 
     /** Cifra del informe. extra: HTML que va junto a la cifra (el botón ⓘ del %). */
@@ -1782,12 +2076,28 @@
     }
 
     /** Pide el informe del periodo y taller elegidos (al momento si ya está en memoria). */
+    /**
+     * Si no está en memoria, bajo los filtros sale al momento el esqueleto (no el informe anterior) hasta que
+     * llega; si falla, el error con «Reintentar».
+     */
     function cargarInforme() {
       const inf = app.inf;
-      pedir('api_informe', inf.desde, inf.hasta, inf.taller_id).then(function (d) {
+      const args = [inf.desde, inf.hasta, inf.taller_id];
+      const n = app.nav;
+      const sigue = function () {
+        return n === app.nav && app.vista === 'informe' && inf.desde === args[0] && inf.hasta === args[1] && inf.taller_id === args[2];
+      };
+      inf.error = null;
+      if (!estaEnMemoria('api_informe', args)) { inf.datos = null; pintarInforme(); }
+      pedirCon(true, 'api_informe', args).then(function (d) {
+        if (!sigue()) return;
         inf.datos = d;
-        if (app.vista === 'informe') pintarInforme();
-      }).catch(avisoError);
+        pintarInforme();
+      }).catch(function (e) {
+        if (!sigue()) return;
+        inf.error = e;
+        pintarInforme();
+      });
     }
 
     function exportarInforme() {
@@ -1814,10 +2124,12 @@
     function irGestion() {
       if (!esAdmin()) { irInicio(); return; }
       pantallaPrincipal('gestion', 'Gestión', 'Grupos, usuarios y ajustes');
-      pedir('api_gestion').then(function (d) {
+      cargarPantalla('api_gestion', [], function () {
+        pintar(esqueleto('gestion'), true);
+      }, function (d) {
         app.gest = d;
-        if (app.vista === 'gestion') pintarGestion();
-      }).catch(avisoError);
+        pintarGestion();
+      }, irGestion);
     }
 
     function pintarGestion() {
@@ -1906,7 +2218,7 @@
       llamar('api_guardarGrupo', datos).then(function () {
         aviso(grupoId ? 'Grupo guardado.' : 'Grupo creado.');
         return recargarDatos('gestion');
-      }).then(irGrupos).catch(avisoError);
+      }).then(siSigue(irGrupos)).catch(avisoError);
     }
 
     // --- Usuarios ---
@@ -1930,7 +2242,7 @@
         $('gListaUsuarios').innerHTML = (r.encontrados > r.usuarios.length
           ? '<p class="ayuda">Se muestran ' + r.usuarios.length + ' de ' + r.encontrados + '. Escribe para afinar la búsqueda.</p>' : '') +
           (r.usuarios.length ? r.usuarios.map(function (u) {
-            return '<button type="button" class="tarjeta' + (u.activo ? '' : ' inactiva') + '" data-accion="ficha" data-usuario="' + esc(u.usuario_id) + '">' +
+            return '<button type="button" class="tarjeta' + (u.activo ? '' : ' inactiva') + '" data-accion="ficha" data-usuario="' + esc(u.usuario_id) + '" data-nombre="' + esc(u.nombre) + '">' +
               avatar(u.nombre) + '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(nombreVisible(u.nombre)) + '</div>' +
               '<div class="tarjeta-detalle">ID ' + esc(u.usuario_id) + (u.telefono ? ' · ' + esc(u.telefono) : '') + ' · ' +
               (u.grupos ? u.grupos + (u.grupos === 1 ? ' grupo' : ' grupos') : 'sin grupo') + '</div></div>' +
@@ -1950,6 +2262,7 @@
     }
 
     function crearUsuario(aunqueParecido) {
+      const sigue = siSiguePara();
       const datos = { usuario_id: valor('uId'), nombre: valor('uNombre'), telefono: valor('uTelefono'), crear_aunque_parecido: !!aunqueParecido };
       llamar('api_guardarUsuario', datos, true).then(function (r) {
         if (r.parecidos) {
@@ -1961,23 +2274,33 @@
         anticuar('usuario-nuevo');
         aviso('Usuario creado: ' + nombreVisible(r.nombre));
         app.gest.totalUsuarios++;
-        abrirFicha(r.usuario_id, irUsuarios);
+        sigue(function () { abrirFicha(r.usuario_id, irUsuarios, r.nombre); })();
         precargar();
       }).catch(avisoError);
     }
 
-    function abrirFicha(usuarioId, volver) {
-      pedir('api_usuario', usuarioId).then(function (d) {
-        d.volver = volver || irUsuarios;
+    /**
+     * nombre: el que ya se conoce (de la fila tocada), para el título mientras carga la ficha.
+     * refresco: se vuelve a cargar la ficha abierta tras guardar (sin esqueleto).
+     */
+    function abrirFicha(usuarioId, volver, nombre, refresco) {
+      const vuelta = volver || irUsuarios;
+      cargarPantalla('api_usuario', [usuarioId], function () {
+        pantallaSecundaria('ficha', nombreVisible(nombre || '') || 'Usuario', 'ID ' + usuarioId, vuelta, usuarioId);
+        pintar(esqueleto('bloques'), true);
+      }, function (d, conEsqueleto) {
+        d.volver = vuelta;
         app.ficha = d;
+        const u = d.usuario;
+        if (conEsqueleto) barra(nombreVisible(u.nombre), 'ID ' + u.usuario_id, vuelta);
+        else pantallaSecundaria('ficha', nombreVisible(u.nombre), 'ID ' + u.usuario_id, vuelta, usuarioId);
         pintarFicha();
-      }).catch(avisoError);
+      }, function () { abrirFicha(usuarioId, volver, nombre); }, refresco);
     }
 
     function pintarFicha() {
       const d = app.ficha;
       const u = d.usuario;
-      pantallaSecundaria('ficha', nombreVisible(u.nombre), 'ID ' + u.usuario_id, d.volver);
       const vigentes = d.inscripciones.filter(function (i) { return !i.fecha_baja || i.fecha_baja >= app.init.hoy; });
       const gruposLibres = (app.gest ? app.gest.grupos : []).filter(function (g) {
         return g.activo && !vigentes.some(function (i) { return i.grupo_id === g.grupo_id; });
@@ -2014,22 +2337,26 @@
     }
 
     function guardarFicha() {
+      const sigue = siSiguePara();
       const u = app.ficha.usuario;
       const datos = { usuario_id: u.usuario_id, nombre: valor('uNombre'), telefono: valor('uTelefono'), activo: marcado('uActivo') };
+      const volver = app.ficha.volver;
       llamar('api_guardarUsuario', datos, false).then(function () {
         anticuar('usuario');
         aviso('Datos guardados.');
-        abrirFicha(u.usuario_id, app.ficha.volver);
+        sigue(function () { abrirFicha(u.usuario_id, volver, datos.nombre, true); })();
         precargar();
       }).catch(avisoError);
     }
 
     function inscribirDesdeFicha() {
+      const sigue = siSiguePara();
       const u = app.ficha.usuario;
+      const volver = app.ficha.volver;
       llamar('api_altaUsuario', valor('uGrupo'), { usuario_id: u.usuario_id, fecha_alta: valor('uFechaAlta') }).then(function () {
         anticuar('inscripciones');
         aviso('Inscripción hecha.');
-        abrirFicha(u.usuario_id, app.ficha.volver);
+        sigue(function () { abrirFicha(u.usuario_id, volver, u.nombre, true); })();
         precargar();
       }).catch(avisoError);
     }
@@ -2073,7 +2400,7 @@
       llamar('api_guardarDiaEspecial', datos).then(function (r) {
         aviso(r.dias === 1 ? 'Día apuntado.' : r.dias + ' días apuntados.');
         return recargarDatos('dias');
-      }).then(irDias).catch(avisoError);
+      }).then(siSigue(irDias)).catch(avisoError);
     }
 
     function borrarDia(fecha, grupoId) {
@@ -2081,8 +2408,8 @@
         llamar('api_borrarDiaEspecial', fecha, grupoId).then(function () {
           aviso('Día quitado.');
           return recargarDatos('dias');
-        }).then(irDias).catch(function (e) { cerrarPanel(); avisoError(e); });
-      });
+        }).then(siSigue(irDias)).catch(function (e) { cerrarPanel(); avisoError(e); });
+      }, 'Quitando…');
     }
 
     // --- Estados ---
@@ -2122,7 +2449,7 @@
       llamar('api_guardarEstado', datos, nuevo).then(function () {
         aviso(nuevo ? 'Estado creado.' : 'Estado guardado.');
         return recargarDatos('gestion');
-      }).then(irEstados).catch(avisoError);
+      }).then(siSigue(irEstados)).catch(avisoError);
     }
 
     // --- Curso ---
@@ -2147,7 +2474,7 @@
       llamar('api_guardarConfig', datos).then(function () {
         aviso('Curso guardado.');
         return recargarDatos('gestion');
-      }).then(volverGestion).catch(avisoError);
+      }).then(siSigue(volverGestion)).catch(avisoError);
     }
 
     // --- Listas ---
@@ -2173,7 +2500,7 @@
       llamar('api_guardarLista', lista, valores).then(function () {
         aviso('Cambios guardados.');
         return recargarDatos('lista');
-      }).then(irListas).catch(avisoError);
+      }).then(siSigue(irListas)).catch(avisoError);
     }
 
     // ---------- Eventos ----------
@@ -2233,7 +2560,18 @@
       if (!el) return;
       const accion = el.getAttribute('data-accion');
       const dato = function (n) { return el.getAttribute('data-' + n); };
+      // Si este toque lanza una escritura (llamar), ese botón queda ocupado hasta que responda.
+      botonPulsado = el.tagName === 'BUTTON' ? el : null;
+      try {
+        accionClic(accion, el, dato);
+      } finally {
+        botonPulsado = null;
+      }
+    });
+
+    function accionClic(accion, el, dato) {
       switch (accion) {
+        case 'reintentar-carga': if (app.reintentar) app.reintentar(); break;
         case 'nav': irSeccion(dato('destino')); break;
         case 'pase': abrirPase(dato('grupo'), dato('fecha'), irInicio); break;
         case 'grupo': abrirGrupo(dato('grupo'), 'lista', irInicio); break;
@@ -2294,7 +2632,7 @@
         // Historial
         case 'mes': app.hist.mes = sumarMes(app.hist.mes, Number(dato('salto'))); cargarHistorial(); break;
         case 'pase-historial': abrirPase(app.hist.grupo_id, dato('fecha'), volverAHistorial); break;
-        case 'ficha': abrirFicha(dato('usuario'), app.vista === 'historial' ? volverAHistorial : irUsuarios); break;
+        case 'ficha': abrirFicha(dato('usuario'), app.vista === 'historial' ? volverAHistorial : irUsuarios, dato('nombre')); break;
         // Informe
         case 'ver-informe': verInforme(); break;
         case 'exportar-informe': exportarInforme(); break;
@@ -2324,7 +2662,7 @@
         case 'g-listas': irListas(); break;
         case 'g-guardar-lista': guardarLista(dato('lista'), dato('campo')); break;
       }
-    });
+    }
 
     document.addEventListener('input', function (ev) {
       if (ev.target.id === 'textoBuscar') buscar();
@@ -2417,16 +2755,20 @@
 
     // ---------- Arranque ----------
 
-    llamar('api_init').then(function (d) {
-      app.init = d;
-      app.fecha = d.hoy;
-      memoriaDesde = Date.now();
-      recuperarPorGuardar();
-      irInicio();
-      precargar();
-    }).catch(function (e) {
-      barra('Asistencia', '', null);
-      $('vista').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>';
-    });
+    // Si api_init falla (sin conexión, por ejemplo), la pantalla lo dice y ofrece «Reintentar».
+    function arrancar() {
+      llamar('api_init').then(function (d) {
+        app.init = d;
+        app.fecha = d.hoy;
+        memoriaDesde = Date.now();
+        recuperarPorGuardar();
+        irInicio();
+        precargar();
+      }).catch(function (e) {
+        barra('Asistencia', '', null);
+        errorEnVista(e, function () { pintar(esqueleto('inicio'), true); arrancar(); });
+      });
+    }
+    arrancar();
   })();
 </script>

@@ -209,7 +209,7 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
 |---|---|---|---|
 | 1 · Pase de lista más limpio y textos | Hecha | 4-nov-2026 | `ef176a6` |
 | 2 · Navegación nativa | Hecha | 4-nov-2026 | `022b70f` |
-| 3 · Carga, errores y progreso | Pendiente | | |
+| 3 · Carga, errores y progreso | Hecha | 4-nov-2026 | |
 | 4 · Avisos abajo y «Deshacer» | Pendiente | | |
 | 5 · Pase de lista e Inicio | Pendiente | | |
 | 6 · Historial e Informe | Pendiente | | |
@@ -232,3 +232,11 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
   - Atrás del móvil: en la simulación funciona con `history.back()` en la consola; en Google no se ha probado si el gesto atrás de Android llega dentro del marco.
   - El pase de Costura (grupo vacío) sale como pendiente y «Guardar y seguir» lleva a él; ya está en la fase 5 (P4).
   - Historial abre Costura (vacío) por ser el primero; ya está en la fase 6 (P20).
+- **Fase 3 (4-nov-2026):**
+  - Carga: toda pantalla que pide datos pasa por `cargarPantalla(funcion, args, alPreparar, alPintar, reintentar, refresco)`; `alPreparar` abre la pantalla y pinta el esqueleto con `pintar(html, true)`, que hace la transición y guarda el scroll recordado para cuando lleguen los datos. Con esqueleto, `alPintar` no vuelve a llamar a `pantallaSecundaria` (solo `barra`), para no duplicar la entrada de la pila.
+  - Sin velo, la pantalla se puede tocar mientras se espera: `app.nav` sube con cada cambio de pantalla y se usa para ignorar respuestas viejas; tras una escritura, `siSigue(fn)` solo vuelve a pintar si se sigue en la misma pantalla. Una pantalla nueva que pida datos debe usar `cargarPantalla` o comprobar `app.nav`.
+  - Botón ocupado: `llamar()` ocupa el último botón pulsado (`botonPulsado`, lo pone el manejador de clics). Si una escritura va bien y no vuelve a pintar la pantalla ni cierra el panel, hay que llamar a `soltarBotones()` (como en `inscribir` y `avisarParecidos`). Texto en gerundio: `data-en-curso`, `EN_CURSO` o «Guardando…»; `confirmar()` lo recibe como último parámetro.
+  - Los errores de las escrituras siguen saliendo en el aviso flotante de arriba: es la fase 4 (P5).
+  - Si falla Inicio (por ejemplo, al cambiar de día sin conexión), la pantalla de error sustituye también al selector de fecha; se puede volver con «Reintentar» o con la barra inferior. Si molesta, dejar el selector encima del error.
+  - En Alta, al inscribir, el resultado ya cambia en el sitio a «Ya está en el grupo» (parte de P23 de la fase 7). El orden buscador / fecha no se ha tocado.
+  - Un pase de lista de un grupo que no está en `app.init.grupos` (por ejemplo, inactivo) se titula «Pase de lista» mientras carga y luego toma su nombre.
