@@ -87,5 +87,18 @@
       };
     } });
   }
-  window.google = { script: { run: runner(null, null) } };
+  // google.script.history: en Apps Script cambia el historial de la página de arriba (fuera del marco).
+  // Aquí, con history.pushState y popstate, sin tocar la dirección (que lleva los parámetros de la simulación).
+  // En la consola, SIM.historial lista las entradas añadidas.
+  window.SIM.historial = [];
+  // En Apps Script la app va en un marco y el navegador no mueve su scroll al ir atrás: aquí tampoco.
+  history.scrollRestoration = 'manual';
+  const historia = {
+    push: function (estado) { window.SIM.historial.push(JSON.stringify(estado)); history.pushState(estado === undefined ? null : estado, ''); },
+    replace: function (estado) { history.replaceState(estado === undefined ? null : estado, ''); },
+    setChangeHandler: function (fn) {
+      window.addEventListener('popstate', function (e) { fn({ state: e.state, location: { hash: location.hash.replace(/^#/, ''), parameter: {}, parameters: {} } }); });
+    }
+  };
+  window.google = { script: { run: runner(null, null), history: historia } };
 })();

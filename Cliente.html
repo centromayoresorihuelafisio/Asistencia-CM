@@ -19,7 +19,10 @@
       guardando: {},     // pases de lista guardándose en segundo plano: 'grupo|fecha' → 'guardando' o 'error'
       porGuardar: {},    // listas enviadas aún sin confirmar: 'grupo|fecha' → { payload, nombre, intentos, rechazo… } (enviarGuardado)
       hechos: {},        // pases guardados o cancelados en esta visita: 'grupo|fecha' → true
-      ultimoInicio: null // últimos datos de api_inicio recibidos (para el siguiente pase mientras se vuelven a pedir)
+      ultimoInicio: null, // últimos datos de api_inicio recibidos (para el siguiente pase mientras se vuelven a pedir)
+      pila: [],          // pantallas abiertas, de la principal a la actual (cambiarPantalla)
+      scrolls: {},       // scroll de cada pantalla de la pila, para recuperarlo al volver
+      pantallaNueva: null // scroll y transición pendientes para el próximo pintar()
     };
 
     const $ = function (id) { return document.getElementById(id); };
@@ -426,17 +429,93 @@
     function avisoError(e) { aviso(e.message, true); }
 
     // ---------- Panel inferior ----------
+    // Sube desde abajo al abrirse y baja al cerrarse (MS_PANEL). Si se abre otro mientras está abierto o bajando
+    // (por ejemplo, una confirmación dentro de un panel), solo cambia el contenido: no parpadea.
+    // El foco va al título al abrir y vuelve al botón que lo abrió al cerrar. Lo cierran Escape, el botón atrás
+    // del móvil (sección «Atrás del móvil») y arrastrar el asa hacia abajo más de MIN_ARRASTRE px.
+
+    const MS_PANEL = 200;
+    const MIN_ARRASTRE = 80;
+    let panelCierre = null;   // temporizador que oculta el panel al terminar de bajar
+    let panelOrigen = null;   // { el, id, accion }: lo que tenía el foco al abrir
+
+    function panelAbierto() {
+      const p = $('panel');
+      return !p.classList.contains('oculto') && !p.classList.contains('cerrando');
+    }
 
     function abrirPanel(html) {
-      $('panel').innerHTML = html;
-      $('panel').classList.remove('oculto');
-      $('fondoPanel').classList.remove('oculto');
-      $('panel').scrollTop = 0;
+      const panel = $('panel');
+      const fondo = $('fondoPanel');
+      if (panelCierre) { clearTimeout(panelCierre); panelCierre = null; }
+      if (panel.classList.contains('oculto')) {
+        const el = document.activeElement;
+        if (el && el !== document.body && !panel.contains(el)) {
+          // Si al cerrar el botón ya no está (la fila se vuelve a pintar), se busca por el id de su fila.
+          const conId = el.closest('[id]');
+          panelOrigen = { el: el, id: conId && conId.id !== 'vista' && conId.id !== 'listaUsuarios' ? conId.id : '', accion: el.getAttribute('data-accion') };
+        } else {
+          panelOrigen = null;
+        }
+      }
+      panel.innerHTML = '<div class="panel-asa" aria-hidden="true"></div>' + html;
+      panel.classList.remove('oculto', 'cerrando', 'arrastrando');
+      fondo.classList.remove('oculto', 'cerrando');
+      panel.removeAttribute('inert');
+      panel.style.transform = '';
+      panel.scrollTop = 0;
+      const titulo = panel.querySelector('h3');
+      if (titulo) {
+        titulo.id = 'tituloPanel';
+        titulo.setAttribute('tabindex', '-1');
+        panel.setAttribute('aria-labelledby', 'tituloPanel');
+        titulo.focus({ preventScroll: true });
+      } else {
+        panel.removeAttribute('aria-labelledby');
+      }
+      sincronizarHistorial();
     }
+
     function cerrarPanel() {
-      $('panel').classList.add('oculto');
-      $('fondoPanel').classList.add('oculto');
-      $('panel').innerHTML = '';
+      const panel = $('panel');
+      const fondo = $('fondoPanel');
+      if (panel.classList.contains('oculto') || panel.classList.contains('cerrando')) return;
+      // Mientras baja se sigue viendo, pero sin ids (para que nadie lea sus campos) y sin poder tocarlo.
+      panel.querySelectorAll('[id]').forEach(function (el) { el.removeAttribute('id'); });
+      panel.setAttribute('inert', '');
+      panel.classList.remove('arrastrando');
+      panel.style.transform = '';
+      panel.classList.add('cerrando');
+      fondo.classList.add('cerrando');
+      panelCierre = setTimeout(function () {
+        panelCierre = null;
+        panel.classList.add('oculto');
+        fondo.classList.add('oculto');
+        panel.classList.remove('cerrando');
+        fondo.classList.remove('cerrando');
+        panel.removeAttribute('inert');
+        panel.innerHTML = '';
+      }, MS_PANEL);
+      const origen = panelOrigen;
+      panelOrigen = null;
+      if (origen) {
+        // Después de que quien cerró el panel vuelva a pintar lo que haga falta (cerrarPanelUsuario repinta la fila).
+        setTimeout(function () {
+          if (panelAbierto()) return;
+          let el = origen.el.isConnected ? origen.el : null;
+          if (!el && origen.id && $(origen.id)) {
+            const fila = $(origen.id);
+            el = (origen.accion && fila.querySelector('[data-accion="' + origen.accion + '"]')) || fila;
+          }
+          if (el && ($('vista').contains(el) || $('pie').contains(el))) el.focus({ preventScroll: true });
+        }, 0);
+      }
+    }
+
+    /** Cerrar como al tocar fuera: el panel de un usuario del pase guarda antes sus observaciones. */
+    function cerrarPanelComoFondo() {
+      if (app.vista === 'pase' && app.pase && $('obsUsuario')) cerrarPanelUsuario(null);
+      else cerrarPanel();
     }
 
     /** Panel de confirmación: al aceptar se ejecuta alAceptar. */
@@ -518,21 +597,108 @@
 
     /** Prepara una pantalla principal (con barra inferior). */
     function pantallaPrincipal(seccion, titulo, sub) {
+      cambiarPantalla(true, seccion, seccion);
       app.vista = seccion;
       app.pase = null;
       cerrarPanel();
       pie('');
       barra(titulo, sub, null);
       navegacion(seccion);
+      sincronizarHistorial();
     }
 
     /** Prepara una pantalla secundaria (con «Volver» y sin barra inferior). */
     function pantallaSecundaria(vista, titulo, sub, alVolver) {
+      cambiarPantalla(false, vista, vista + '|' + titulo);
       app.vista = vista;
       cerrarPanel();
       pie('');
       barra(titulo, sub, alVolver);
       navegacion(null);
+      sincronizarHistorial();
+    }
+
+    // ---------- Pila de pantallas: scroll y transiciones (4-nov-2026) ----------
+    // app.pila guarda las pantallas abiertas, de la principal a la actual (clave: vista y título). Al abrir una
+    // pantalla se mira si ya está en la pila: entonces se está volviendo (con «Volver», con el atrás del móvil o
+    // tras guardar) y se recupera su scroll; si no, es nueva y empieza arriba. Una pantalla principal (barra
+    // inferior) vacía la pila. Un pase de lista que sigue a otro («Guardar y seguir») ocupa su sitio.
+    // pintar() aplica el scroll y la transición la primera vez que se pinta la pantalla.
+
+    const MS_TRANSICION = 250;   // algo más que --dur-pantalla, para quitar la clase al terminar
+    let temporizadorTransicion = null;
+
+    function cambiarPantalla(principal, vista, clave) {
+      const pila = app.pila;
+      const actual = pila.length ? pila[pila.length - 1] : null;
+      if (actual) app.scrolls[actual] = window.scrollY;
+      let anim = null;
+      let y = 0;
+      const i = pila.indexOf(clave);
+      if (clave === actual) {
+        y = window.scrollY;                       // la misma pantalla con datos nuevos: no se mueve
+      } else if (i >= 0) {
+        pila.length = i + 1;                      // se vuelve a una pantalla anterior
+        anim = 'atras';
+        y = app.scrolls[clave] || 0;
+      } else if (principal) {
+        app.pila = [clave];                       // desde la barra inferior (o al arrancar)
+        anim = actual ? 'fundido' : null;
+      } else {
+        if (actual && actual.split('|')[0] === vista) pila.pop();
+        pila.push(clave);
+        anim = 'adelante';
+      }
+      app.pantallaNueva = { anim: anim, y: y };
+    }
+
+    function animarVista(anim) {
+      const v = $('vista');
+      clearTimeout(temporizadorTransicion);
+      v.classList.remove('anim-adelante', 'anim-atras', 'anim-fundido');
+      void v.offsetWidth;   // para que la animación vuelva a empezar
+      v.classList.add('anim-' + anim);
+      temporizadorTransicion = setTimeout(function () { v.classList.remove('anim-' + anim); }, MS_TRANSICION);
+    }
+
+    // ---------- Atrás del móvil (4-nov-2026) ----------
+    // google.script.history funciona dentro del marco de Apps Script. Se añade una entrada al historial cuando
+    // hay algo a lo que volver: una pantalla que no es Inicio y, aparte, un panel abierto. El botón o el gesto
+    // atrás quita una entrada y llama a atras(), que hace lo mismo que «Volver» (o cierra el panel, o va a Inicio).
+    // Al volver con los botones de la app, la entrada que sobra se aprovecha en la siguiente pulsación de atrás.
+    // Sin google.script.history (fuera de Apps Script) no se hace nada.
+
+    const historia = window.google && google.script && google.script.history ? google.script.history : null;
+    let entradas = 0;   // entradas añadidas por la app por encima de la de partida
+
+    function entradasNecesarias() {
+      return (app.vista !== 'inicio' ? 1 : 0) + (panelAbierto() ? 1 : 0);
+    }
+    function sincronizarHistorial() {
+      if (!historia) return;
+      try {
+        while (entradas < entradasNecesarias()) {
+          entradas++;
+          historia.push({ n: entradas });
+        }
+      } catch (e) { /* sin historial: el botón atrás saldrá de la app */ }
+    }
+    function atras() {
+      if (!app.init) return;
+      if (panelAbierto()) cerrarPanelComoFondo();
+      else if (app.alVolver) app.alVolver();
+      else if (app.vista !== 'inicio') irInicio();
+      else if (!entradas) aviso('Pulsa atrás otra vez para salir.');
+    }
+    if (historia) {
+      try {
+        historia.setChangeHandler(function (e) {
+          const n = e && e.state && typeof e.state.n === 'number' ? e.state.n : 0;
+          if (n >= entradas) { entradas = n; return; }   // adelante: no se hace nada
+          entradas = n;
+          atras();
+        });
+      } catch (e) { /* sin historial */ }
     }
 
     function irSeccion(destino) {
@@ -542,9 +708,13 @@
       else irInicio();
     }
 
+    /** Pinta la vista. La primera vez tras cambiar de pantalla, con su scroll y su transición (cambiarPantalla). */
     function pintar(html) {
       $('vista').innerHTML = html;
-      window.scrollTo(0, 0);
+      const n = app.pantallaNueva;
+      app.pantallaNueva = null;
+      window.scrollTo(0, n ? n.y : 0);
+      if (n && n.anim) animarVista(n.anim);
     }
 
     // ---------- Inicio ----------
@@ -2045,6 +2215,11 @@
     });
     // Las filas con role="button" responden también a Intro y Espacio.
     document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && panelAbierto()) {
+        ev.preventDefault();
+        cerrarPanelComoFondo();
+        return;
+      }
       if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches && ev.target.matches('[role="button"][data-accion]')) {
         ev.preventDefault();
         ev.target.click();
@@ -2171,10 +2346,31 @@
       }
     });
 
-    $('fondoPanel').addEventListener('click', function () {
-      if (app.vista === 'pase' && $('obsUsuario')) cerrarPanelUsuario(null);
-      else cerrarPanel();
+    $('fondoPanel').addEventListener('click', cerrarPanelComoFondo);
+
+    // Arrastrar el asa del panel hacia abajo: lo sigue con el dedo y, pasados MIN_ARRASTRE px, lo cierra.
+    let arrastre = null;
+    $('panel').addEventListener('pointerdown', function (ev) {
+      if (!ev.target.closest('.panel-asa') || !panelAbierto()) return;
+      arrastre = { y: ev.clientY, dy: 0, id: ev.pointerId };
+      try { ev.target.setPointerCapture(ev.pointerId); } catch (e) { /* sin captura: sigue igual */ }
+      $('panel').classList.add('arrastrando');
     });
+    $('panel').addEventListener('pointermove', function (ev) {
+      if (!arrastre || ev.pointerId !== arrastre.id) return;
+      arrastre.dy = Math.max(0, ev.clientY - arrastre.y);
+      $('panel').style.transform = 'translateY(' + arrastre.dy + 'px)';
+    });
+    function soltarArrastre(ev) {
+      if (!arrastre || ev.pointerId !== arrastre.id) return;
+      const dy = arrastre.dy;
+      arrastre = null;
+      $('panel').classList.remove('arrastrando');
+      if (dy > MIN_ARRASTRE) cerrarPanelComoFondo();
+      else $('panel').style.transform = '';
+    }
+    $('panel').addEventListener('pointerup', soltarArrastre);
+    $('panel').addEventListener('pointercancel', soltarArrastre);
     $('btnVolver').addEventListener('click', function () {
       if (app.alVolver) app.alVolver();
     });

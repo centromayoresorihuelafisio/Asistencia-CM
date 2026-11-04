@@ -208,7 +208,7 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
 | Fase | Estado | Fecha | Commit |
 |---|---|---|---|
 | 1 · Pase de lista más limpio y textos | Hecha | 4-nov-2026 | `ef176a6` |
-| 2 · Navegación nativa | Pendiente | | |
+| 2 · Navegación nativa | Hecha | 4-nov-2026 | (este commit) |
 | 3 · Carga, errores y progreso | Pendiente | | |
 | 4 · Avisos abajo y «Deshacer» | Pendiente | | |
 | 5 · Pase de lista e Inicio | Pendiente | | |
@@ -226,3 +226,9 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
   - Gestión › Estados › Nuevo estado sigue pidiendo un «Código interno»; se podría generar solo a partir del nombre (fase 7, editor de Estados).
   - Con el gris nuevo (`#5f6368`), los textos de ejemplo de los campos (`placeholder`) se parecen más a un valor escrito; si molesta, darles un gris propio (fase 7, formularios).
   - El chip de los estados distintos de Asistido sigue con `min-width: 104px`; si en la fase 5 se quiere más sitio para el nombre cuando alguien falta, bajarlo.
+- **Fase 2 (4-nov-2026):**
+  - Navegación: toda pantalla pasa por `pantallaPrincipal` o `pantallaSecundaria`, que deciden con `app.pila` si se entra o se vuelve (clave: vista y título); `pintar()` aplica el scroll y la transición la primera vez. Si una fase nueva pinta una pantalla sin `pintar()` (por ejemplo, los esqueletos de la fase 3), que use `pintar()` o lea `app.pantallaNueva`, o se perderán el scroll recordado y la transición.
+  - Paneles: `cerrarPanel()` ya no vacía el panel al momento (baja durante 200 ms); quita los `id` de su contenido para que nadie lea sus campos. Leer los campos del panel **antes** de cerrarlo. Para saber si hay un panel abierto, `panelAbierto()`. El primer `<h3>` del panel es su título (foco y `aria-labelledby`).
+  - Atrás del móvil: en la simulación funciona con `history.back()` en la consola; en Google no se ha probado si el gesto atrás de Android llega dentro del marco.
+  - El pase de Costura (grupo vacío) sale como pendiente y «Guardar y seguir» lleva a él; ya está en la fase 5 (P4).
+  - Historial abre Costura (vacío) por ser el primero; ya está en la fase 6 (P20).

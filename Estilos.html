@@ -102,6 +102,9 @@
     --dur-1: 100ms;
     --dur-2: 180ms;
     --dur-3: 280ms;
+    --dur-pantalla: 200ms;   /* entrar en una pantalla o volver de ella */
+    --dur-seccion:  150ms;   /* cambiar de pestaña en la barra inferior */
+    --dur-panel:    200ms;   /* el panel inferior al bajar (Cliente.html, MS_PANEL) */
     --dur-giro:    .8s;
     --dur-barrido: 1s;
     --ease: cubic-bezier(.2, 0, 0, 1);
@@ -120,6 +123,9 @@
   @keyframes md-sube    { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes md-barrido { from { background-position: -40% 0; } to { background-position: 140% 0; } }
   @keyframes md-onda    { 0% { transform: scale(0); opacity: .16; } 60% { opacity: .12; } 100% { transform: scale(1); opacity: 0; } }
+  @keyframes md-desde-derecha   { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+  @keyframes md-desde-izquierda { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+  @keyframes md-fundido { from { opacity: 0; } to { opacity: 1; } }
   @keyframes md-latido  { from { opacity: .35; } to { opacity: 1; } }
   /* Icono del chip al cambiar de estado: aparece desde pequeño (corto y sin rebote) */
   @keyframes md-icono   { from { opacity: 0; transform: scale(.4) rotate(-45deg); } to { opacity: 1; transform: none; } }
@@ -811,13 +817,22 @@
   .contadores .chip svg { width: 18px; height: 18px; }
   .pie .botones + .botones { margin-top: 8px; }
 
-  /* Panel inferior (hoja que sube desde abajo) */
+  /* Transiciones entre pantallas (Cliente.html, animarVista). Se animan los hijos y no la vista entera,
+     porque una transformación en la vista movería con ella el botón flotante (position: fixed). */
+  .vista.anim-adelante > * { animation: md-desde-derecha var(--dur-pantalla) var(--ease); }
+  .vista.anim-atras > *    { animation: md-desde-izquierda var(--dur-pantalla) var(--ease); }
+  .vista.anim-fundido > *  { animation: md-fundido var(--dur-seccion) var(--ease); }
+
+  /* Panel inferior (hoja que sube desde abajo y baja al cerrarse) */
   .fondo-panel {
     position: fixed;
     inset: 0;
     z-index: var(--z-panel);
     background: var(--md-scrim);
+    animation: md-fundido var(--dur-3) var(--ease);
+    transition: opacity var(--dur-panel) var(--ease);
   }
+  .fondo-panel.cerrando { opacity: 0; pointer-events: none; }
   .panel {
     position: fixed;
     left: 0;
@@ -831,8 +846,22 @@
     border-radius: var(--md-shape-xl) var(--md-shape-xl) 0 0;
     box-shadow: var(--md-elev-3);
     animation: md-sube var(--dur-3) var(--ease);
+    transition: transform var(--dur-panel) var(--ease);
   }
-  .panel::before {
+  .panel.cerrando { transform: translateY(100%); pointer-events: none; }
+  .panel.arrastrando { transition: none; }
+  /* Asa: zona de 28 px arriba del panel que se arrastra hacia abajo para cerrarlo */
+  .panel > .panel-asa {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    max-width: none;
+    height: 28px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .panel-asa::before {
     content: "";
     position: absolute;
     top: 10px;
@@ -844,6 +873,8 @@
     background: var(--md-outline-strong);
     opacity: .5;
   }
+  .panel h3:focus { outline: none; }
+  .panel h3:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 2px; border-radius: var(--md-shape-xs); }
   .panel > * { max-width: 720px; margin-left: auto; margin-right: auto; }
   .panel h3 { margin: 0 0 12px; font-size: var(--fs-title); font-weight: 600; line-height: 1.3; }
   .panel p { margin: 0 0 16px; color: var(--md-on-surface-med); line-height: 1.45; }
@@ -1162,7 +1193,7 @@
 
   /* Reducir movimiento: una sola llave. El girador sigue girando (es información), más despacio */
   @media (prefers-reduced-motion: reduce) {
-    :root { --dur-1: .01ms; --dur-2: .01ms; --dur-3: .01ms; --dur-giro: 1.6s; }
-    .panel, .aviso, .fab { animation: none; }
+    :root { --dur-1: .01ms; --dur-2: .01ms; --dur-3: .01ms; --dur-pantalla: .01ms; --dur-seccion: .01ms; --dur-panel: .01ms; --dur-giro: 1.6s; }
+    .panel, .fondo-panel, .aviso, .fab, .vista[class*="anim-"] > * { animation: none; }
   }
 </style>
