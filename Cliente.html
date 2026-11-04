@@ -1724,12 +1724,19 @@
       const p = app.pase;
       // Se busca antes de anticuar, que olvida los datos de Inicio de donde sale.
       const siguiente = conSiguiente ? siguientePase(p) : null;
+      // Si ya estaba sin clase, no hay nada que deshacer (deshacer la dejaría como hecha o pendiente).
+      const yaCancelada = !!(p.sesion && p.sesion.estado === 'cancelada');
+      const c = { grupo_id: p.grupo.grupo_id, fecha: p.fecha, nombre: p.grupo.nombre };
       llamar('api_cancelarSesion', p.grupo.grupo_id, p.fecha, $('motivoCancelar').value.trim()).then(function () {
-        app.hechos[claveBorrador(p.grupo.grupo_id, p.fecha)] = true;
-        olvidarPorGuardar(claveBorrador(p.grupo.grupo_id, p.fecha));
+        const clave = claveBorrador(p.grupo.grupo_id, p.fecha);
+        app.hechos[clave] = true;
+        olvidarPorGuardar(clave);
+        // El borrador (las marcas sin guardar) se guarda aparte por si se deshace.
+        const borrador = leerBorradorTexto(clave);
         borrarBorrador(p.grupo.grupo_id, p.fecha);
         anticuar('sesion', p.grupo.grupo_id, p.fecha);
-        aviso('Marcada sin clase.');
+        if (yaCancelada) aviso(textoConFecha('Sin clase · ' + c.nombre, c.fecha));
+        else avisoDeshacer(textoConFecha('Sin clase · ' + c.nombre, c.fecha), function () { deshacerNoHubo(c, borrador, true); });
         // Si mientras tanto se ha ido a otra pantalla, no se la cambia.
         if (app.pase === p && app.vista === 'pase') seguirTrasPase(p, siguiente);
         precargar();
@@ -1788,14 +1795,17 @@
       }).catch(avisoError);
     }
 
-    /** «Deshacer» tras «No hubo clase» en Inicio: la clase vuelve a Pendientes, con su borrador si lo tenía. */
-    function deshacerNoHubo(c, borrador) {
+    /**
+     * «Deshacer» tras «No hubo clase» (en Inicio o en el pase): la clase vuelve a como estaba (hecha si tenía marcas
+     * guardadas; si no, pendiente), con su borrador si lo tenía. desdePase: el aviso no habla de Pendientes.
+     */
+    function deshacerNoHubo(c, borrador, desdePase) {
       const clave = claveBorrador(c.grupo_id, c.fecha);
       llamar('api_deshacerCancelar', c.grupo_id, c.fecha).then(function () {
         delete app.hechos[clave];
         if (borrador) { try { window.localStorage.setItem(clave, borrador); } catch (e) { /* se ignora */ } }
         anticuar('sesion', c.grupo_id, c.fecha);
-        aviso(textoConFecha('Vuelve a Pendientes · ' + c.nombre, c.fecha));
+        aviso(textoConFecha((desdePase ? 'Clase recuperada · ' : 'Vuelve a Pendientes · ') + c.nombre, c.fecha));
         refrescarVista();
         precargar();
       }).catch(avisoError);
@@ -2341,8 +2351,16 @@
         (r.especiales ? '<span class="etiqueta especial">' + cuantas(r.especiales, 'día libre', 'días libres') + '</span>' : '') +
         '</div></div>';
 
-      if (!d.columnas.length || !d.filas.length) {
-        html += '<p class="vacio">' + (d.columnas.length ? 'No hubo usuarios inscritos en este mes.' : 'No hay clases en este mes.') + '</p>';
+      if (!d.columnas.length) {
+        html += '<p class="vacio">No hay clases en este mes.</p>';
+        pintar(html);
+        return;
+      }
+      if (!d.filas.length) {
+        // Grupo sin nadie inscrito en el mes: el mismo estado vacío que el pase de lista, con «Inscribir usuarios».
+        html += '<div class="estado-vacio">' + ICONO_SIN_USUARIOS +
+          '<h2>Sin usuarios</h2><p>Este grupo no tuvo a nadie inscrito en ' + esc(nombreMes(app.hist.mes)) + '.</p>' +
+          '<button type="button" class="boton primario" data-accion="hist-inscribir">Inscribir usuarios</button></div>';
         pintar(html);
         return;
       }
@@ -2368,7 +2386,8 @@
           const c = d.columnas[i];
           if (codigo === '-') { html += '<td class="no-inscrito" title="No estaba en el grupo">·</td>'; return; }
           if (!codigo) {
-            html += '<td class="' + claseColumna(c).trim() + '">' + (c.estado === 'cancelada' ? 'C' : '') + '</td>';
+            // Sin clase: una raya (antes «C», de «Cancelada»), como en la leyenda.
+            html += '<td class="' + claseColumna(c).trim() + '"' + (c.estado === 'cancelada' ? ' title="Sin clase">–' : '>') + '</td>';
             return;
           }
           const e = estadoInfo(codigo, d.estados);
@@ -2385,7 +2404,7 @@
       html += '<div class="leyenda">' + d.estados.filter(function (e) { return e.activo; }).map(function (e) {
         return '<span><span class="celda" style="' + estiloColor(e.color) + '">' + esc(e.letra) + '</span> ' + esc(e.etiqueta) + '</span>';
       }).join('') +
-        '<span><span class="celda muestra col-cancelada">C</span> Sin clase</span>' +
+        '<span><span class="celda muestra col-cancelada">–</span> Sin clase</span>' +
         '<span><span class="celda muestra col-pendiente"></span> Sin pasar lista</span>' +
         '<span><span class="celda muestra col-especial"></span> Día libre</span>' +
         '<span><span class="celda muestra no-inscrito">·</span> No estaba en el grupo</span></div>';
@@ -3257,6 +3276,7 @@
         }
         // Historial
         case 'mes': app.hist.mes = sumarMes(app.hist.mes, Number(dato('salto'))); cargarHistorial(); break;
+        case 'hist-inscribir': abrirGrupo(app.hist.grupo_id, 'alta', volverAHistorial); break;
         case 'pase-historial': abrirPase(app.hist.grupo_id, dato('fecha'), volverAHistorial); break;
         case 'ficha': abrirFicha(dato('usuario'), app.vista === 'historial' ? volverAHistorial : irUsuarios, dato('nombre')); break;
         // Informe

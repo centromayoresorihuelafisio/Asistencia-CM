@@ -550,7 +550,7 @@ function altaUsuario_(monitora, grupoId, datos) {
     const nombre = existente ? existente.nombre : normalizarNombre_(datos.nombre);
     if (!nombre) throw errorApp_('No existe ningún usuario con el ID ' + id + '. Escribe su nombre para crearlo.');
     if (existente && haySolape_(id, grupoId, fechaAlta, null)) {
-      throw errorApp_(nombre + ' ya está inscrito/a en este grupo en esas fechas.');
+      throw errorApp_(nombre + ': ya está en el grupo en esas fechas.');
     }
     // Usuario nuevo con un nombre parecido a otro: no se crea hasta que la monitora lo confirme.
     if (creado && !datos.crear_aunque_parecido) {
