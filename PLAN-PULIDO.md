@@ -212,7 +212,7 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
 | 3 · Carga, errores y progreso | Hecha | 4-nov-2026 | `31059e2` |
 | 4 · Avisos abajo y «Deshacer» | Hecha | 4-nov-2026 | `59a834b` |
 | 5 · Pase de lista e Inicio | Hecha | 4-nov-2026 | `6abeeff` |
-| 6 · Historial e Informe | Pendiente | | |
+| 6 · Historial e Informe | Hecha | 4-nov-2026 | `d235b09` |
 | 7 · Formularios y coherencia | Pendiente | | |
 
 ## Notas para fases siguientes
@@ -253,3 +253,8 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
   - A 360 px la ayuda del pase («Toca para marcar falta · Mantén pulsado para más») ocupa dos líneas por unos píxeles; a 375 px, una. Se dejó que salte de línea en vez de cortarla.
   - El botón «Sin clase» del panel de un pendiente sigue diciendo «Guardando…» mientras espera (no tiene `data-en-curso`); mejor «Marcando sin clase…» (fase 7).
   - El estado vacío del pase reutiliza el aspecto de `.estado-error` (`.estado-vacio`); en la fase 6, el Historial de un grupo vacío podría usar el mismo.
+- **Fase 6 (4-nov-2026):**
+  - La cuadrícula del Historial se desplaza dentro de `.marco-historial` (alto máximo `100dvh - 180px`: la barra de arriba mide 64 px y la de abajo 83). Si la página está bajada hasta la leyenda, la parte de arriba del marco queda oculta bajo la barra y la cabecera fija no se ve hasta subir un poco; no se ha cambiado.
+  - El Historial de un grupo vacío sigue con el texto «No hubo usuarios inscritos en este mes.», sin el estado vacío del pase; tampoco se cambió la letra «C» de las columnas sin clase (nota de la fase 1). Con un mes sin clases hechas, la cifra grande sale como «—».
+  - El Informe ya no tiene botón «Ver informe»: el periodo se elige en un panel (`abrirPanelPeriodo`, filas `.opcion-menu` con `.elegida`) y el taller se aplica al cambiar el `<select>` (en la fase 7, el taller podría ser también un botón con panel, como el periodo).
+  - «Por mes» sigue como tabla con scroll lateral (no estaba en P21).
