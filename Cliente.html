@@ -349,18 +349,28 @@
     let llamadasEnCurso = 0;
     let temporizadorCarga = null;
 
+    let esperaLarga = false;   // hay llamadas en curso desde hace más de 150 ms
+
     /** Barra fina de arriba mientras se espera al servidor (sin velo: la pantalla se puede seguir usando). */
     function cargando(sumar) {
       llamadasEnCurso += sumar;
       if (llamadasEnCurso > 0 && !temporizadorCarga) {
-        temporizadorCarga = setTimeout(function () { $('barraCarga').classList.remove('oculto'); }, 150);
+        temporizadorCarga = setTimeout(function () { esperaLarga = true; mostrarBarraCarga(); }, 150);
       }
       if (llamadasEnCurso <= 0) {
         llamadasEnCurso = 0;
         clearTimeout(temporizadorCarga);
         temporizadorCarga = null;
-        $('barraCarga').classList.add('oculto');
+        esperaLarga = false;
+        mostrarBarraCarga();
       }
+    }
+    /**
+     * Mientras la pantalla enseña su esqueleto, la barra no sale: una sola señal de carga (4-nov-2026).
+     * Sale si se espera al servidor sin esqueleto (al guardar, o al volver a pedir una pantalla ya pintada).
+     */
+    function mostrarBarraCarga() {
+      $('barraCarga').classList.toggle('oculto', !esperaLarga || !!$('vista').querySelector('.esqueleto'));
     }
 
     // --- Botón esperando al servidor (4-nov-2026) ---
@@ -1030,6 +1040,7 @@
       app.pantallaNueva = esEsqueleto && n ? { anim: null, y: n.y } : null;
       window.scrollTo(0, n && !esEsqueleto ? n.y : 0);
       if (n && n.anim) animarVista(n.anim);
+      mostrarBarraCarga();   // con esqueleto, sin barra arriba
       colocarAviso();   // la pantalla nueva puede tener botón flotante
     }
 
