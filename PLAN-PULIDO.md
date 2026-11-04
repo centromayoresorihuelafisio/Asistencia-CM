@@ -213,7 +213,7 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
 | 4 · Avisos abajo y «Deshacer» | Hecha | 4-nov-2026 | `59a834b` |
 | 5 · Pase de lista e Inicio | Hecha | 4-nov-2026 | `6abeeff` |
 | 6 · Historial e Informe | Hecha | 4-nov-2026 | `d235b09` |
-| 7 · Formularios y coherencia | Pendiente | | |
+| 7 · Formularios y coherencia | Hecha | 4-nov-2026 | (este commit) |
 
 ## Notas para fases siguientes
 
@@ -258,3 +258,8 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
   - El Historial de un grupo vacío sigue con el texto «No hubo usuarios inscritos en este mes.», sin el estado vacío del pase; tampoco se cambió la letra «C» de las columnas sin clase (nota de la fase 1). Con un mes sin clases hechas, la cifra grande sale como «—».
   - El Informe ya no tiene botón «Ver informe»: el periodo se elige en un panel (`abrirPanelPeriodo`, filas `.opcion-menu` con `.elegida`) y el taller se aplica al cambiar el `<select>` (en la fase 7, el taller podría ser también un botón con panel, como el periodo).
   - «Por mes» sigue como tabla con scroll lateral (no estaba en P21).
+- **Fase 7 (4-nov-2026):**
+  - Plan terminado. Quedan sin hacer, de las notas anteriores: el texto del servidor «ya está inscrito/a» (`altaUsuario_` en `Servicio.gs`), la letra «C» de las columnas sin clase del Historial, el Historial de un grupo vacío con el estado vacío del pase, «No hubo clase» desde el pase sin «Deshacer», el taller del Informe como botón con panel y el gris propio de los textos de ejemplo (`placeholder`).
+  - Siguen como desplegable el usuario de la pestaña Baja, el taller de un grupo, «Afecta a» de los días libres, el grupo de la ficha y el del Historial (listas largas o con «+ Taller nuevo…»).
+  - En la búsqueda de Alta, a 360 px, los nombres con botón «Inscribir» ocupan dos líneas (unos 146 px de ancho); se dejó así.
+  - Las opciones usan `:has()` para el fondo de la elegida (Chrome 105+); sin él se ve solo el círculo marcado.

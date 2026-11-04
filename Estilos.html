@@ -1444,9 +1444,157 @@
   }
   .aviso-accion:active { background: var(--md-brillo); }
 
+  /* ---------- Formularios y piezas comunes (4-nov-2026, PLAN-PULIDO.md fase 7) ---------- */
+
+  /* Fila de una persona: iniciales de 40 px, nombre, detalle y la acción a la derecha (filaPersona en Cliente.html).
+     La misma en la Lista del grupo, la búsqueda de Alta, Gestión › Usuarios y el aviso de posibles duplicados. */
+  .fila-persona {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    min-height: 72px;
+    padding: 8px 8px 8px 16px;
+    margin-bottom: 6px;
+    border: 0;
+    border-radius: var(--md-shape-md);
+    background: var(--md-surface);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .fila-persona.tocable { cursor: pointer; }
+  .fila-persona.tocable:active { background: var(--md-surface-variant); }
+  .fila-persona.inactiva { opacity: .6; }
+  .fila-persona .cuerpo { flex: 1; min-width: 0; }
+  .fila-persona .nombre-persona { font-size: var(--fs-md); font-weight: 600; line-height: 1.3; }
+  .fila-persona .detalle { margin-top: 2px; font-size: var(--fs-sm); color: var(--md-on-surface-med); }
+  .fila-persona > .flecha { margin-right: 8px; }
+  .fila-persona > .etiqueta { flex: none; }
+  .fila-persona > .boton { flex: none; }
+  .fila-persona .ya-en-grupo { color: var(--md-success); font-weight: 600; }
+  .fila-persona > .etiqueta.inscrito { min-width: 96px; min-height: 40px; justify-content: center; }
+  .panel .fila-persona { background: var(--md-surface); }
+
+  /* Icono de 24 px delante de cada entrada de Gestión, en un círculo tonal */
+  .icono-entrada {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--md-secondary-container);
+    color: var(--md-on-secondary-container);
+  }
+  /* Letra de un estado en la lista de Gestión › Estados */
+  .celda.grande { flex: none; width: 40px; height: 40px; font-size: var(--fs-md); }
+
+  /* Opciones (radio) en vez de un desplegable: filas de 52 px con el círculo delante */
+  .opciones-radio {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-radius: var(--md-shape-lg);
+    overflow: hidden;
+  }
+  .opcion-radio {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: var(--alto-boton);
+    padding: 8px 14px;
+    background: var(--md-surface);
+    cursor: pointer;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .bloque .opcion-radio { background: var(--md-surface-container-low); }
+  .opcion-radio input {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    accent-color: var(--md-primary);
+  }
+  .opcion-radio:active { background: var(--md-surface-container-high); }
+  .opcion-radio:has(input:checked) { background: var(--md-secondary-container); color: var(--md-on-secondary-container); font-weight: 600; }
+  .opcion-radio:has(input:focus-visible) { outline: 2px solid var(--md-primary); outline-offset: -2px; }
+  .opcion-radio input:focus-visible { outline: none; }
+  .opcion-radio small { font-weight: 400; }
+
+  /* Fecha con atajos: Hoy, Ayer y Otra… (pastillas como los días de la semana) */
+  .atajos-fecha { display: flex; gap: 8px; }
+  .atajo-fecha {
+    position: relative;
+    flex: 1;
+    min-height: var(--alto-boton);
+    padding: 0 12px;
+    border: 1px solid var(--md-outline-strong);
+    border-radius: var(--md-shape-full);
+    background: var(--md-surface);
+    color: var(--md-on-surface);
+    font: inherit;
+    font-size: var(--fs-md);
+    font-weight: 600;
+    cursor: pointer;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+  }
+  .atajo-fecha[aria-pressed="true"] { background: var(--md-primary-container); border-color: transparent; color: var(--md-primary-dark); }
+  .atajo-fecha[aria-pressed="true"]::before { content: "\2713\00a0"; }
+  .campo-fecha input[type="date"] { margin-top: 8px; }
+
+  /* Buscador arriba de una lista */
+  .campo.buscador { margin-bottom: 12px; }
+  .campo.separado { margin-top: 16px; }
+
+  /* Error de validación bajo su campo (errorCampo): borde y texto en rojo, de 15 px */
+  .campo.con-error > label, .campo.con-error > .etiqueta-campo { color: var(--md-error); }
+  .campo.con-error input:not([type="radio"]):not([type="checkbox"]), .campo.con-error select, .campo.con-error textarea {
+    border-color: var(--md-error);
+    box-shadow: inset 0 0 0 .5px var(--md-error);
+  }
+  .campo.con-error .opciones-radio, .campo.con-error .atajos-fecha, .campo.con-error .dias {
+    outline: 2px solid var(--md-error);
+    outline-offset: 2px;
+    border-radius: var(--md-shape-lg);
+  }
+  .error-campo {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 8px 4px 0;
+    font-size: var(--fs-sm);
+    line-height: 1.35;
+    color: var(--md-error);
+    animation: md-entra var(--dur-2) var(--ease);
+  }
+  .error-campo::before {
+    content: "";
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+    background: currentColor;
+    -webkit-mask: var(--ic-alerta) center / contain no-repeat;
+    mask: var(--ic-alerta) center / contain no-repeat;
+  }
+
+  /* La respuesta en el propio botón (hechoEnBoton): verde con una marca durante un momento */
+  .boton.hecho { background: var(--md-success-bg); border-color: transparent; color: var(--md-success); }
+
   /* Reducir movimiento: una sola llave. El girador sigue girando (es información), más despacio */
   @media (prefers-reduced-motion: reduce) {
     :root { --dur-1: .01ms; --dur-2: .01ms; --dur-3: .01ms; --dur-pantalla: .01ms; --dur-seccion: .01ms; --dur-panel: .01ms; --dur-giro: 1.6s; }
-    .panel, .fondo-panel, .aviso, .fab, .vista[class*="anim-"] > *, .esq, .sale, .entra { animation: none; }
+    .panel, .fondo-panel, .aviso, .fab, .vista[class*="anim-"] > *, .esq, .sale, .entra, .error-campo { animation: none; }
   }
 </style>
