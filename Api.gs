@@ -58,6 +58,20 @@ function api_cambiarGrupo(inscripcion_id, grupo_destino, fecha) {
   return responder_(function (m) { return cambiarGrupo_(m, inscripcion_id, grupo_destino, fecha); });
 }
 
+// Deshacer desde el aviso de abajo (4-nov-2026)
+
+function api_deshacerBaja(inscripcion_id) {
+  return responder_(function (m) { return deshacerBaja_(m, inscripcion_id); });
+}
+
+function api_deshacerAlta(inscripcion_id) {
+  return responder_(function (m) { return deshacerAlta_(m, inscripcion_id); });
+}
+
+function api_deshacerCancelar(grupo_id, fecha) {
+  return responder_(function (m) { return deshacerCancelar_(m, grupo_id, fecha); });
+}
+
 // ---------- Historial e informe ----------
 
 function api_historial(grupo_id, mes) {

@@ -551,11 +551,13 @@ function altaUsuario_(monitora, grupoId, datos) {
       existente.activo = SI;
       actualizarFilas_(HOJAS.USUARIOS, [existente]);
     }
+    const inscripcionId = nuevoId_();
     anadirFilas_(HOJAS.INSCRIPCIONES, [{
-      inscripcion_id: nuevoId_(), usuario_id: id, grupo_id: grupoId,
+      inscripcion_id: inscripcionId, usuario_id: id, grupo_id: grupoId,
       fecha_alta: fechaAlta, fecha_baja: '', motivo_baja: ''
     }]);
-    return { creado: creado, nombre: nombre };
+    // inscripcion_id: para poder deshacer la inscripción desde el aviso («Deshacer», deshacerAlta_).
+    return { creado: creado, nombre: nombre, inscripcion_id: inscripcionId };
   });
 }
 
@@ -578,6 +580,72 @@ function baja_(monitora, inscripcionId, fechaBaja, motivo) {
     insc.motivo_baja = motivo;
     actualizarFilas_(HOJAS.INSCRIPCIONES, [insc]);
     return { ok: true };
+  });
+}
+
+// ---------- Deshacer (4-nov-2026) ----------
+// El aviso de abajo ofrece «Deshacer» durante unos segundos tras una baja, una inscripción o un «No hubo clase»
+// desde Inicio. Cada función deja la hoja como estaba antes de esa acción y se niega si, mientras tanto, algo ha
+// pasado a depender de ella (así nunca se pierde información).
+
+/** Deshace una baja: quita la fecha_baja y el motivo. No sirve para un cambio de grupo. */
+function deshacerBaja_(monitora, inscripcionId) {
+  return conBloqueo_(function () {
+    const insc = inscripcionPorId_(inscripcionId);
+    if (!insc) throw errorApp_('No se encuentra esa inscripción. Vuelve a abrir el grupo.');
+    comprobarAccesoGrupo_(monitora, grupoPorId_(insc.grupo_id));
+    if (!insc.fecha_baja) throw errorApp_('Este usuario ya no tiene la baja en este grupo.');
+    if (insc.motivo_baja === MOTIVO_CAMBIO_GRUPO) throw errorApp_('Un cambio de grupo no se puede deshacer desde aquí.');
+    // Si después de la baja se ha vuelto a inscribir en el mismo grupo, quitar la baja solaparía las dos (regla 7).
+    if (haySolape_(normalizarId_(insc.usuario_id), insc.grupo_id, insc.fecha_alta, insc.inscripcion_id)) {
+      throw errorApp_('No se puede deshacer: este usuario ya tiene otra inscripción en el grupo.');
+    }
+    insc.fecha_baja = '';
+    insc.motivo_baja = '';
+    actualizarFilas_(HOJAS.INSCRIPCIONES, [insc]);
+    return { ok: true };
+  });
+}
+
+/**
+ * Deshace una inscripción recién hecha: borra su fila de Inscripciones. Es la única vez que se borra una
+ * inscripción, y solo si no tiene baja ni ningún registro de Asistencia en el grupo desde su fecha de alta
+ * (o sea, si nada depende de ella). Si el usuario se creó al inscribirlo, se queda creado.
+ */
+function deshacerAlta_(monitora, inscripcionId) {
+  return conBloqueo_(function () {
+    const insc = inscripcionPorId_(inscripcionId);
+    if (!insc) throw errorApp_('No se encuentra esa inscripción. Vuelve a abrir el grupo.');
+    comprobarAccesoGrupo_(monitora, grupoPorId_(insc.grupo_id));
+    if (insc.fecha_baja) throw errorApp_('No se puede deshacer: la inscripción ya tiene una baja.');
+    const id = normalizarId_(insc.usuario_id);
+    const conAsistencia = leerTabla_(HOJAS.ASISTENCIA).some(function (a) {
+      return a.grupo_id === insc.grupo_id && normalizarId_(a.usuario_id) === id && a.fecha >= insc.fecha_alta;
+    });
+    if (conAsistencia) throw errorApp_('No se puede deshacer: ya se ha pasado lista con este usuario en el grupo.');
+    borrarFilas_(HOJAS.INSCRIPCIONES, [insc._fila]);
+    return { ok: true };
+  });
+}
+
+/**
+ * Deshace un «No hubo clase»: si la sesión tiene marcas guardadas, vuelve a ser «realizada» (regla 5: se
+ * conservaron); si no tiene ninguna, se quita su fila de Sesiones y vuelve a estar pendiente.
+ */
+function deshacerCancelar_(monitora, grupoId, fecha) {
+  comprobarFecha_(fecha, 'de la clase');
+  return conBloqueo_(function () {
+    const grupo = grupoPorId_(grupoId);
+    comprobarAccesoGrupo_(monitora, grupo);
+    const sesion = leerTabla_(HOJAS.SESIONES).find(function (s) { return s.fecha === fecha && s.grupo_id === grupoId; });
+    if (!sesion || sesion.estado !== ESTADO_SESION.CANCELADA) throw errorApp_('Esta clase ya no está marcada sin clase.');
+    const conMarcas = leerTabla_(HOJAS.ASISTENCIA).some(function (a) { return a.fecha === fecha && a.grupo_id === grupoId; });
+    if (conMarcas) {
+      guardarFilaSesion_(grupoId, fecha, ESTADO_SESION.REALIZADA, '', monitora.email, marcaDeTiempo_());
+    } else {
+      borrarFilas_(HOJAS.SESIONES, [sesion._fila]);
+    }
+    return { estado: conMarcas ? ESTADO_SESION.REALIZADA : '' };
   });
 }
 

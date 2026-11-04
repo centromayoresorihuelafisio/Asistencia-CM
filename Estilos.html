@@ -398,7 +398,7 @@
   }
   /* Icono delante (como los chips de asistencia de la agenda de fisio): color del texto, relleno */
   .etiqueta.pendiente::before, .etiqueta.realizada::before, .etiqueta.cancelada::before,
-  .etiqueta.especial::before, .etiqueta.guardando::before, .etiqueta.sin-guardar::before {
+  .etiqueta.especial::before, .etiqueta.guardando::before, .etiqueta.sin-guardar::before, .etiqueta.por-enviar::before {
     content: "";
     flex: none;
     width: 18px;
@@ -415,6 +415,7 @@
   .etiqueta.guardando { --icono: var(--ic-subiendo); background: var(--md-primary-light); color: var(--md-primary-dark); }
   .etiqueta.guardando::before { animation: md-latido var(--dur-barrido) var(--ease) infinite alternate; }
   .etiqueta.sin-guardar { --icono: var(--ic-alerta); background: var(--md-error); color: var(--md-on-primary); }
+  .etiqueta.por-enviar { --icono: var(--ic-subiendo); background: var(--md-surface-container-high); color: var(--md-on-surface-med); }
 
   /* ---------- Campos (como .md-campo--compacto de fisio: etiqueta encima) ---------- */
   .selector-fecha {
@@ -633,6 +634,8 @@
   .banda.realizada { --icono: var(--ic-hecho); background: var(--md-success-bg); color: var(--md-success); }
   .banda.info { background: var(--md-primary-light); color: var(--md-primary-dark); }
   .banda.error { background: var(--md-error-bg); color: var(--md-error); }
+  /* Listas pendientes de enviar sin conexión (se envían solas): tono neutro; roja solo si el servidor la rechaza */
+  .banda.neutra { --icono: var(--ic-subiendo); background: var(--md-surface-container-high); color: var(--md-on-surface); }
   /* Inicio: listas sin guardar (4-nov-2026). Cada una se abre con un toque; debajo, «Reintentar ahora». */
   .banda.por-guardar { margin-bottom: 16px; }
   .por-guardar-cuerpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -1218,26 +1221,54 @@
   }
   .entra { animation: md-entra var(--dur-2) var(--ease); }
 
-  /* Aviso (como .toast-aviso de fisio; arriba, para no tapar los botones del pie) */
+  /* Aviso abajo (snackbar de Material, 4-nov-2026): 16 px por encima de la barra inferior, el pie del pase, el
+     botón flotante o el panel abierto (Cliente.html, colocarAviso, pone --aviso-abajo). Una línea y, si hace
+     falta, un botón de texto («Deshacer»). Si con un panel alto no queda sitio, va arriba (.arriba). */
   .aviso {
     position: fixed;
     left: 16px;
     right: 16px;
-    top: 76px;
+    bottom: var(--aviso-abajo, 16px);
     z-index: var(--z-toast);
+    display: flex;
+    align-items: center;
+    gap: 8px;
     max-width: 560px;
+    min-height: 48px;
     margin: 0 auto;
-    padding: 14px 16px;
-    border-radius: var(--md-shape-sm);
+    padding: 4px 8px 4px 16px;
+    border-radius: var(--md-shape-xs);
     box-shadow: var(--md-elev-3);
-    font-size: var(--fs-md);
+    font-size: var(--fs-sm);
     font-weight: 500;
     line-height: 1.4;
     background: var(--md-toast-bg);
     color: var(--md-toast-fg);
-    animation: md-entra var(--dur-2) var(--ease);
+    touch-action: pan-y;
+    user-select: none;
+    animation: md-sube var(--dur-2) var(--ease);
+    transition: bottom var(--dur-2) var(--ease);
   }
+  .aviso.arriba { top: 76px; bottom: auto; animation-name: md-entra; }
   .aviso.error { background: var(--md-toast-error); color: var(--md-toast-fg); }
+  /* El texto informativo, en una línea; un error puede ocupar hasta tres */
+  .aviso-texto { flex: 1; min-width: 0; margin: 10px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .aviso.error .aviso-texto { white-space: normal; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
+  .aviso-accion {
+    flex: none;
+    min-height: 48px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--md-shape-full);
+    background: transparent;
+    color: var(--md-primary-container);
+    font: inherit;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .aviso-accion:active { background: var(--md-brillo); }
 
   /* Reducir movimiento: una sola llave. El girador sigue girando (es información), más despacio */
   @media (prefers-reduced-motion: reduce) {

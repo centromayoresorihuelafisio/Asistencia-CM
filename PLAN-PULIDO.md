@@ -210,7 +210,7 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
 | 1 · Pase de lista más limpio y textos | Hecha | 4-nov-2026 | `ef176a6` |
 | 2 · Navegación nativa | Hecha | 4-nov-2026 | `022b70f` |
 | 3 · Carga, errores y progreso | Hecha | 4-nov-2026 | `31059e2` |
-| 4 · Avisos abajo y «Deshacer» | Pendiente | | |
+| 4 · Avisos abajo y «Deshacer» | Hecha | 4-nov-2026 | (pendiente de commit) |
 | 5 · Pase de lista e Inicio | Pendiente | | |
 | 6 · Historial e Informe | Pendiente | | |
 | 7 · Formularios y coherencia | Pendiente | | |
@@ -240,3 +240,10 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
   - Si falla Inicio (por ejemplo, al cambiar de día sin conexión), la pantalla de error sustituye también al selector de fecha; se puede volver con «Reintentar» o con la barra inferior. Si molesta, dejar el selector encima del error.
   - En Alta, al inscribir, el resultado ya cambia en el sitio a «Ya está en el grupo» (parte de P23 de la fase 7). El orden buscador / fecha no se ha tocado.
   - Un pase de lista de un grupo que no está en `app.init.grupos` (por ejemplo, inactivo) se titula «Pase de lista» mientras carga y luego toma su nombre.
+- **Fase 4 (4-nov-2026):**
+  - Avisos: `aviso(texto, esError, accion)` sale abajo y se recoloca solo (`colocarAviso`) al cambiar el pie, la barra inferior, el panel o la pantalla (`pintar`). Para «Deshacer», `avisoDeshacer(texto, fn)`. Un aviso nuevo sustituye al anterior (y a su «Deshacer»).
+  - Deshacer usa llamadas inversas en el servidor (`api_deshacerBaja`, `api_deshacerAlta`, `api_deshacerCancelar`), no un envío retrasado: si se cierra la app en esos 6 s, la acción ya está hecha.
+  - En la simulación, si el panel del navegador está oculto o la pestaña no está delante (el aviso de cambios en un archivo abre otra), las transiciones no avanzan y `getBoundingClientRect` da posiciones a medio camino; comprobar `--aviso-abajo` en vez de la posición.
+  - «No hubo clase» desde el propio pase no tiene «Deshacer» (no estaba en el plan); sigue con su panel de confirmación. Si se quiere, `api_deshacerCancelar` ya sirve.
+  - El servidor aún dice «ya está inscrito/a en este grupo» (`altaUsuario_` en `Servicio.gs`): queda la barra de género que la fase 1 quitó del cliente.
+  - Cambio de grupo sigue con su confirmación y sin «Deshacer» (no estaba en el plan).

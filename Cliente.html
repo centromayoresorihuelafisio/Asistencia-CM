@@ -89,6 +89,10 @@
       const d = aFecha(texto);
       return DIAS[d.getDay()].substring(0, 3) + ' ' + d.getDate() + ' ' + MESES[d.getMonth()].substring(0, 3);
     }
+    /** Aviso corto: «Lista guardada · Pilates», con la fecha solo si no es hoy («… · lun 2 nov»). */
+    function textoConFecha(texto, fecha) {
+      return fecha && app.init && fecha !== app.init.hoy ? texto + ' · ' + fechaCorta(fecha).toLowerCase() : texto;
+    }
     function fechaNumerica(texto) {
       if (!texto) return '';
       const p = String(texto).substring(0, 10).split('-');
@@ -458,18 +462,65 @@
       }).catch(function () { /* sin conexión: se seguirá con lo que hay */ });
     }
 
+    // ---------- Aviso de abajo (snackbar, 4-nov-2026) ----------
+    // Una línea abajo, 16 px por encima de lo que esté fijo abajo (barra inferior, pie del pase, botón flotante o
+    // panel abierto), y un botón de texto opcional: «Deshacer» durante MS_DESHACER. Se cierra solo, al tocarlo o
+    // deslizándolo hacia un lado. Si con un panel alto no queda sitio, sale arriba.
+
+    const MS_AVISO = 4000;
+    const MS_AVISO_ERROR = 7000;
+    const MS_DESHACER = 6000;
+    const MIN_DESLIZAR = 60;
+    const MIN_HUECO_AVISO = 200;   // si lo fijo de abajo empieza más arriba (panel alto), el aviso va arriba
     let temporizadorAviso = null;
-    function aviso(texto, esError) {
+    let accionAviso = null;   // { texto, fn } del botón del aviso abierto
+
+    /** accion (opcional): { texto, fn }, por ejemplo { texto: 'Deshacer', fn: ... }. */
+    function aviso(texto, esError, accion) {
       const a = $('aviso');
-      a.textContent = texto;
+      accionAviso = accion || null;
+      a.innerHTML = '<span class="aviso-texto">' + esc(texto) + '</span>' +
+        (accion ? '<button type="button" class="aviso-accion" data-accion="aviso-accion">' + esc(accion.texto) + '</button>' : '');
       a.classList.toggle('error', !!esError);
       // Los errores se leen en cuanto salen (lector de pantalla); los demás avisos, sin interrumpir.
       a.setAttribute('role', esError ? 'alert' : 'status');
+      a.style.transform = '';
+      a.style.opacity = '';
+      // Si ya se veía otro, el nuevo vuelve a entrar (como en Android).
+      a.classList.add('oculto');
+      void a.offsetWidth;
       a.classList.remove('oculto');
+      colocarAviso();
       clearTimeout(temporizadorAviso);
-      temporizadorAviso = setTimeout(function () { a.classList.add('oculto'); }, esError ? 7000 : 3500);
+      temporizadorAviso = setTimeout(cerrarAviso, accion ? MS_DESHACER : esError ? MS_AVISO_ERROR : MS_AVISO);
+    }
+    function cerrarAviso() {
+      clearTimeout(temporizadorAviso);
+      accionAviso = null;
+      $('aviso').classList.add('oculto');
     }
     function avisoError(e) { soltarBotones(); aviso(e.message, true); }
+    /** Aviso con «Deshacer»: fn se ejecuta si se pulsa antes de que se cierre. */
+    function avisoDeshacer(texto, fn) { aviso(texto, false, { texto: 'Deshacer', fn: fn }); }
+
+    /** Pone el aviso 16 px por encima de lo más alto que haya fijo abajo. */
+    function colocarAviso() {
+      const a = $('aviso');
+      if (a.classList.contains('oculto')) return;
+      let tope = window.innerHeight;
+      // Pie, barra inferior y panel están pegados abajo: su borde de arriba sale de su alto, sin contar la
+      // animación con la que entran (el panel sube 24 px al abrirse).
+      const pegado = function (el) { tope = Math.min(tope, window.innerHeight - el.offsetHeight); };
+      if (!$('pie').classList.contains('oculto')) pegado($('pie'));
+      if (!$('navegacion').classList.contains('oculto')) pegado($('navegacion'));
+      if (panelAbierto()) pegado($('panel'));
+      const fab = document.querySelector('.vista .fab');
+      if (fab) tope = Math.min(tope, fab.getBoundingClientRect().top);
+      const arriba = tope < MIN_HUECO_AVISO;
+      a.classList.toggle('arriba', arriba);
+      if (arriba) a.style.removeProperty('--aviso-abajo');
+      else a.style.setProperty('--aviso-abajo', (window.innerHeight - tope + 16) + 'px');
+    }
 
     // ---------- Carga de pantallas: esqueletos y errores (4-nov-2026) ----------
     // Una pantalla cuyos datos no están en memoria se abre al momento con su esqueleto (la forma gris de lo que
@@ -604,6 +655,7 @@
         panel.removeAttribute('aria-labelledby');
       }
       sincronizarHistorial();
+      colocarAviso();
     }
 
     function cerrarPanel() {
@@ -617,6 +669,7 @@
       panel.style.transform = '';
       panel.classList.add('cerrando');
       fondo.classList.add('cerrando');
+      colocarAviso();
       panelCierre = setTimeout(function () {
         panelCierre = null;
         panel.classList.add('oculto');
@@ -701,6 +754,7 @@
       $('pie').innerHTML = html || '';
       $('pie').classList.toggle('oculto', !html);
       $('vista').classList.toggle('con-pie', !!html);
+      colocarAviso();
     }
 
     const SECCIONES = [
@@ -716,6 +770,7 @@
       if (!activa) {
         nav.classList.add('oculto');
         $('vista').classList.remove('con-nav');
+        colocarAviso();
         return;
       }
       nav.innerHTML = SECCIONES.filter(function (s) { return s[0] !== 'gestion' || esAdmin(); }).map(function (s) {
@@ -725,6 +780,7 @@
       }).join('');
       nav.classList.remove('oculto');
       $('vista').classList.add('con-nav');
+      colocarAviso();
     }
 
     /** Prepara una pantalla principal (con barra inferior). */
@@ -857,6 +913,7 @@
       app.pantallaNueva = esEsqueleto && n ? { anim: null, y: n.y } : null;
       window.scrollTo(0, n && !esEsqueleto ? n.y : 0);
       if (n && n.anim) animarVista(n.anim);
+      colocarAviso();   // la pantalla nueva puede tener botón flotante
     }
 
     // ---------- Inicio ----------
@@ -887,7 +944,11 @@
     function etiquetaGuardado(grupoId, fecha) {
       const estado = app.guardando[claveBorrador(grupoId, fecha)];
       if (estado === 'guardando') return '<span class="etiqueta guardando">Guardando…</span>';
-      if (estado === 'error') return '<span class="etiqueta sin-guardar">Sin guardar</span>';
+      // Sin conexión, en tono neutro («Por enviar»: se enviará sola); en rojo solo si el servidor la rechazó.
+      if (estado === 'error') {
+        const t = app.porGuardar[claveBorrador(grupoId, fecha)];
+        return t && t.rechazo ? '<span class="etiqueta sin-guardar">Sin guardar</span>' : '<span class="etiqueta por-enviar">Por enviar</span>';
+      }
       return '';
     }
 
@@ -1030,11 +1091,12 @@
       if (guardado === 'guardando') html += '<div class="banda info">Se está guardando esta lista. Espera a que termine antes de cambiarla.</div>';
       else if (guardado === 'error') {
         const t = app.porGuardar[claveBorrador(p.grupo.grupo_id, p.fecha)];
-        html += '<div class="banda error">' + (t && t.rechazo
-          ? 'No se pudo guardar esta lista: ' + esc(t.rechazo) + ' Tus marcas se conservan: revísalas y pulsa Guardar otra vez.'
-          : t && !t.recuperada
-            ? 'Esta lista aún no se ha guardado por falta de conexión; se vuelve a intentar sola. Tus marcas se conservan.'
-            : 'Esta lista se quedó sin guardar. Tus marcas se conservan: revísalas y pulsa Guardar otra vez.') + '</div>';
+        // En rojo solo si el servidor la rechazó; sin conexión, en tono neutro.
+        html += t && t.rechazo
+          ? '<div class="banda error">No se pudo guardar esta lista: ' + esc(t.rechazo) + ' Tus marcas se conservan: revísalas y pulsa Guardar otra vez.</div>'
+          : '<div class="banda neutra">' + (t && !t.recuperada
+            ? 'Lista pendiente de enviar · se enviará sola. Tus marcas se conservan.'
+            : 'Esta lista se quedó sin enviar. Tus marcas se conservan: revísalas y pulsa Guardar otra vez.') + '</div>';
       }
       else if (p.borradorRecuperado) html += '<div class="banda info">Se han recuperado cambios sin guardar de la última vez.</div>';
       if (p.diaEspecial) {
@@ -1115,6 +1177,25 @@
       $('fila' + i).outerHTML = filaUsuario(u, i, true);
       pintarPiePase();
       guardarBorrador();
+    }
+
+    /** «Aplicar a todos»: el mismo estado a todo el grupo, con «Deshacer» en el aviso (vuelven los estados de antes). */
+    function aplicarATodos(codigo) {
+      const p = app.pase;
+      const antes = p.usuarios.map(function (u) { return u.estado; });
+      const pintarTodos = function () {
+        $('listaUsuarios').innerHTML = p.usuarios.map(function (u, i) { return filaUsuario(u, i, true); }).join('');
+        pintarPiePase();
+        guardarBorrador();
+      };
+      p.usuarios.forEach(function (u) { u.estado = codigo; });
+      cerrarPanel();
+      pintarTodos();
+      avisoDeshacer('Todos como ' + estadoInfo(codigo).etiqueta, function () {
+        if (app.pase !== p || app.vista !== 'pase' || !$('listaUsuarios')) return;
+        p.usuarios.forEach(function (u, i) { if (antes[i] !== undefined) u.estado = antes[i]; });
+        pintarTodos();
+      });
     }
 
     function contadores() {
@@ -1342,7 +1423,7 @@
         // Si se ha vuelto a abrir y cambiar mientras se guardaba, se conserva el borrador nuevo.
         if (leerBorradorTexto(t.clave) === t.borrador) borrarBorrador(grupoId, fecha);
         anticuar('sesion', grupoId, fecha);
-        aviso('Lista guardada: ' + t.nombre + ', ' + fechaCorta(fecha) + '.');
+        aviso(textoConFecha('Lista guardada · ' + t.nombre, fecha));
         trasGuardarEnFondo(t.clave);
         precargar();
       }).catch(function (e) {
@@ -1352,14 +1433,14 @@
         if (e.conexion) {
           const espera = ESPERAS_REINTENTO[Math.min(t.intentos, ESPERAS_REINTENTO.length) - 1];
           t.temporizador = setTimeout(function () { if (app.porGuardar[t.clave] === t) enviarGuardado(t); }, espera);
-          if (t.intentos === 1) {
-            aviso('No se ha guardado ' + t.nombre + ' (' + fechaCorta(fecha) + '): no hay conexión. Se volverá a intentar sola.', true);
-          }
+          // Un solo mensaje: en Inicio ya lo dice la banda de arriba; en otra pantalla, un aviso neutro la primera vez.
+          if (t.intentos === 1 && app.vista !== 'inicio') aviso('Sin conexión · la lista se enviará sola');
         } else {
           t.rechazo = e.message;
           // Lo más probable es que haya cambiado la lista de inscritos: al reabrir el pase se pide de nuevo.
           olvidar('api_sesion', function (g, f) { return g === grupoId && f === fecha; });
-          aviso('No se ha guardado ' + t.nombre + ' (' + fechaCorta(fecha) + '). ' + e.message, true);
+          // En Inicio lo dice la banda (en rojo, con el motivo); en otra pantalla, el aviso.
+          if (app.vista !== 'inicio') aviso('No se ha guardado ' + textoConFecha(t.nombre, fecha) + '. ' + e.message, true);
         }
         trasGuardarEnFondo(t.clave);
       });
@@ -1391,10 +1472,16 @@
       const lista = Object.keys(app.porGuardar).map(function (k) { return app.porGuardar[k]; })
         .filter(function (t) { return app.guardando[t.clave] === 'error'; });
       if (!lista.length) return '';
-      const soloConexion = lista.every(function (t) { return !t.rechazo && !t.recuperada; });
-      return '<div class="banda error por-guardar"><div class="por-guardar-cuerpo"><strong>' +
-        (lista.length === 1 ? 'Hay 1 lista sin guardar' : 'Hay ' + lista.length + ' listas sin guardar') + '</strong>' +
-        (soloConexion ? '<div>Se vuelve a intentar sola cuando haya conexión.</div>' : '') +
+      const n = lista.length;
+      // Un solo mensaje sin conexión (4-nov-2026): en tono neutro mientras se reintenta sola; en rojo solo si el
+      // servidor ha rechazado alguna.
+      const rechazadas = lista.some(function (t) { return t.rechazo; });
+      const solas = lista.every(function (t) { return !t.rechazo && !t.recuperada; });
+      const titulo = rechazadas ? (n === 1 ? 'Hay 1 lista sin guardar' : 'Hay ' + n + ' listas sin guardar')
+        : (n === 1 ? '1 lista pendiente de enviar' : n + ' listas pendientes de enviar') +
+          (solas ? (n === 1 ? ' · se enviará sola' : ' · se enviarán solas') : '');
+      return '<div class="banda ' + (rechazadas ? 'error' : 'neutra') + ' por-guardar"><div class="por-guardar-cuerpo"><strong>' +
+        esc(titulo) + '</strong>' +
         lista.map(function (t) {
           return '<button type="button" class="por-guardar-item" data-accion="pase" data-grupo="' + esc(t.payload.grupo_id) +
             '" data-fecha="' + esc(t.payload.fecha) + '"><span>' + esc(t.nombre) + ' · ' + esc(fechaCorta(t.payload.fecha)) +
@@ -1471,10 +1558,12 @@
         cancelarPendiente = null;
         app.hechos[clave] = true;
         olvidarPorGuardar(clave);
+        // El borrador se guarda aparte por si se deshace.
+        const borrador = leerBorradorTexto(clave);
         borrarBorrador(c.grupo_id, c.fecha);
         anticuar('sesion', c.grupo_id, c.fecha);
         cerrarPanel();
-        aviso('Marcada sin clase: ' + c.nombre + ', ' + fechaCorta(c.fecha) + '.');
+        avisoDeshacer(textoConFecha('Sin clase · ' + c.nombre, c.fecha), function () { deshacerNoHubo(c, borrador); });
         // Se quita al momento de la lista y después se repinta con los datos del servidor.
         if (app.vista === 'inicio' && app.ultimoInicio) {
           const d = copia(app.ultimoInicio);
@@ -1483,6 +1572,19 @@
           pintarInicio(d);
           window.scrollTo(0, y);
         }
+        refrescarVista();
+        precargar();
+      }).catch(avisoError);
+    }
+
+    /** «Deshacer» tras «No hubo clase» en Inicio: la clase vuelve a Pendientes, con su borrador si lo tenía. */
+    function deshacerNoHubo(c, borrador) {
+      const clave = claveBorrador(c.grupo_id, c.fecha);
+      llamar('api_deshacerCancelar', c.grupo_id, c.fecha).then(function () {
+        delete app.hechos[clave];
+        if (borrador) { try { window.localStorage.setItem(clave, borrador); } catch (e) { /* se ignora */ } }
+        anticuar('sesion', c.grupo_id, c.fecha);
+        aviso(textoConFecha('Vuelve a Pendientes · ' + c.nombre, c.fecha));
         refrescarVista();
         precargar();
       }).catch(avisoError);
@@ -1664,7 +1766,7 @@
       abrirPanel('<div><h3>Dar de baja</h3><p><strong>' + esc(nombreVisible(nombreInscripcion(inscripcionId))) + '</strong></p>' +
         '<input type="hidden" id="bajaUsuario" value="' + esc(inscripcionId) + '">' + camposBaja() +
         '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
-        '<button type="button" class="boton peligro" data-accion="dar-baja">Dar de baja</button></div></div>');
+        '<button type="button" class="boton peligro" data-accion="dar-baja" data-en-curso="Dando de baja…">Dar de baja</button></div></div>');
     }
 
     function abrirPanelCambio(inscripcionId) {
@@ -1696,7 +1798,7 @@
 
       return '<div class="campo"><label for="bajaUsuario">Usuario</label><select id="bajaUsuario">' + opcionesUsuario + '</select></div>' +
         '<div class="bloque"><h3>Dar de baja</h3>' + camposBaja() +
-        '<button type="button" class="boton peligro ancho" data-accion="dar-baja">Dar de baja</button></div>' +
+        '<button type="button" class="boton peligro ancho" data-accion="dar-baja" data-en-curso="Dando de baja…">Dar de baja</button></div>' +
         '<div class="bloque"><h3>Cambiar de grupo</h3>' + camposCambio(d.destinos) +
         '<button type="button" class="boton primario ancho" data-accion="cambiar-grupo">Cambiar de grupo</button></div>';
     }
@@ -1776,7 +1878,8 @@
         }
         anticuar('inscripciones');
         if (r.creado) anticuar('usuario-nuevo');
-        aviso((r.creado ? 'Usuario creado e inscrito: ' : 'Inscripción hecha: ') + nombreVisible(r.nombre));
+        avisoDeshacer((r.creado ? 'Usuario creado e inscrito: ' : 'Inscripción hecha: ') + nombreVisible(r.nombre),
+          function () { deshacerInscripcion(grupoId, r.inscripcion_id, String(datos.usuario_id).trim(), r.nombre); });
         soltarBotones();
         // app.grupo puede ser ya otro objeto (refrescarGrupo lo cambia al llegar): se busca por el id.
         const grupo = app.grupo;
@@ -1799,6 +1902,38 @@
       }).catch(avisoError);
     }
 
+    /**
+     * «Deshacer» tras inscribir: el servidor borra la inscripción (si nada depende de ella todavía) y el usuario
+     * sale de la lista en el sitio; en Alta, su resultado vuelve a ofrecer «Inscribir». Un usuario creado al
+     * inscribirlo se queda creado.
+     */
+    function deshacerInscripcion(grupoId, inscripcionId, usuarioId, nombre) {
+      llamar('api_deshacerAlta', inscripcionId).then(function () {
+        anticuar('inscripciones');
+        aviso('Inscripción deshecha: ' + nombreVisible(nombre));
+        const grupo = app.grupo;
+        if (grupo && grupo.grupo.grupo_id === grupoId) {
+          // Recién inscrito, puede ir aún sin inscripcion_id (inscribir): se quita también por su ID.
+          grupo.inscritos = grupo.inscritos.filter(function (u) {
+            return u.inscripcion_id !== inscripcionId && !(u.usuario_id === usuarioId && !u.inscripcion_id);
+          });
+          if (app.vista === 'grupo') {
+            $('barraSub').textContent = subGrupo(grupo);
+            if (app.pestana === 'lista' && $('zonaLista')) {
+              const fila = $('zonaLista').querySelector('[data-inscripcion="' + inscripcionId + '"]');
+              sacarFila(fila, function () {
+                if (app.grupo && app.vista === 'grupo' && app.pestana === 'lista' && $('zonaLista')) $('zonaLista').outerHTML = htmlLista(app.grupo);
+              });
+            } else if (app.pestana === 'alta') {
+              buscar();
+            }
+          }
+        }
+        refrescarGrupo(grupoId);
+        precargar();
+      }).catch(avisoError);
+    }
+
     /** Nombre de una inscripción: del pase de lista abierto o de Altas y bajas. */
     function nombreInscripcion(inscripcionId) {
       const lista = app.vista === 'pase' && app.pase ? app.pase.usuarios : (app.grupo ? app.grupo.inscritos : []);
@@ -1813,10 +1948,58 @@
       if (!insc) return aviso('Elige primero el usuario.', true);
       if (!fecha) return aviso('Indica la fecha de baja.', true);
       if (!motivo) return aviso('Elige el motivo de la baja.', true);
-      confirmar('¿Dar de baja?', '<strong>' + esc(nombreVisible(nombreInscripcion(insc))) + '</strong><br>Último día: ' +
-        esc(fechaNumerica(fecha)) + '<br>Motivo: ' + esc(motivo), 'Sí, dar de baja', true, function () {
-        accionGrupo(llamar('api_baja', insc, fecha, motivo), 'Baja registrada.', insc, fecha);
-      }, 'Dando de baja…');
+      // Sin segunda confirmación (4-nov-2026): el aviso ofrece «Deshacer».
+      const nombre = nombreInscripcion(insc);
+      const pase = app.vista === 'pase' ? app.pase : null;
+      const grupoId = pase || !app.grupo ? '' : app.grupo.grupo.grupo_id;
+      // El usuario del pase, para devolverlo a su fila con sus marcas si se deshace.
+      const delPase = pase ? pase.usuarios.find(function (u) { return u.inscripcion_id === insc; }) : null;
+      accionGrupo(llamar('api_baja', insc, fecha, motivo), 'Baja hecha: ' + nombreVisible(nombre), insc, fecha, function () {
+        deshacerBaja(insc, nombre, pase, delPase, grupoId);
+      });
+    }
+
+    /** «Deshacer» tras una baja: el servidor quita la fecha de baja y el usuario vuelve a la lista (o al pase). */
+    function deshacerBaja(insc, nombre, pase, delPase, grupoId) {
+      llamar('api_deshacerBaja', insc).then(function () {
+        anticuar('inscripciones');
+        aviso('Baja deshecha: ' + nombreVisible(nombre));
+        if (pase && delPase) devolverAlPase(pase, delPase);
+        if (grupoId) {
+          const grupo = app.grupo;
+          const u = grupo && grupo.grupo.grupo_id === grupoId ? grupo.inscritos.find(function (x) { return x.inscripcion_id === insc; }) : null;
+          if (u) u.fecha_baja = '';
+          if (app.vista === 'grupo' && grupo && grupo.grupo.grupo_id === grupoId) {
+            if (app.pestana === 'lista' && $('zonaLista')) {
+              if (u) $('zonaLista').outerHTML = htmlLista(grupo);
+            } else {
+              const y = window.scrollY;
+              pintarGrupo();
+              window.scrollTo(0, y);
+            }
+          }
+          // Si salió de la lista, vuelve con la lista del servidor (con su animación de llegada).
+          refrescarGrupo(grupoId);
+        }
+        precargar();
+      }).catch(avisoError);
+    }
+
+    /** Devuelve al pase de lista a un usuario que se había quitado al darle de baja, con las marcas que tenía. */
+    function devolverAlPase(pase, u) {
+      const ya = pase.usuarios.find(function (x) { return x.inscripcion_id === u.inscripcion_id; });
+      if (ya) { ya.fecha_baja = ''; return; }
+      u.fecha_baja = '';
+      pase.usuarios.push(u);
+      pase.usuarios.sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); });
+      if (app.pase !== pase || app.vista !== 'pase') return;
+      guardarBorrador();
+      if (!$('listaUsuarios')) { pintarPase(); return; }
+      const i = pase.usuarios.indexOf(u);
+      $('listaUsuarios').innerHTML = pase.usuarios.map(function (x, k) { return filaUsuario(x, k); }).join('');
+      const fila = $('fila' + i);
+      if (fila) fila.classList.add('entra');
+      pintarPiePase();
     }
 
     function pedirCambio() {
@@ -1830,22 +2013,23 @@
       confirmar('¿Cambiar de grupo?', '<strong>' + esc(nombreVisible(nombreInscripcion(insc))) + '</strong><br>Pasa a: ' +
         esc(g ? tallerYGrupo(g.taller, g.nombre) : destino) + '<br>Desde el ' + esc(fechaNumerica(fecha)), 'Sí, cambiar', false, function () {
         // El último día en el grupo de origen es el anterior al cambio (regla 8).
-        accionGrupo(llamar('api_cambiarGrupo', insc, destino, fecha), 'Cambio de grupo registrado.', insc, sumarDias(fecha, -1));
+        accionGrupo(llamar('api_cambiarGrupo', insc, destino, fecha), 'Cambio de grupo hecho: ' + nombreVisible(nombreInscripcion(insc)), insc, sumarDias(fecha, -1));
       }, 'Cambiando de grupo…');
     }
 
     /**
      * Tras una baja o un cambio de grupo (insc, con ultimoDia como último día en el grupo): el panel se cierra en
      * cuanto responde el servidor y la lista se cambia en el sitio, en el pase de lista (conservando sus marcas)
-     * o en Altas y bajas.
+     * o en Altas y bajas. alDeshacer (opcional): el aviso ofrece «Deshacer».
      */
-    function accionGrupo(promesa, mensaje, insc, ultimoDia) {
+    function accionGrupo(promesa, mensaje, insc, ultimoDia, alDeshacer) {
       const pase = app.vista === 'pase' ? app.pase : null;
       const grupoId = pase || !app.grupo ? '' : app.grupo.grupo.grupo_id;
       promesa.then(function () {
         anticuar('inscripciones');
         cerrarPanel();
-        aviso(mensaje);
+        if (alDeshacer) avisoDeshacer(mensaje, alDeshacer);
+        else aviso(mensaje);
         if (pase) quitarDelPase(pase, insc, ultimoDia);
         else if (grupoId) quitarDelGrupo(grupoId, insc, ultimoDia);
         precargar();
@@ -2584,13 +2768,14 @@
           abrirPanel('<div><h3>Aplicar a todos</h3><p>Se pondrá el mismo estado a todo el grupo. Después puedes cambiar casos sueltos.</p>' +
             botonesEstados('aplicar-estado') + '<button type="button" class="boton ancho" data-accion="cerrar-panel">Cancelar</button></div>');
           break;
-        case 'aplicar-estado':
-          app.pase.usuarios.forEach(function (u) { u.estado = dato('estado'); });
-          cerrarPanel();
-          $('listaUsuarios').innerHTML = app.pase.usuarios.map(function (u, i) { return filaUsuario(u, i, true); }).join('');
-          pintarPiePase();
-          guardarBorrador();
+        case 'aplicar-estado': aplicarATodos(dato('estado')); break;
+        case 'aviso-accion': {
+          const a = accionAviso;
+          cerrarAviso();
+          botonPulsado = null;   // el botón del aviso ya no se ve: no se ocupa
+          if (a) a.fn();
           break;
+        }
         case 'guardar': pedirGuardar(); break;
         case 'confirmar-guardar': guardarPase(!!dato('siguiente')); break;
         case 'cancelar-sesion': abrirCancelarSesion(); break;
@@ -2685,6 +2870,38 @@
     });
 
     $('fondoPanel').addEventListener('click', cerrarPanelComoFondo);
+
+    // Aviso de abajo: tocarlo lo cierra (salvo su botón) y deslizarlo hacia un lado, también.
+    let deslizar = null;
+    $('aviso').addEventListener('pointerdown', function (ev) {
+      if (ev.target.closest('.aviso-accion')) return;
+      deslizar = { x: ev.clientX, dx: 0, id: ev.pointerId };
+      try { $('aviso').setPointerCapture(ev.pointerId); } catch (e) { /* sin captura: sigue igual */ }
+      clearTimeout(temporizadorAviso);   // mientras se toca, no se cierra solo
+    });
+    $('aviso').addEventListener('pointermove', function (ev) {
+      if (!deslizar || ev.pointerId !== deslizar.id) return;
+      deslizar.dx = ev.clientX - deslizar.x;
+      $('aviso').style.transform = 'translateX(' + deslizar.dx + 'px)';
+      $('aviso').style.opacity = String(Math.max(0.2, 1 - Math.abs(deslizar.dx) / 240));
+    });
+    function soltarAviso(ev) {
+      if (!deslizar || ev.pointerId !== deslizar.id) return;
+      const dx = deslizar.dx;
+      deslizar = null;
+      // Un toque (casi sin moverse) o un deslizamiento largo lo cierran; uno corto lo deja donde estaba.
+      if (Math.abs(dx) > MIN_DESLIZAR || Math.abs(dx) < 10) { cerrarAviso(); return; }
+      $('aviso').style.transform = '';
+      $('aviso').style.opacity = '';
+      temporizadorAviso = setTimeout(cerrarAviso, accionAviso ? MS_DESHACER : MS_AVISO);
+    }
+    $('aviso').addEventListener('pointerup', soltarAviso);
+    $('aviso').addEventListener('pointercancel', function (ev) {
+      if (!deslizar || ev.pointerId !== deslizar.id) return;
+      deslizar.dx = 20;   // ni toque ni deslizamiento: se queda
+      soltarAviso(ev);
+    });
+    window.addEventListener('resize', colocarAviso);
 
     // Arrastrar el asa del panel hacia abajo: lo sigue con el dedo y, pasados MIN_ARRASTRE px, lo cierra.
     let arrastre = null;
