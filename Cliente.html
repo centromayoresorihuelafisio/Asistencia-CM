@@ -43,9 +43,42 @@
       const p = String(texto).split('-').map(Number);
       return new Date(p[0], p[1] - 1, p[2]);
     }
+    function mayuscula(texto) { return texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : ''; }
+    /** «Miércoles, 28 de octubre». */
     function fechaLarga(texto) {
       const d = aFecha(texto);
-      return DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()];
+      return mayuscula(DIAS[d.getDay()]) + ', ' + d.getDate() + ' de ' + MESES[d.getMonth()];
+    }
+    /** Subtítulo de un pase de lista: «Hoy · miércoles 4 nov.» si es hoy y, si no, la fecha larga. */
+    function fechaTitulo(texto) {
+      if (app.init && texto === app.init.hoy) {
+        const d = aFecha(texto);
+        return 'Hoy · ' + DIAS[d.getDay()] + ' ' + d.getDate() + ' ' + MESES[d.getMonth()].substring(0, 3) + '.';
+      }
+      return fechaLarga(texto);
+    }
+    /** Días de clase legibles: «X,V» → «Mié y vie» (en el orden de la semana). */
+    function diasLegibles(dias) {
+      const letras = String(dias || '').toUpperCase().split(/\s*,\s*/);
+      const nombres = ORDEN_DIAS.filter(function (d) { return letras.indexOf(d[0]) >= 0; })
+        .map(function (d, i) { return i ? d[1].toLowerCase() : d[1]; });
+      if (nombres.length < 2) return nombres.join('');
+      return nombres.slice(0, -1).join(', ') + ' y ' + nombres[nombres.length - 1];
+    }
+    /** Días y hora de un grupo: «Mié y vie · 18:30». */
+    function horario(g) {
+      return [diasLegibles(g.dias), g.hora || ''].filter(Boolean).join(' · ');
+    }
+    /** El taller, salvo que el nombre del grupo ya empiece por él («Costura» en «Costura», «Pilates» en «Pilates mañana»). */
+    function tallerSiHaceFalta(taller, nombre) {
+      const t = paraBuscar(taller);
+      const n = paraBuscar(nombre);
+      return t && (n === t || n.indexOf(t + ' ') === 0) ? '' : String(taller || '');
+    }
+    /** «Yoga · Yoga silla» → «Yoga silla»; «Gimnasia · Mañanas» se deja igual. */
+    function tallerYGrupo(taller, nombre) {
+      const t = tallerSiHaceFalta(taller, nombre);
+      return (t ? t + ' · ' : '') + nombre;
     }
     function fechaCorta(texto) {
       const d = aFecha(texto);
@@ -180,7 +213,8 @@
     const ICONO_TELEFONO = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg>';
 
     const ICONO_MAS = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>';
-    const ICONO_GUARDAR = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
+    const ICONO_INFO = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/></svg>';
+    const ICONO_GUARDAR ='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
 
     function enlaceLlamar(telefono) {
       if (!telefono) return '';
@@ -383,6 +417,8 @@
       const a = $('aviso');
       a.textContent = texto;
       a.classList.toggle('error', !!esError);
+      // Los errores se leen en cuanto salen (lector de pantalla); los demás avisos, sin interrumpir.
+      a.setAttribute('role', esError ? 'alert' : 'status');
       a.classList.remove('oculto');
       clearTimeout(temporizadorAviso);
       temporizadorAviso = setTimeout(function () { a.classList.add('oculto'); }, esError ? 7000 : 3500);
@@ -439,6 +475,16 @@
       $('barraSub').textContent = sub || '';
       app.alVolver = alVolver || null;
       $('btnVolver').classList.toggle('oculto', !alVolver);
+      // En las pantallas secundarias el título puede ocupar dos líneas (nombres de grupo largos).
+      $('barra').classList.toggle('secundaria', !!alVolver);
+    }
+
+    /** Saludo de Inicio: el nombre de la monitora, la parte del correo antes de «@» o solo «Hola». */
+    function saludo() {
+      const m = app.init.monitora || {};
+      // Sin nombre en la hoja Monitoras, el servidor manda el correo como nombre: se queda la parte antes de «@».
+      const nombre = (String(m.nombre || '').trim() || String(m.email || '')).split('@')[0].trim();
+      return nombre ? 'Hola, ' + nombre : 'Hola';
     }
     function pie(html) {
       $('pie').innerHTML = html || '';
@@ -504,7 +550,7 @@
     // ---------- Inicio ----------
 
     function irInicio() {
-      pantallaPrincipal('inicio', 'Hola, ' + app.init.monitora.nombre, app.init.curso ? 'Curso ' + app.init.curso : '');
+      pantallaPrincipal('inicio', saludo(),app.init.curso ? 'Curso ' + app.init.curso : '');
       pedir('api_inicio', app.fecha).then(function (d) {
         pintarInicio(d);
         precargarSesiones(d);
@@ -526,9 +572,10 @@
     function etiquetaSesion(g, fecha) {
       const guardado = etiquetaGuardado(g.grupo_id, fecha);
       if (guardado) return guardado;
-      if (g.estadoSesion === 'realizada') return '<span class="etiqueta realizada">Lista pasada</span>';
-      if (g.estadoSesion === 'cancelada') return '<span class="etiqueta cancelada">Cancelada</span>';
-      if (g.diaEspecial) return '<span class="etiqueta especial">' + esc(g.diaEspecial.tipo || 'Sin clase') + '</span>';
+      // Mismos nombres en toda la app: «Hecha» (realizada) y «Sin clase» (cancelada, «No hubo clase»).
+      if (g.estadoSesion === 'realizada') return '<span class="etiqueta realizada">Hecha</span>';
+      if (g.estadoSesion === 'cancelada') return '<span class="etiqueta cancelada">Sin clase</span>';
+      if (g.diaEspecial) return '<span class="etiqueta especial">' + esc(g.diaEspecial.tipo || 'Día libre') + '</span>';
       return '<span class="etiqueta pendiente">Pendiente</span>';
     }
 
@@ -556,9 +603,10 @@
         html += '<div class="lista">';
         d.pendientes.forEach(function (p) {
           const guardado = etiquetaGuardado(p.grupo_id, p.fecha);
-          html += '<div class="tarjeta pendiente con-accion"><button type="button" class="tarjeta-abrir" data-accion="pase" data-grupo="' +
+          const detalle = [tallerSiHaceFalta(p.taller, p.nombre), p.hora || ''].filter(Boolean).join(' · ');
+          html +='<div class="tarjeta pendiente con-accion"><button type="button" class="tarjeta-abrir" data-accion="pase" data-grupo="' +
             esc(p.grupo_id) + '" data-fecha="' + esc(p.fecha) + '">' + cuadroFecha(p.fecha) + '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(p.nombre) +
-            '</div><div class="tarjeta-detalle">' + esc(p.taller) + (p.hora ? ' · ' + esc(p.hora) : '') + '</div></div>' + guardado + '</button>' +
+            '</div>' + (detalle ? '<div class="tarjeta-detalle">' + esc(detalle) + '</div>' : '') + '</div>' + guardado + '</button>' +
             (guardado ? '' : '<button type="button" class="boton compacto" data-accion="no-hubo-clase" data-grupo="' + esc(p.grupo_id) +
               '" data-fecha="' + esc(p.fecha) + '">No hubo clase</button>') + '</div>';
         });
@@ -591,7 +639,7 @@
       }
       app.init.grupos.forEach(function (g) {
         html += '<div class="grupo-fila"><div class="tarjeta-titulo">' + esc(g.nombre) + '</div>' +
-          '<div class="tarjeta-detalle">' + esc(g.taller) + ' · ' + esc(g.dias) + (g.hora ? ' · ' + esc(g.hora) : '') + '</div>' +
+          '<div class="tarjeta-detalle">' + esc([tallerSiHaceFalta(g.taller, g.nombre), horario(g)].filter(Boolean).join(' · ')) + '</div>' +
           '<div class="botones"><button type="button" class="boton" data-accion="pase" data-grupo="' + esc(g.grupo_id) +
           '" data-fecha="' + esc(d.fecha) + '">Pasar lista</button>' +
           '<button type="button" class="boton" data-accion="grupo" data-grupo="' + esc(g.grupo_id) + '">Altas y bajas</button></div></div>';
@@ -643,7 +691,7 @@
           if (typeof b.nota === 'string') d.nota = b.nota;
           d.borradorRecuperado = !sinAvisoBorrador;
         }
-        pantallaSecundaria('pase', d.grupo.nombre, fechaLarga(fecha), d.volver);
+        pantallaSecundaria('pase', d.grupo.nombre, fechaTitulo(fecha), d.volver);
         app.pase = d;
         pintarPase();
       }).catch(avisoError);
@@ -664,16 +712,16 @@
       }
       else if (p.borradorRecuperado) html += '<div class="banda info">Se han recuperado cambios sin guardar de la última vez.</div>';
       if (p.diaEspecial) {
-        html += '<div class="banda especial">Día sin clase: ' + esc(p.diaEspecial.tipo || '') +
+        html += '<div class="banda especial">Día libre: ' + esc(p.diaEspecial.tipo || '') +
           (p.diaEspecial.descripcion ? ' – ' + esc(p.diaEspecial.descripcion) : '') +
-          '. Si aun así hubo clase, puedes pasar lista.</div>';
+          '. Si hubo clase, puedes pasar lista.</div>';
       }
       if (p.sesion && p.sesion.estado === 'realizada') {
-        html += '<div class="banda realizada">Lista guardada el ' + esc(fechaHora(p.sesion.timestamp)) + '. Puedes corregirla y volver a guardar.</div>';
+        html += '<div class="banda realizada">Hecha el ' + esc(fechaHora(p.sesion.timestamp)) + '. Puedes corregirla y volver a guardar.</div>';
       }
       if (p.sesion && p.sesion.estado === 'cancelada') {
-        html += '<div class="banda cancelada">Sesión cancelada' + (p.sesion.nota ? ': ' + esc(p.sesion.nota) : '') +
-          '. Si tenía marcas guardadas, se conservan (salen abajo) pero no cuentan; si guardas la lista, volverá a contar como realizada.</div>';
+        html += '<div class="banda cancelada">No hubo clase' + (p.sesion.nota ? ': ' + esc(p.sesion.nota) : '') +
+          '. Si guardas la lista, contará como clase hecha.</div>';
       }
       html += '</div>';
 
@@ -711,7 +759,11 @@
         '<div class="nombre">' + esc(nombre) +
         (u.faltasSeguidas ? '<span class="faltas-seguidas">' + u.faltasSeguidas + ' faltas seguidas</span>' : '') +
         (u.observaciones ? '<span class="obs">' + esc(u.observaciones) + '</span>' : '') + '</div>' +
-        '<span class="estado-fila">' + chipEstado(u.estado, undefined, recien ? 'recien' : '') + '</span>' +
+        // El estado por defecto (Asistido) va solo con su icono, para dejar sitio al nombre; el resto, con chip y texto.
+        // El lector de pantalla lee el estado en el aria-label de la fila.
+        '<span class="estado-fila">' + (u.estado === app.init.estadoPorDefecto
+          ? '<span class="chip solo-icono' + (recien ? ' recien' : '') + '" style="' + estiloEstado(u.estado) + '" title="' + esc(e.etiqueta) + '">' + iconoEstado(e) + '</span>'
+          : chipEstado(u.estado, undefined, recien ? 'recien' : '')) + '</span>' +
         // La llamada está en el panel de «⋮» (abrirPanelUsuario), para dejar sitio al nombre.
         '<button type="button" class="mas-opciones" data-accion="usuario" data-indice="' + i + '" aria-label="Más opciones de ' + esc(nombre) + '">' +
         ICONO_MAS_OPCIONES + '</button></div>';
@@ -757,7 +809,7 @@
       // Si queda otro pase por hacer (abierto desde Inicio), Guardar abre ese a continuación (guardarPase).
       const haySiguiente = app.pase.usuarios.length && siguientePase(app.pase);
       html += '</div><div class="botones">' +
-        '<button type="button" class="boton peligro" data-accion="cancelar-sesion">Sesión cancelada</button>' +
+        '<button type="button" class="boton peligro" data-accion="cancelar-sesion">No hubo clase</button>' +
         '<button type="button" class="boton lleno" data-accion="guardar"' + (app.pase.usuarios.length ? '' : ' disabled') + '>' +
         // Sin icono en «Guardar y seguir», para que quepa en una línea en un móvil estrecho.
         (haySiguiente ? 'Guardar y seguir' : ICONO_GUARDAR + 'Guardar') + '</button></div>';
@@ -773,8 +825,8 @@
       const p = app.pase;
       const n = p.usuarios.length;
       const motivos = [];
-      if (p.sesion && p.sesion.estado === 'cancelada') motivos.push('Esta sesión estaba cancelada: al guardar contará como realizada.');
-      if (p.diaEspecial) motivos.push('Es un día sin clase (' + (p.diaEspecial.tipo || 'día especial') + '). Guarda solo si hubo clase.');
+      if (p.sesion && p.sesion.estado === 'cancelada') motivos.push('Estaba marcada sin clase: al guardar contará como clase hecha.');
+      if (p.diaEspecial) motivos.push('Es un día libre (' + (p.diaEspecial.tipo || 'sin clase') + '). Guarda solo si hubo clase.');
       const faltas = p.usuarios.filter(function (u) { return estadoInfo(u.estado).tipo === 'ausente'; }).length;
       const primero = n ? p.usuarios[0].estado : '';
       if (n >= 2 && faltas >= Math.max(2, Math.ceil(n / 2))) {
@@ -1047,12 +1099,12 @@
     }
 
     function abrirCancelarSesion() {
-      abrirPanel('<div><h3>¿Marcar la sesión como cancelada?</h3>' +
-        '<p>No contará como clase realizada. Si ya había marcas guardadas, se conservan pero no cuentan; si después guardas la lista, vuelven a contar.</p>' +
+      abrirPanel('<div><h3>¿No hubo clase?</h3>' +
+        '<p>Las marcas que haya no se borran.</p>' +
         '<div class="campo"><label for="motivoCancelar">Motivo (opcional)</label><textarea id="motivoCancelar" rows="2"></textarea></div>' +
-        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">No</button>' +
-        '<button type="button" class="boton peligro-lleno" data-accion="confirmar-cancelar">Sí, cancelar</button></div>' +
-        botonSiguiente('confirmar-cancelar', 'Cancelar y pasar a la siguiente') + '</div>');
+        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
+        '<button type="button" class="boton peligro-lleno" data-accion="confirmar-cancelar">Sin clase</button></div>' +
+        botonSiguiente('confirmar-cancelar', 'Sin clase y pasar a la siguiente') + '</div>');
     }
 
     function cancelarPase(conSiguiente) {
@@ -1064,7 +1116,7 @@
         olvidarPorGuardar(claveBorrador(p.grupo.grupo_id, p.fecha));
         borrarBorrador(p.grupo.grupo_id, p.fecha);
         anticuar('sesion', p.grupo.grupo_id, p.fecha);
-        aviso('Sesión marcada como cancelada.');
+        aviso('Marcada sin clase.');
         seguirTrasPase(p, siguiente);
         precargar();
       }).catch(avisoError);
@@ -1078,10 +1130,10 @@
       cancelarPendiente = { grupo_id: grupoId, fecha: fecha, nombre: p ? p.nombre : grupoId };
       abrirPanel('<div><h3>¿No hubo clase?</h3>' +
         '<p><strong>' + esc(cancelarPendiente.nombre) + '</strong> · ' + esc(fechaLarga(fecha)) + '</p>' +
-        '<p>Se marcará como sesión cancelada y dejará de salir en Pendientes.</p>' +
+        '<p>Dejará de salir en Pendientes. Las marcas que haya no se borran.</p>' +
         '<div class="campo"><label for="motivoCancelar">Motivo (opcional)</label><textarea id="motivoCancelar" rows="2"></textarea></div>' +
-        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">No</button>' +
-        '<button type="button" class="boton peligro-lleno" data-accion="confirmar-no-hubo">Sí, cancelar</button></div></div>');
+        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Volver</button>' +
+        '<button type="button" class="boton peligro-lleno" data-accion="confirmar-no-hubo">Sin clase</button></div></div>');
     }
 
     function cancelarDesdeInicio() {
@@ -1095,7 +1147,7 @@
         borrarBorrador(c.grupo_id, c.fecha);
         anticuar('sesion', c.grupo_id, c.fecha);
         cerrarPanel();
-        aviso('Sesión marcada como cancelada: ' + c.nombre + ', ' + fechaCorta(c.fecha) + '.');
+        aviso('Marcada sin clase: ' + c.nombre + ', ' + fechaCorta(c.fecha) + '.');
         // Se quita al momento de la lista y después se repinta con los datos del servidor.
         if (app.vista === 'inicio' && app.ultimoInicio) {
           const d = copia(app.ultimoInicio);
@@ -1116,7 +1168,7 @@
         d.volver = volver || (app.grupo && app.grupo.grupo.grupo_id === grupoId ? app.grupo.volver : irInicio);
         app.grupo = d;
         app.pestana = pestana || 'lista';
-        pantallaSecundaria('grupo', d.grupo.nombre, d.grupo.taller + ' · ' + d.inscritos.length + ' inscritos', d.volver);
+        pantallaSecundaria('grupo', d.grupo.nombre, [tallerSiHaceFalta(d.grupo.taller, d.grupo.nombre), d.inscritos.length + ' inscritos'].filter(Boolean).join(' · '), d.volver);
         pintarGrupo();
       }).catch(avisoError);
     }
@@ -1176,7 +1228,7 @@
 
     function camposCambio(destinos) {
       const opcionesDestino = '<option value="">— Elige el grupo nuevo —</option>' + destinos.map(function (g) {
-        return '<option value="' + esc(g.grupo_id) + '">' + esc(g.taller) + ' · ' + esc(g.nombre) + (g.dias ? ' (' + esc(g.dias) + ')' : '') + '</option>';
+        return '<option value="' + esc(g.grupo_id) + '">' + esc(tallerYGrupo(g.taller, g.nombre)) + (g.dias ? ' (' + esc(diasLegibles(g.dias)) + ')' : '') + '</option>';
       }).join('');
       return '<div class="campo"><label for="grupoDestino">Grupo nuevo</label><select id="grupoDestino">' + opcionesDestino + '</select></div>' +
         '<div class="campo"><label for="fechaCambio">Primer día en el grupo nuevo</label><input type="date" id="fechaCambio" value="' + esc(app.init.hoy) + '"></div>';
@@ -1274,7 +1326,7 @@
         $('resultadosBusqueda').innerHTML = lista.map(function (u) {
           return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(nombreVisible(u.nombre)) + '</strong></div>' +
             '<div class="sub">ID ' + esc(u.usuario_id) + '</div></div>' +
-            (u.enGrupo ? '<span class="etiqueta realizada">Ya está</span>'
+            (u.enGrupo ? '<span class="etiqueta realizada">Ya está en el grupo</span>'
               : '<button type="button" class="boton primario" data-accion="inscribir" data-usuario="' + esc(u.usuario_id) + '">Inscribir</button>') +
             '</div>';
         }).join('');
@@ -1294,7 +1346,7 @@
         }
         anticuar('inscripciones');
         if (r.creado) anticuar('usuario-nuevo');
-        aviso((r.creado ? 'Usuario creado e inscrito: ' : 'Inscrito/a: ') + nombreVisible(r.nombre));
+        aviso((r.creado ? 'Usuario creado e inscrito: ' : 'Inscripción hecha: ') + nombreVisible(r.nombre));
         abrirGrupo(app.grupo.grupo.grupo_id, 'alta');
         precargar();
       }).catch(avisoError);
@@ -1329,7 +1381,7 @@
       if (!fecha) return aviso('Indica la fecha del cambio.', true);
       const g = app.grupo.destinos.find(function (x) { return x.grupo_id === destino; });
       confirmar('¿Cambiar de grupo?', '<strong>' + esc(nombreVisible(nombreInscripcion(insc))) + '</strong><br>Pasa a: ' +
-        esc(g ? g.taller + ' · ' + g.nombre : destino) + '<br>Desde el ' + esc(fechaNumerica(fecha)), 'Sí, cambiar', false, function () {
+        esc(g ? tallerYGrupo(g.taller, g.nombre) : destino) + '<br>Desde el ' + esc(fechaNumerica(fecha)), 'Sí, cambiar', false, function () {
         accionGrupo(llamar('api_cambiarGrupo', insc, destino, fecha), 'Cambio de grupo registrado.');
       });
     }
@@ -1381,7 +1433,7 @@
     function pintarHistorial(d) {
       const mesActual = app.init.hoy.substring(0, 7);
       let html = '<div class="campo"><label for="histGrupo">Grupo</label><select id="histGrupo">' +
-        opciones(app.init.grupos, app.hist.grupo_id, function (g) { return g.grupo_id; }, function (g) { return g.taller + ' · ' + g.nombre; }) +
+        opciones(app.init.grupos, app.hist.grupo_id, function (g) { return g.grupo_id; }, function (g) { return tallerYGrupo(g.taller, g.nombre); }) +
         '</select></div>' +
         '<div class="selector-mes"><button type="button" class="boton" data-accion="mes" data-salto="-1" aria-label="Mes anterior">‹</button>' +
         '<strong>' + esc(nombreMes(app.hist.mes)) + '</strong>' +
@@ -1392,10 +1444,10 @@
       const r = d.resumen;
       const cuantas = function (n, una, varias) { return n + ' ' + (n === 1 ? una : varias); };
       html += '<div class="resumen-chips">' +
-        '<span class="etiqueta realizada">' + cuantas(r.realizadas, 'realizada', 'realizadas') + '</span>' +
-        (r.canceladas ? '<span class="etiqueta cancelada">' + cuantas(r.canceladas, 'cancelada', 'canceladas') + '</span>' : '') +
+        '<span class="etiqueta realizada">' + cuantas(r.realizadas, 'hecha', 'hechas') + '</span>' +
+        (r.canceladas ? '<span class="etiqueta cancelada">' + r.canceladas + ' sin clase</span>' : '') +
         (r.pendientes ? '<span class="etiqueta pendiente">' + r.pendientes + ' sin pasar lista</span>' : '') +
-        (r.especiales ? '<span class="etiqueta especial">' + r.especiales + ' sin clase</span>' : '') +
+        (r.especiales ? '<span class="etiqueta especial">' + cuantas(r.especiales, 'día libre', 'días libres') + '</span>' : '') +
         '<span class="etiqueta">Asistencia ' + porcentaje(r.porcentaje) + '</span></div>';
 
       if (!d.columnas.length || !d.filas.length) {
@@ -1411,9 +1463,9 @@
       html += '<div class="tabla-scroll"><table class="historial"><thead><tr><th class="fija">Usuario</th>';
       d.columnas.forEach(function (c) {
         const dia = aFecha(c.fecha);
-        const titulo = c.estado === 'cancelada' ? 'Cancelada' + (c.nota ? ': ' + c.nota : '')
-          : c.estado === 'especial' ? (c.especial.tipo || 'Sin clase') + (c.especial.descripcion ? ': ' + c.especial.descripcion : '')
-            : c.estado === 'pendiente' ? 'Sin pasar lista' : 'Lista pasada';
+        const titulo = c.estado === 'cancelada' ? 'Sin clase' + (c.nota ? ': ' + c.nota : '')
+          : c.estado === 'especial' ? (c.especial.tipo || 'Día libre') + (c.especial.descripcion ? ': ' + c.especial.descripcion : '')
+            : c.estado === 'pendiente' ? 'Sin pasar lista' : 'Hecha';
         html += '<th class="dia' + claseColumna(c) + '" data-accion="pase-historial" data-fecha="' + esc(c.fecha) + '" title="' + esc(titulo) + '">' +
           LETRAS_DIAS[dia.getDay()] + '<br>' + dia.getDate() + '</th>';
       });
@@ -1423,7 +1475,7 @@
           esc(nombreVisible(f.nombre)) + '</th>';
         f.celdas.forEach(function (codigo, i) {
           const c = d.columnas[i];
-          if (codigo === '-') { html += '<td class="no-inscrito" title="No estaba inscrito/a">·</td>'; return; }
+          if (codigo === '-') { html += '<td class="no-inscrito" title="No estaba en el grupo">·</td>'; return; }
           if (!codigo) {
             html += '<td class="' + claseColumna(c).trim() + '">' + (c.estado === 'cancelada' ? 'C' : '') + '</td>';
             return;
@@ -1442,10 +1494,10 @@
       html += '<div class="leyenda">' + d.estados.filter(function (e) { return e.activo; }).map(function (e) {
         return '<span><span class="celda" style="' + estiloColor(e.color) + '">' + esc(e.letra) + '</span> ' + esc(e.etiqueta) + '</span>';
       }).join('') +
-        '<span><span class="celda muestra col-cancelada">C</span> Cancelada</span>' +
+        '<span><span class="celda muestra col-cancelada">C</span> Sin clase</span>' +
         '<span><span class="celda muestra col-pendiente"></span> Sin pasar lista</span>' +
-        '<span><span class="celda muestra col-especial"></span> Sin clase</span>' +
-        '<span><span class="celda muestra no-inscrito">·</span> No inscrito/a</span></div>';
+        '<span><span class="celda muestra col-especial"></span> Día libre</span>' +
+        '<span><span class="celda muestra no-inscrito">·</span> No estaba en el grupo</span></div>';
       pintar(html);
     }
 
@@ -1487,10 +1539,11 @@
         const bajas = d.altasBajas.reduce(function (s, m) { return s + m.bajas; }, 0);
         html += '<h2 class="seccion">' + esc(fechaNumerica(d.desde)) + ' a ' + esc(fechaNumerica(d.hasta)) + (d.taller ? ' · ' + esc(d.taller) : '') + '</h2>';
         html += '<div class="kpis">' +
-          kpi(t.usuarios, 'usuarios distintos atendidos') + kpi(t.realizadas, 'sesiones realizadas') +
-          kpi(porcentaje(t.porcentaje), 'de asistencia') + kpi(t.canceladas, 'sesiones canceladas') +
+          kpi(t.usuarios, 'usuarios distintos atendidos') + kpi(t.realizadas, 'clases hechas') +
+          kpi(porcentaje(t.porcentaje), 'de asistencia', '<button type="button" class="info-kpi" data-accion="info-porcentaje" aria-label="Cómo se calcula el % de asistencia">' +
+            ICONO_INFO + '</button>') +
+          kpi(t.canceladas, 'sin clase') +
           kpi(altas, 'altas') + kpi(bajas, 'bajas') + '</div>';
-        html += '<p class="ayuda">% de asistencia = asistencias ÷ (asistencias + faltas). Los eventos y otros estados que «no cuentan» no entran en el cálculo.</p>';
 
         if (esAdmin()) {
           html += '<div class="bloque"><h3>Exportar para la memoria</h3>' +
@@ -1523,15 +1576,24 @@
       pintar(html);
     }
 
-    function kpi(valorKpi, texto) {
-      return '<div class="kpi"><div class="kpi-valor">' + esc(valorKpi) + '</div><div class="kpi-texto">' + esc(texto) + '</div></div>';
+    /** Cifra del informe. extra: HTML que va junto a la cifra (el botón ⓘ del %). */
+    function kpi(valorKpi, texto, extra) {
+      return '<div class="kpi"><div class="kpi-valor">' + esc(valorKpi) + (extra || '') + '</div><div class="kpi-texto">' + esc(texto) + '</div></div>';
+    }
+
+    /** Panel del botón ⓘ del %: cómo se calcula. */
+    function abrirInfoPorcentaje() {
+      abrirPanel('<div><h3>% de asistencia</h3>' +
+        '<p>Asistencias ÷ (asistencias + faltas).</p>' +
+        '<p>Los estados que no cuentan (eventos, excursiones…) y los días sin clase no entran en el cálculo.</p>' +
+        '<button type="button" class="boton ancho" data-accion="cerrar-panel">Entendido</button></div>');
     }
 
     function tabla(titulo, primeras, filas, celdasIniciales) {
       if (!filas.length) return '<h3 class="taller">' + esc(titulo) + '</h3><p class="vacio">Sin datos en este periodo.</p>';
       return '<h3 class="taller">' + esc(titulo) + '</h3><div class="tabla-scroll"><table class="datos"><thead><tr>' +
         primeras.map(function (p) { return '<th>' + esc(p) + '</th>'; }).join('') +
-        '<th>Sesiones</th><th>Canceladas</th><th>Asistencias</th><th>Faltas</th><th>Otros</th><th>% asist.</th><th>Usuarios</th></tr></thead><tbody>' +
+        '<th>Sesiones</th><th>Sin clase</th><th>Asistencias</th><th>Faltas</th><th>Otros</th><th>% asist.</th><th>Usuarios</th></tr></thead><tbody>' +
         filas.map(function (r) {
           return '<tr>' + celdasIniciales(r).map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') +
             '<td>' + r.realizadas + '</td><td>' + r.canceladas + '</td><td>' + r.presentes + '</td><td>' + r.ausentes + '</td><td>' +
@@ -1621,7 +1683,7 @@
         if (g.taller !== tallerActual) { tallerActual = g.taller; html += '<h3 class="taller">' + esc(g.taller) + '</h3>'; }
         html += '<button type="button" class="tarjeta' + (g.activo ? '' : ' inactiva') + '" data-accion="g-grupo" data-grupo="' + esc(g.grupo_id) + '">' +
           '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(g.nombre) + '</div>' +
-          '<div class="tarjeta-detalle">' + esc(g.dias) + (g.hora ? ' · ' + esc(g.hora) : '') + ' · ' + g.inscritos + ' inscritos</div></div>' +
+          '<div class="tarjeta-detalle">' + esc([horario(g), g.inscritos + ' inscritos'].filter(Boolean).join(' · ')) + '</div></div>' +
           (g.activo ? '' : '<span class="etiqueta cancelada">Inactivo</span>') + '<span class="flecha" aria-hidden="true">›</span></button>';
       });
       pintar(html);
@@ -1758,14 +1820,14 @@
         '<button type="button" class="boton primario ancho" data-accion="g-guardar-usuario">Guardar cambios</button></div>';
 
       html += '<div class="bloque"><h3>Grupos</h3>' + (d.inscripciones.length ? d.inscripciones.map(function (i) {
-        return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(i.taller) + ' · ' + esc(i.grupo) + '</strong></div>' +
+        return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(tallerYGrupo(i.taller, i.grupo)) + '</strong></div>' +
           '<div class="sub">Alta ' + esc(fechaNumerica(i.fecha_alta)) +
           (i.fecha_baja ? ' · baja ' + esc(fechaNumerica(i.fecha_baja)) + (i.motivo_baja ? ' (' + esc(i.motivo_baja) + ')' : '') : ' · sigue') +
           '</div></div></div>';
-      }).join('') : '<p class="vacio">No está inscrito/a en ningún grupo.</p>');
+      }).join('') : '<p class="vacio">No está en ningún grupo.</p>');
       if (gruposLibres.length) {
         html += '<div class="fila-campos"><div class="campo"><label for="uGrupo">Inscribir en</label><select id="uGrupo">' +
-          opciones(gruposLibres, '', function (g) { return g.grupo_id; }, function (g) { return g.taller + ' · ' + g.nombre; }) + '</select></div>' +
+          opciones(gruposLibres, '', function (g) { return g.grupo_id; }, function (g) { return tallerYGrupo(g.taller, g.nombre); }) + '</select></div>' +
           '<div class="campo"><label for="uFechaAlta">Desde</label><input type="date" id="uFechaAlta" value="' + esc(app.init.hoy) + '"></div></div>' +
           '<button type="button" class="boton ancho" data-accion="g-inscribir-usuario">Inscribir</button>';
       }
@@ -1774,7 +1836,7 @@
       html += '<div class="bloque"><h3>Asistencia este curso</h3>' + (d.asistencia.length
         ? '<div class="tabla-scroll"><table class="datos"><thead><tr><th>Grupo</th><th>Asistencias</th><th>Faltas</th><th>Otros</th><th>%</th></tr></thead><tbody>' +
         d.asistencia.map(function (a) {
-          return '<tr><td>' + esc(a.taller) + ' · ' + esc(a.grupo) + '</td><td>' + a.presentes + '</td><td>' + a.ausentes + '</td><td>' +
+          return '<tr><td>' + esc(tallerYGrupo(a.taller, a.grupo)) + '</td><td>' + a.presentes + '</td><td>' + a.ausentes + '</td><td>' +
             a.neutros + '</td><td>' + porcentaje(a.porcentaje) + '</td></tr>';
         }).join('') + '</tbody></table></div>'
         : '<p class="vacio">Todavía no hay registros de asistencia.</p>') + '</div>';
@@ -1796,7 +1858,7 @@
       const u = app.ficha.usuario;
       llamar('api_altaUsuario', valor('uGrupo'), { usuario_id: u.usuario_id, fecha_alta: valor('uFechaAlta') }).then(function () {
         anticuar('inscripciones');
-        aviso('Inscrito/a en el grupo.');
+        aviso('Inscripción hecha.');
         abrirFicha(u.usuario_id, app.ficha.volver);
         precargar();
       }).catch(avisoError);
@@ -1807,7 +1869,7 @@
     function nombreGrupoGestion(grupoId) {
       if (!grupoId) return 'Todos los grupos';
       const g = app.gest.grupos.find(function (x) { return x.grupo_id === grupoId; });
-      return g ? g.taller + ' · ' + g.nombre : grupoId;
+      return g ? tallerYGrupo(g.taller, g.nombre) : grupoId;
     }
 
     function irDias() {
@@ -1829,7 +1891,7 @@
         '<div class="campo"><label for="dTipo">Tipo</label><select id="dTipo">' + opciones(app.gest.listas.tipo_dia, '') + '</select></div>' +
         '<div class="campo"><label for="dDescripcion">Descripción (opcional)</label><input type="text" id="dDescripcion" placeholder="Ej.: Navidad, Inmaculada…"></div>' +
         '<div class="campo"><label for="dGrupo">Afecta a</label><select id="dGrupo"><option value="">Todos los grupos</option>' +
-        opciones(app.gest.grupos.filter(function (g) { return g.activo; }), '', function (g) { return g.grupo_id; }, function (g) { return g.taller + ' · ' + g.nombre; }) +
+        opciones(app.gest.grupos.filter(function (g) { return g.activo; }), '', function (g) { return g.grupo_id; }, function (g) { return tallerYGrupo(g.taller, g.nombre); }) +
         '</select></div><button type="button" class="boton primario ancho" data-accion="g-guardar-dia">Añadir</button></div>';
       html += '<h2 class="seccion">Próximos (' + proximos.length + ')</h2>' + (proximos.length ? proximos.map(fila).join('') : '<p class="vacio">No hay ninguno apuntado.</p>');
       if (pasados.length) html += '<details class="plegable"><summary>Pasados (' + pasados.length + ')</summary><div class="relleno">' + pasados.map(fila).join('') + '</div></details>';
@@ -1870,8 +1932,8 @@
           '<button type="button" class="boton primario ancho" data-accion="g-guardar-estado" data-codigo="' + esc(nuevo ? '' : e.codigo) + '">' +
           (nuevo ? 'Crear estado' : 'Guardar') + '</button></div>';
       };
-      pintar('<p class="ayuda">La letra es la que se ve en el historial. El primer estado de la lista (' +
-        esc(app.init.estadoPorDefecto) + ') es con el que empieza cada pase de lista.</p>' +
+      pintar('<p class="ayuda">La letra es la que se ve en el historial. Cada pase de lista empieza con todos en «' +
+        esc(estadoInfo(app.init.estadoPorDefecto).etiqueta) + '».</p>' +
         app.gest.estados.map(function (e) { return bloque(e, false); }).join('') +
         bloque({ etiqueta: '', letra: '', color: '#6a1b9a', tipo: 'neutro', activo: true }, true));
     }
@@ -1939,7 +2001,7 @@
     function guardarLista(lista, campo) {
       const valores = $(campo).value.split('\n').map(function (v) { return v.trim(); }).filter(Boolean);
       llamar('api_guardarLista', lista, valores).then(function () {
-        aviso('Lista guardada.');
+        aviso('Cambios guardados.');
         return recargarDatos('lista');
       }).then(irListas).catch(avisoError);
     }
@@ -2061,6 +2123,7 @@
         // Informe
         case 'ver-informe': verInforme(); break;
         case 'exportar-informe': exportarInforme(); break;
+        case 'info-porcentaje': abrirInfoPorcentaje(); break;
         // Gestión
         case 'g-grupos': irGrupos(); break;
         case 'g-grupo-nuevo': formularioGrupo(''); break;

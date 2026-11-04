@@ -2,3 +2,4 @@
 !*.gs
 !*.html
 !appsscript.json
+sim/**

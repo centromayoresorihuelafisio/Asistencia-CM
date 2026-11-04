@@ -49,7 +49,10 @@
 
     --md-on-surface:     #202124;
     --md-on-surface-med: #5f6368;
-    --md-on-surface-low: #80868b;
+    --md-on-surface-low: #5f6368;   /* texto terciario: 4,5:1 sobre el fondo (antes #80868b) */
+    /* Botones desactivados (Material): contenedor gris y texto gris legible, sin transparencias */
+    --md-disabled:       #e8eaed;
+    --md-on-disabled:    #6b6f74;
 
     --md-scrim:       rgba(32, 33, 36, .50);
     --md-velo:        rgba(248, 249, 250, .60);   /* fondo del indicador de carga: deja ver la pantalla */
@@ -182,6 +185,15 @@
     text-overflow: ellipsis;
   }
   .barra-sub { font-size: var(--fs-sm); color: var(--md-on-surface-med); }
+  /* Pantallas secundarias: el título (nombre del grupo) puede ocupar dos líneas antes de cortarse */
+  .barra.secundaria .barra-principal {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: var(--fs-lg);
+  }
 
   .vista { padding: 12px 16px 24px; max-width: 720px; margin: 0 auto; }
   .vista.con-pie { padding-bottom: 190px; }
@@ -522,7 +534,14 @@
     user-select: none;
     transition: border-color var(--dur-1) var(--ease);
   }
-  .boton:disabled { opacity: .38; cursor: default; }
+  /* Desactivado como en Material, pero legible: gris sin transparencias (también el botón lleno) */
+  .boton:disabled, .boton.primario:disabled, .boton.lleno:disabled, .boton.peligro:disabled, .boton.peligro-lleno:disabled {
+    border-color: var(--md-disabled);
+    color: var(--md-on-disabled);
+    box-shadow: none;
+    cursor: default;
+  }
+  .boton.primario:disabled, .boton.lleno:disabled, .boton.peligro-lleno:disabled { background: var(--md-disabled); }
   /* Acción principal: tonal, como en fisio (máximo uno por pantalla o bloque) */
   .boton.primario { background: var(--md-primary-container); border-color: transparent; color: var(--md-primary-dark); }
   /* Botón relleno de Material 3: solo para Guardar el pase de lista, la acción que más se repite */
@@ -633,9 +652,9 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 0;
     min-height: var(--alto-fila);
-    padding: 6px 6px 6px 12px;
+    padding: 6px 0 6px 12px;
     margin-bottom: 2px;
     border: 0;
     border-radius: var(--md-shape-md);
@@ -651,7 +670,7 @@
     background: color-mix(in oklab, var(--tinte) 14%, var(--md-surface));
     box-shadow: inset 5px 0 0 var(--tinte);
   }
-  .fila-usuario .nombre { flex: 1; min-width: 0; padding: 6px 4px 6px 0; font-size: var(--fs-md); font-weight: 600; line-height: 1.3; letter-spacing: .01em; }
+  .fila-usuario .nombre { flex: 1; min-width: 0; padding: 6px 8px 6px 0; font-size: var(--fs-md); font-weight: 600; line-height: 1.3; letter-spacing: .01em; }
   .fila-usuario .obs { display: block; margin-top: 2px; font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; color: var(--md-on-surface-med); }
   /* Aviso de faltas seguidas (lo calcula el servidor): insignia roja con icono, como la de absentismo de fisio */
   .fila-usuario .faltas-seguidas {
@@ -685,16 +704,15 @@
     display: flex;
     align-items: center;
     flex: none;
-    padding: 0 2px;
   }
   .estado-fila .chip { transition: transform var(--dur-1) var(--ease); }
   .fila-usuario:active .estado-fila .chip { transform: scale(.95); }
-  /* «⋮»: abre el panel con los demás estados, observaciones y baja. Estrecho, para dejar sitio al nombre. */
+  /* «⋮»: abre el panel con los demás estados, observaciones y baja. 48 px de ancho (zona táctil mínima). */
   .mas-opciones {
     position: relative;
     z-index: var(--z-base);
     flex: none;
-    width: 36px;
+    width: 48px;
     height: var(--alto-boton);
     display: flex;
     align-items: center;
@@ -727,6 +745,9 @@
     white-space: nowrap;
     text-align: center;
   }
+  /* Estado por defecto en el pase (Asistido): solo el icono, en un hueco de 36 × 36, para dejar sitio al nombre */
+  .chip.solo-icono { min-width: 36px; width: 36px; padding: 0; gap: 0; }
+  .chip.solo-icono svg { width: 22px; height: 22px; }
   .chip svg, .opcion-estado svg { flex: none; width: 20px; height: 20px; color: var(--estado-icono, currentColor); }
   .chip.recien svg { animation: md-icono var(--dur-3) var(--ease); }
   .chip .numero { font-variant-numeric: tabular-nums; }
@@ -736,7 +757,7 @@
   [style*="--estado"] { background: var(--estado); color: var(--estado-texto); }
   @supports (color: color-mix(in oklab, red, blue)) {
     [style*="--estado"] {
-      --estado-suave: color-mix(in oklab, var(--estado) 85%, var(--md-on-surface-low));
+      --estado-suave: color-mix(in oklab, var(--estado) 85%, var(--md-outline-strong));
       --estado-fondo: color-mix(in oklab, var(--estado-suave) 15%, var(--md-surface));
       --estado-icono: color-mix(in oklab, var(--estado) 85%, black);
       background: var(--estado-fondo);
@@ -1058,7 +1079,24 @@
     border-radius: var(--md-shape-lg);
     background: var(--md-surface);
   }
-  .kpi-valor { font-size: var(--fs-kpi); font-weight: 600; line-height: 1.15; color: var(--md-primary); }
+  .kpi-valor { display: flex; align-items: center; gap: 2px; font-size: var(--fs-kpi); font-weight: 600; line-height: 1.15; color: var(--md-primary); }
+  /* Botón ⓘ junto al % del informe: abre la explicación del cálculo */
+  .info-kpi {
+    flex: none;
+    width: 48px;
+    height: 48px;
+    margin: -10px -12px -10px 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--md-shape-full);
+    background: none;
+    color: var(--md-on-surface-med);
+    cursor: pointer;
+  }
+  .info-kpi:active { background: var(--md-surface-container-high); }
   .kpi-texto { font-size: var(--fs-sm); color: var(--md-on-surface-med); margin-top: 2px; }
 
   /* Tabla de datos (como .md-tabla de fisio) */
