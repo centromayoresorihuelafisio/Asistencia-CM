@@ -208,7 +208,7 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
 | Fase | Estado | Fecha | Commit |
 |---|---|---|---|
 | 1 · Pase de lista más limpio y textos | Hecha | 4-nov-2026 | `ef176a6` |
-| 2 · Navegación nativa | Hecha | 4-nov-2026 | (este commit) |
+| 2 · Navegación nativa | Hecha | 4-nov-2026 | `022b70f` |
 | 3 · Carga, errores y progreso | Pendiente | | |
 | 4 · Avisos abajo y «Deshacer» | Pendiente | | |
 | 5 · Pase de lista e Inicio | Pendiente | | |
