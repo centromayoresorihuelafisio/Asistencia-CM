@@ -213,7 +213,7 @@ En la sección 9 de `CLAUDE.md`, añadir `PLAN-PULIDO.md` y `sim/`, como archivo
 | 4 · Avisos abajo y «Deshacer» | Hecha | 4-nov-2026 | `59a834b` |
 | 5 · Pase de lista e Inicio | Hecha | 4-nov-2026 | `6abeeff` |
 | 6 · Historial e Informe | Hecha | 4-nov-2026 | `d235b09` |
-| 7 · Formularios y coherencia | Hecha | 4-nov-2026 | (este commit) |
+| 7 · Formularios y coherencia | Hecha | 4-nov-2026 | `b040022` |
 
 ## Notas para fases siguientes
 
