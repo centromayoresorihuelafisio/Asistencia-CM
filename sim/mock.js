@@ -38,7 +38,7 @@
     return rango;
   };
   Hoja.prototype.setFrozenRows = function () { return this; };
-  ['setColumnWidth', 'autoResizeColumns', 'setTabColor', 'hideSheet', 'setRowHeight', 'setHiddenGridlines'].forEach(function (m) { Hoja.prototype[m] = function () { return this; }; });
+  ['setColumnWidth', 'autoResizeColumns', 'setTabColor', 'hideSheet', 'setRowHeight', 'setHiddenGridlines', 'setFrozenColumns'].forEach(function (m) { Hoja.prototype[m] = function () { return this; }; });
 
   function Libro() { this.hojas = []; }
   Libro.prototype.getSheetByName = function (n) { return this.hojas.find(function (h) { return h.nombre === n; }) || null; };

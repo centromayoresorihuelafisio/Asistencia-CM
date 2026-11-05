@@ -314,6 +314,7 @@ function tablasInforme_(r, desde, hasta) {
       ['% asistencia = asistencias ÷ (asistencias + ausencias). Los eventos no cuentan.', '']
     ] },
     { nombre: 'Asistencia por grupo', enPdf: false, escribir: hojaAsistenciaPorGrupo_(r, desde, hasta, usuarios, tipos) },
+    { nombre: 'Historial', enPdf: false, escribir: hojaHistorial_(r, desde, hasta, usuarios, tipos) },
     { nombre: 'Por taller', enPdf: true, cabecera: ['Taller'].concat(cabAcum), filas: filasAcumulado_(r.porTaller, ['taller']) },
     { nombre: 'Por grupo', enPdf: true, cabecera: ['Taller', 'Grupo'].concat(cabAcum), filas: filasAcumulado_(r.porGrupo, ['taller', 'grupo']) },
     { nombre: 'Por mes', enPdf: true, cabecera: ['Mes'].concat(cabAcum), filas: filasAcumulado_(r.porMes, ['mes']), formatos: { 0: '@' } },
@@ -353,6 +354,12 @@ function horarioLegible_(g) {
   return [dias, g.hora || ''].filter(Boolean).join(' · ');
 }
 
+/** «2026-10-08» → «8/10». */
+function diaCorto_(fecha) {
+  const p = String(fecha).split('-');
+  return Number(p[2]) + '/' + Number(p[1]);
+}
+
 function porcentajeTexto_(p) {
   return p === null || p === undefined ? '—' : String(p).replace('.', ',') + ' %';
 }
@@ -380,13 +387,22 @@ function hojaAsistenciaPorGrupo_(r, desde, hasta, usuarios, tipos) {
   r._detalle.forEach(function (a) {
     const id = normalizarId_(a.usuario_id);
     const g = porGrupo[a.grupo_id] = porGrupo[a.grupo_id] || {};
-    const u = g[id] = g[id] || { id: id, cuenta: {}, presentes: 0, ausentes: 0, total: 0 };
+    const u = g[id] = g[id] || { id: id, cuenta: {}, presentes: 0, ausentes: 0, total: 0, faltas: {} };
     u.cuenta[a.estado] = (u.cuenta[a.estado] || 0) + 1;
     u.total++;
     const t = tipos[a.estado] ? tipos[a.estado].tipo : '';
     if (t === TIPO_ESTADO.PRESENTE) u.presentes++;
-    else if (t === TIPO_ESTADO.AUSENTE) u.ausentes++;
+    else if (t === TIPO_ESTADO.AUSENTE) {
+      u.ausentes++;
+      (u.faltas[a.estado] = u.faltas[a.estado] || []).push(a.fecha);
+    }
   });
+  // «Falta: 8/10, 15/10 · Justificada: 22/10», en el orden de las columnas de estado.
+  const diasFalta = function (u) {
+    return estados.filter(function (c) { return u.faltas[c]; }).map(function (c) {
+      return (tipos[c] ? tipos[c].etiqueta : c) + ': ' + u.faltas[c].sort().map(diaCorto_).join(', ');
+    }).join(' · ');
+  };
 
   // Inscripciones por grupo y usuario, para la columna «Situación».
   const inscripciones = {};
@@ -410,9 +426,9 @@ function hojaAsistenciaPorGrupo_(r, desde, hasta, usuarios, tipos) {
   const grupos = {};
   leerTabla_(HOJAS.GRUPOS).forEach(function (g) { grupos[g.grupo_id] = g; });
   const cabecera = ['Usuario', 'ID'].concat(estados.map(function (c) { return tipos[c] ? tipos[c].etiqueta : c; }))
-    .concat(['Total registros', '% asistencia', 'Situación']);
+    .concat(['Total registros', '% asistencia', 'Situación', 'Días que faltó']);
   const ancho = cabecera.length;
-  const colPct = ancho - 1;   // 1-based
+  const colPct = ancho - 2;   // 1-based
   const vacia = function () { const f = []; for (let k = 0; k < ancho; k++) f.push(''); return f; };
   const conTexto = function (texto) { const f = vacia(); f[0] = texto; return f; };
 
@@ -453,14 +469,14 @@ function hojaAsistenciaPorGrupo_(r, desde, hasta, usuarios, tipos) {
       const pct = u.presentes + u.ausentes ? u.presentes / (u.presentes + u.ausentes) : '';
       filas.push([u.nombreHoja ? nombreLegible_(u.nombreHoja) : '(ID ' + u.id + ' sin ficha)', u.id]
         .concat(estados.map(function (c) { return u.cuenta[c] || 0; }))
-        .concat([u.total, pct, situacion(resumen.grupo_id, u.id)]));
+        .concat([u.total, pct, situacion(resumen.grupo_id, u.id), diasFalta(u)]));
       estados.forEach(function (c) { suma.cuenta[c] = (suma.cuenta[c] || 0) + (u.cuenta[c] || 0); });
       suma.presentes += u.presentes;
       suma.ausentes += u.ausentes;
       suma.total += u.total;
     });
     filas.push(['Total del grupo', ''].concat(estados.map(function (c) { return suma.cuenta[c]; }))
-      .concat([suma.total, suma.presentes + suma.ausentes ? suma.presentes / (suma.presentes + suma.ausentes) : '', '']));
+      .concat([suma.total, suma.presentes + suma.ausentes ? suma.presentes / (suma.presentes + suma.ausentes) : '', '', '']));
     formatos.push({ fila: filas.length, tipo: 'total' });
     filas.push(vacia());
   });
@@ -470,7 +486,7 @@ function hojaAsistenciaPorGrupo_(r, desde, hasta, usuarios, tipos) {
     hoja.getRange(1, 2, filas.length, 1).setNumberFormat('@');            // ID como texto
     hoja.getRange(1, colPct, filas.length, 1).setNumberFormat('0.0%');
     hoja.getRange(1, 1, filas.length, ancho).setValues(filas).setVerticalAlignment('middle');
-    hoja.getRange(1, 3, filas.length, ancho - 3).setHorizontalAlignment('center');
+    hoja.getRange(1, 3, filas.length, ancho - 4).setHorizontalAlignment('center');
     formatos.forEach(function (f) {
       const fila = hoja.getRange(f.fila, 1, 1, ancho);
       if (f.tipo === 'titulo') hoja.getRange(f.fila, 1).setFontSize(15).setFontWeight('bold').setHorizontalAlignment('left');
@@ -488,8 +504,183 @@ function hojaAsistenciaPorGrupo_(r, desde, hasta, usuarios, tipos) {
     });
     hoja.setColumnWidth(1, 280);
     hoja.setColumnWidth(2, 70);
-    for (let c = 3; c < ancho; c++) hoja.setColumnWidth(c, 100);
-    hoja.setColumnWidth(ancho, 300);
+    for (let c = 3; c < ancho - 1; c++) hoja.setColumnWidth(c, 100);
+    hoja.setColumnWidth(ancho - 1, 260);
+    hoja.setColumnWidth(ancho, 360);
+    hoja.getRange(1, ancho, filas.length, 1).setWrap(true);   // los días que faltó, en varias líneas si no caben
+    hoja.setHiddenGridlines(true);
+  };
+}
+
+// ---------- Hoja «Historial» (solo en la hoja de cálculo; 5-nov-2026) ----------
+// La cuadrícula del Historial de la app para todo el periodo: un bloque por grupo, una fila por usuario,
+// una columna por día de clase (hasta hoy) con la letra y el color del estado.
+
+const DIAS_CORTOS_ = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const COLOR_HIST_ = { texto: '#202124', gris: '#80868b', nota: '#5f6368', blanco: '#ffffff', grupo: '#e8eaf6',
+  cabecera: '#f1f3f4', sinClase: '#e8eaed', sinLista: '#fce8e6', diaLibre: '#fef7e0' };
+
+/** Color de la hoja Estados mezclado con blanco (como los chips suaves de la app). */
+function aclarar_(hex, cuanto) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return COLOR_HIST_.blanco;
+  const n = parseInt(m[1], 16);
+  return '#' + [n >> 16, (n >> 8) & 255, n & 255].map(function (c) {
+    return ('0' + Math.round(c + (255 - c) * cuanto).toString(16)).slice(-2);
+  }).join('');
+}
+
+/** Devuelve la función que escribe la hoja (la llama informeXlsx_ con la hoja ya creada). */
+function hojaHistorial_(r, desde, hasta, usuarios, tipos) {
+  const fin = hasta < hoy_() ? hasta : hoy_();
+  const cfg = config_();
+  const grupos = {};
+  leerTabla_(HOJAS.GRUPOS).forEach(function (g) { grupos[g.grupo_id] = g; });
+  const sesiones = {};
+  leerTabla_(HOJAS.SESIONES).forEach(function (s) {
+    if (s.fecha >= desde && s.fecha <= fin) sesiones[s.grupo_id + '|' + s.fecha] = s;
+  });
+  const periodos = {};   // grupo → usuario → inscripciones que tocan el periodo
+  leerTabla_(HOJAS.INSCRIPCIONES).forEach(function (i) {
+    if (!i.fecha_alta || i.fecha_alta > fin || (i.fecha_baja && i.fecha_baja < desde)) return;
+    const id = normalizarId_(i.usuario_id);
+    const g = periodos[i.grupo_id] = periodos[i.grupo_id] || {};
+    (g[id] = g[id] || []).push(i);
+  });
+  const marcas = {};   // grupo → usuario → fecha → estado (solo las que cuentan, como el resto del informe)
+  r._detalle.forEach(function (a) {
+    const id = normalizarId_(a.usuario_id);
+    const g = marcas[a.grupo_id] = marcas[a.grupo_id] || {};
+    (g[id] = g[id] || {})[a.fecha] = a.estado;
+  });
+
+  // Cada bloque: { titulo, columnas: [{ fecha, tipo, asistieron }], filas: [[celda…]], total } con celda = { v, fondo, letra }.
+  const bloques = r.porGrupo.map(function (resumen) {
+    const grupo = grupos[resumen.grupo_id] || { grupo_id: resumen.grupo_id };
+    const columnas = [];
+    for (let f = desde; f <= fin; f = sumarDias_(f, 1)) {
+      const s = sesiones[resumen.grupo_id + '|' + f];
+      const dentroCurso = (!cfg.inicio || f >= cfg.inicio) && (!cfg.fin || f <= cfg.fin);
+      if (!s && !(tocaClase_(grupo, f) && dentroCurso)) continue;
+      columnas.push({ fecha: f, tipo: s ? s.estado : (diaEspecial_(resumen.grupo_id, f) ? 'especial' : 'pendiente'), asistieron: 0 });
+    }
+    const insc = periodos[resumen.grupo_id] || {};
+    const marc = marcas[resumen.grupo_id] || {};
+    const ids = Object.keys(insc);
+    Object.keys(marc).forEach(function (id) { if (!insc[id]) ids.push(id); });
+    ids.sort(function (a, b) {
+      return String((usuarios[a] || {}).nombre || '').localeCompare(String((usuarios[b] || {}).nombre || ''), 'es') || a.localeCompare(b);
+    });
+    let presentesG = 0;
+    let ausentesG = 0;
+    const filas = ids.map(function (id) {
+      let presentes = 0;
+      let ausentes = 0;
+      const celdas = columnas.map(function (c) {
+        if (c.tipo === ESTADO_SESION.CANCELADA) return { v: '–', fondo: COLOR_HIST_.sinClase, letra: COLOR_HIST_.gris };
+        const codigo = (marc[id] || {})[c.fecha];
+        if (codigo) {
+          const e = tipos[codigo] || { letra: codigo, color: '', tipo: '' };
+          if (e.tipo === TIPO_ESTADO.PRESENTE) { presentes++; c.asistieron++; }
+          else if (e.tipo === TIPO_ESTADO.AUSENTE) ausentes++;
+          return { v: e.letra, fondo: aclarar_(e.color, 0.7), letra: COLOR_HIST_.texto };
+        }
+        const inscrito = (insc[id] || []).some(function (i) {
+          return i.fecha_alta <= c.fecha && (!i.fecha_baja || c.fecha <= i.fecha_baja);
+        });
+        const fondo = c.tipo === 'pendiente' ? COLOR_HIST_.sinLista : c.tipo === 'especial' ? COLOR_HIST_.diaLibre : COLOR_HIST_.blanco;
+        return { v: inscrito ? '' : '·', fondo: fondo, letra: COLOR_HIST_.gris };
+      });
+      presentesG += presentes;
+      ausentesG += ausentes;
+      const nombre = (usuarios[id] || {}).nombre;
+      return [{ v: nombre ? nombreLegible_(nombre) : '(ID ' + id + ' sin ficha)' }, { v: id },
+        { v: presentes + ausentes ? presentes / (presentes + ausentes) : '' }].concat(celdas);
+    });
+    const horario = horarioLegible_(grupo);
+    const nombre = resumen.grupo;
+    const conTaller = resumen.taller && sinTildes_(nombre).indexOf(sinTildes_(resumen.taller)) !== 0
+      ? nombre + ' (' + resumen.taller + ')' : nombre;
+    return {
+      titulo: conTaller + (horario ? ' · ' + horario : ''),
+      columnas: columnas,
+      filas: filas,
+      total: presentesG + ausentesG ? presentesG / (presentesG + ausentesG) : ''
+    };
+  });
+
+  const ancho = 3 + bloques.reduce(function (m, b) { return Math.max(m, b.columnas.length); }, 0);
+  const valores = [];
+  const fondos = [];
+  const letras = [];
+  const formatos = [];   // { fila, tipo }
+  const fila = function (celdas, tipo) {
+    const v = [], fo = [], le = [];
+    for (let k = 0; k < ancho; k++) {
+      const c = celdas[k] || {};
+      v.push(c.v === undefined ? '' : c.v);
+      fo.push(c.fondo || (tipo === 'grupo' ? COLOR_HIST_.grupo : tipo === 'cabecera' ? COLOR_HIST_.cabecera : COLOR_HIST_.blanco));
+      le.push(c.letra || (tipo === 'nota' ? COLOR_HIST_.nota : COLOR_HIST_.texto));
+    }
+    valores.push(v);
+    fondos.push(fo);
+    letras.push(le);
+    if (tipo) formatos.push({ fila: valores.length, tipo: tipo });
+  };
+
+  const leyenda = Object.keys(tipos).filter(function (c) { return tipos[c].activo; })
+    .map(function (c) { return tipos[c].letra + ' = ' + tipos[c].etiqueta; }).join(' · ');
+  fila([{ v: 'Historial de asistencia' }], 'titulo');
+  fila([{ v: 'Del ' + fechaNumerica_(desde) + ' al ' + fechaNumerica_(fin) + ' · ' + (r.taller || 'Todos los talleres') }], 'nota');
+  fila([{ v: leyenda }], 'nota');
+  fila([{ v: '– = no hubo clase · · = no estaba inscrito' }], 'nota');
+  fila([{ v: 'Rosa = sin pasar lista · amarillo = día libre' }], 'nota');
+  fila([]);
+
+  bloques.forEach(function (b) {
+    fila([{ v: b.titulo }], 'grupo');
+    if (!b.filas.length || !b.columnas.length) {
+      fila([{ v: b.columnas.length ? 'Nadie inscrito en este periodo.' : 'Sin días de clase en este periodo.' }], 'nota');
+      fila([]);
+      return;
+    }
+    fila([{}, {}, {}].concat(b.columnas.map(function (c) { return { v: DIAS_CORTOS_[textoAFecha_(c.fecha).getDay()] }; })), 'cabecera');
+    fila([{ v: 'Usuario' }, { v: 'ID' }, { v: '% asist.' }].concat(b.columnas.map(function (c) { return { v: diaCorto_(c.fecha) }; })), 'cabecera');
+    b.filas.forEach(function (f) { fila(f); });
+    fila([{ v: 'Asistieron' }, {}, { v: b.total }].concat(b.columnas.map(function (c) {
+      if (c.tipo === ESTADO_SESION.CANCELADA) return { v: '–', letra: COLOR_HIST_.gris };
+      return c.tipo === ESTADO_SESION.REALIZADA || c.asistieron ? { v: c.asistieron } : {};   // sin lista: en blanco
+    })), 'total');
+    fila([]);
+  });
+
+  return function (hoja) {
+    hoja.clear();
+    hoja.getRange(1, 2, valores.length, 1).setNumberFormat('@');          // ID como texto
+    formatos.forEach(function (f) {   // «8/10» como texto, no como fecha
+      if (f.tipo === 'cabecera') hoja.getRange(f.fila, 1, 1, ancho).setNumberFormat('@');
+    });
+    hoja.getRange(1, 3, valores.length, 1).setNumberFormat('0%');
+    hoja.getRange(1, 1, valores.length, ancho).setValues(valores).setBackgrounds(fondos).setFontColors(letras)
+      .setVerticalAlignment('middle');
+    hoja.getRange(1, 3, valores.length, ancho - 2).setHorizontalAlignment('center');
+    formatos.forEach(function (f) {
+      const rango = hoja.getRange(f.fila, 1, 1, ancho);
+      if (f.tipo === 'titulo') hoja.getRange(f.fila, 1).setFontSize(15).setFontWeight('bold').setHorizontalAlignment('left');
+      else if (f.tipo === 'nota') hoja.getRange(f.fila, 1).setHorizontalAlignment('left');
+      else if (f.tipo === 'grupo') {
+        hoja.getRange(f.fila, 1).setFontSize(12).setFontWeight('bold').setHorizontalAlignment('left');
+        hoja.setRowHeight(f.fila, 28);
+      } else if (f.tipo === 'cabecera') rango.setFontWeight('bold');
+      else if (f.tipo === 'total') {
+        rango.setFontWeight('bold').setBorder(true, null, null, null, null, null, '#9aa0a6', SpreadsheetApp.BorderStyle.SOLID);
+      }
+    });
+    hoja.setColumnWidth(1, 300);
+    hoja.setColumnWidth(2, 60);
+    hoja.setColumnWidth(3, 70);
+    for (let c = 4; c <= ancho; c++) hoja.setColumnWidth(c, 42);
+    hoja.setFrozenColumns(3);
     hoja.setHiddenGridlines(true);
   };
 }
