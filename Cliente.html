@@ -337,6 +337,10 @@
     const ICONO_INFO = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/></svg>';
     const ICONO_PERIODO = '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V10h14zM7 12h5v5H7z"/></svg>';
     const ICONO_ELEGIDO = '<svg class="marca-elegida" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
+    // Chevrones de las flechas de día y mes, y descarga (5-nov-2026)
+    const ICONO_ANTERIOR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4-4.6-4.6z"/></svg>';
+    const ICONO_SIGUIENTE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.6 7.4 10 6l6 6-6 6-1.4-1.4 4.6-4.6z"/></svg>';
+    const ICONO_DESCARGAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5zm14-11h-4V3H9v6H5l7 7z"/></svg>';
     const ICONO_GUARDAR ='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
 
     function enlaceLlamar(telefono) {
@@ -1059,13 +1063,24 @@
       }, irInicio);
     }
 
-    /** Fecha de Inicio con las flechas ‹ › (› no pasa de hoy). */
+    /**
+     * Fecha de Inicio (5-nov-2026): una pastilla con las flechas a los lados (› no pasa de hoy) y la fecha escrita
+     * en medio («Hoy, jue 5 nov»). Encima de la fecha está el campo de fecha real, transparente: tocarlo abre el calendario.
+     */
     function htmlSelectorFecha(hoy) {
-      return '<div class="selector-fecha"><label for="fechaInicio">Fecha</label>' +
-        '<button type="button" class="boton flecha-dia" data-accion="dia" data-salto="-1" aria-label="Día anterior">‹</button>' +
-        '<input type="date" id="fechaInicio" value="' + esc(app.fecha) + '" max="' + esc(hoy) + '">' +
-        '<button type="button" class="boton flecha-dia" data-accion="dia" data-salto="1" aria-label="Día siguiente"' +
-        (app.fecha >= hoy ? ' disabled' : '') + '>›</button></div>';
+      return '<div class="selector-fecha">' +
+        '<button type="button" class="flecha-redonda" data-accion="dia" data-salto="-1" aria-label="Día anterior">' + ICONO_ANTERIOR + '</button>' +
+        '<label class="fecha-pastilla">' + ICONO_PERIODO + '<span class="texto-fecha">' + esc(textoFechaInicio(app.fecha, hoy)) + '</span>' +
+        '<input type="date" id="fechaInicio" aria-label="Fecha" value="' + esc(app.fecha) + '" max="' + esc(hoy) + '"></label>' +
+        '<button type="button" class="flecha-redonda" data-accion="dia" data-salto="1" aria-label="Día siguiente"' +
+        (app.fecha >= hoy ? ' disabled' : '') + '>' + ICONO_SIGUIENTE + '</button></div>';
+    }
+    /** «Hoy, jue 5 nov», «Ayer, mié 4 nov» o «Lun 2 nov» (con el año si no es el de hoy). */
+    function textoFechaInicio(fecha, hoy) {
+      const corta = fechaCorta(fecha) + (fecha.substring(0, 4) !== hoy.substring(0, 4) ? ' ' + fecha.substring(0, 4) : '');
+      if (fecha === hoy) return 'Hoy, ' + corta;
+      if (fecha === sumarDias(hoy, -1)) return 'Ayer, ' + corta;
+      return mayuscula(corta);
     }
 
     /** Etiqueta de un pase de lista que se está guardando en segundo plano o cuyo guardado ha fallado. */
@@ -2330,10 +2345,10 @@
       let html = '<div class="campo"><label for="histGrupo">Grupo</label><select id="histGrupo">' +
         opciones(app.init.grupos, app.hist.grupo_id, function (g) { return g.grupo_id; }, function (g) { return tallerYGrupo(g.taller, g.nombre); }) +
         '</select></div>' +
-        '<div class="selector-mes"><button type="button" class="boton" data-accion="mes" data-salto="-1" aria-label="Mes anterior">‹</button>' +
+        '<div class="selector-mes"><button type="button" class="flecha-redonda" data-accion="mes" data-salto="-1" aria-label="Mes anterior">' + ICONO_ANTERIOR + '</button>' +
         '<strong>' + esc(nombreMes(app.hist.mes)) + '</strong>' +
-        '<button type="button" class="boton" data-accion="mes" data-salto="1" aria-label="Mes siguiente"' +
-        (app.hist.mes >= mesActual ? ' disabled' : '') + '>›</button></div>';
+        '<button type="button" class="flecha-redonda" data-accion="mes" data-salto="1" aria-label="Mes siguiente"' +
+        (app.hist.mes >= mesActual ? ' disabled' : '') + '>' + ICONO_SIGUIENTE + '</button></div>';
       if (!d) {
         if (error) { app.reintentar = cargarHistorial; pintar(html + htmlError(error)); }
         else pintar(html + esqueleto('historial'), true);
@@ -2538,28 +2553,28 @@
           kpi(altas, 'altas') + kpi(bajas, 'bajas') + '</div>';
 
         if (esAdmin()) {
-          html += '<div class="bloque"><h3>Exportar para la memoria</h3>' +
-            '<p class="ayuda">Descárgalo en este aparato o envíalo por correo, en PDF o en hoja de cálculo (Excel). No se guarda nada en Google Drive.</p>' +
-            '<button type="button" class="boton primario ancho" data-accion="abrir-exportar" style="margin-top:8px">Exportar…</button></div>';
+          html += '<div class="bloque exportar"><div class="exportar-texto"><h3>Exportar datos</h3>' +
+            '<p>Descargar en PDF y hoja de cálculo</p></div>' +
+            '<button type="button" class="boton primario" data-accion="abrir-exportar">' + ICONO_DESCARGAR + 'Exportar</button></div>';
         }
 
-        html += tarjetasInforme('Por taller', d.porTaller, function (r) { return [r.taller, '']; });
-        html += tarjetasInforme('Por grupo', d.porGrupo, function (r) { return [r.grupo, tallerSiHaceFalta(r.taller, r.grupo)]; });
-        html += tabla('Por mes', ['Mes'], d.porMes, function (r) { return [nombreMesCorto(r.mes)]; });
+        html += tarjetasInforme('Por taller', d.porTaller, function (r) { return [r.taller, '']; }, 'taller');
+        html += tarjetasInforme('Por grupo', d.porGrupo, function (r) { return [r.grupo, tallerSiHaceFalta(r.taller, r.grupo)]; }, 'grupo');
+        html += tabla('Por mes', ['Mes'], d.porMes, function (r) { return [nombreMesCorto(r.mes)]; }, 'mes');
 
-        html += '<h3 class="taller">Registros por estado</h3>';
+        html += tituloInforme('Registros por estado', 'estado');
         html += d.porEstado.length ? '<div class="tabla-scroll"><table class="datos"><thead><tr><th class="texto">Estado</th><th>Registros</th></tr></thead><tbody>' +
           d.porEstado.map(function (e) {
             return '<tr><td class="texto"><span class="celda" style="' + estiloColor(e.color) + '"></span> ' + esc(e.etiqueta) + '</td><td>' + e.registros + '</td></tr>';
           }).join('') + '</tbody></table></div>' : '<p class="vacio">Sin registros.</p>';
 
-        html += '<h3 class="taller">Altas y bajas por mes</h3>';
+        html += tituloInforme('Altas y bajas por mes', 'altas');
         html += d.altasBajas.length ? '<div class="tabla-scroll"><table class="datos"><thead><tr><th class="texto">Mes</th><th>Altas</th><th>Bajas</th></tr></thead><tbody>' +
           d.altasBajas.map(function (m) { return '<tr><td class="texto">' + esc(nombreMesCorto(m.mes)) + '</td><td>' + m.altas + '</td><td>' + m.bajas + '</td></tr>'; }).join('') +
           '</tbody></table></div>' : '<p class="vacio">No hay altas ni bajas en este periodo.</p>';
 
         if (d.motivosBaja.length) {
-          html += '<h3 class="taller">Motivos de baja</h3><div class="tabla-scroll"><table class="datos"><thead><tr><th class="texto">Motivo</th><th>Bajas</th></tr></thead><tbody>' +
+          html += tituloInforme('Motivos de baja', 'motivos') + '<div class="tabla-scroll"><table class="datos"><thead><tr><th class="texto">Motivo</th><th>Bajas</th></tr></thead><tbody>' +
             d.motivosBaja.map(function (m) { return '<tr><td class="texto">' + esc(m.motivo) + '</td><td>' + m.bajas + '</td></tr>'; }).join('') +
             '</tbody></table></div>';
         }
@@ -2585,9 +2600,23 @@
         '<button type="button" class="boton ancho" data-accion="cerrar-panel">Entendido</button></div>');
     }
 
-    function tabla(titulo, primeras, filas, celdasIniciales) {
-      if (!filas.length) return '<h3 class="taller">' + esc(titulo) + '</h3><p class="vacio">Sin datos en este periodo.</p>';
-      return '<h3 class="taller">' + esc(titulo) + '</h3><div class="tabla-scroll"><table class="datos"><thead><tr>' +
+    /** Iconos de los títulos de sección del Informe (5-nov-2026). */
+    const ICONOS_INFORME = {
+      taller: '<path fill="currentColor" d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/>',
+      grupo: '<path fill="currentColor" d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13zm8 0c-.3 0-.6 0-1 .1 1.2.8 2 2 2 3.4V19h6v-2.5c0-2.3-4.7-3.5-7-3.5z"/>',
+      mes: '<path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V10h14zM7 12h5v5H7z"/>',
+      estado: '<path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-2 15-5-5 1.4-1.4 3.6 3.6 7.6-7.6L19 8z"/>',
+      altas: '<path fill="currentColor" d="M6.99 11 3 15l3.99 4v-3H14v-2H6.99zM21 9l-3.99-4v3H10v2h7.01v3z"/>',
+      motivos: '<path fill="currentColor" d="M3 13h2v-2H3zm0 4h2v-2H3zm0-8h2V7H3zm4 4h14v-2H7zm0 4h14v-2H7zM7 7v2h14V7z"/>'
+    };
+    function tituloInforme(titulo, icono) {
+      return '<h3 class="titulo-informe"><span class="icono-titulo"><svg viewBox="0 0 24 24" aria-hidden="true">' +
+        (ICONOS_INFORME[icono] || '') + '</svg></span>' + esc(titulo) + '</h3>';
+    }
+
+    function tabla(titulo, primeras, filas, celdasIniciales, icono) {
+      if (!filas.length) return tituloInforme(titulo, icono) + '<p class="vacio">Sin datos en este periodo.</p>';
+      return tituloInforme(titulo, icono) + '<div class="tabla-scroll"><table class="datos"><thead><tr>' +
         primeras.map(function (p) { return '<th class="texto">' + esc(p) + '</th>'; }).join('') +
         '<th>Sesiones</th><th>Sin clase</th><th>Asistencias</th><th>Faltas</th><th>Otros</th><th>% asist.</th><th>Usuarios</th></tr></thead><tbody>' +
         filas.map(function (r) {
@@ -2601,11 +2630,11 @@
      * «Por taller» y «Por grupo» como tarjetas: el nombre arriba y tres cifras grandes (sesiones, % y usuarios).
      * Al tocar una, se despliega el desglose (sin clase, asistencias, faltas y otros). nombres(r): [nombre, detalle].
      */
-    function tarjetasInforme(titulo, filas, nombres) {
-      if (!filas.length) return '<h3 class="taller">' + esc(titulo) + '</h3><p class="vacio">Sin datos en este periodo.</p>';
+    function tarjetasInforme(titulo, filas, nombres, icono) {
+      if (!filas.length) return tituloInforme(titulo, icono) + '<p class="vacio">Sin datos en este periodo.</p>';
       const cifra = function (v, texto) { return '<span class="cifra"><strong>' + esc(v) + '</strong><span>' + esc(texto) + '</span></span>'; };
       const linea = function (texto, v) { return '<div><dt>' + esc(texto) + '</dt><dd>' + esc(v) + '</dd></div>'; };
-      return '<h3 class="taller">' + esc(titulo) + '</h3><div class="lista">' + filas.map(function (r) {
+      return tituloInforme(titulo, icono) + '<div class="lista">' + filas.map(function (r) {
         const n = nombres(r);
         return '<details class="tarjeta-informe"><summary>' +
           '<span class="ti-nombre">' + esc(n[0]) + (n[1] ? '<small>' + esc(n[1]) + '</small>' : '') + '</span>' +
@@ -3376,6 +3405,11 @@
       if (ev.target.id === 'textoBuscar') buscar();
       if (ev.target.id === 'gBuscarUsuario') programar(buscarUsuariosGestion);
       if (ev.target.id === 'notaSesion' && app.pase) { app.pase.nota = ev.target.value.trim(); guardarBorrador(); pintarNotaPase(); }
+    });
+
+    document.addEventListener('click', function (ev) {
+      if (ev.target.id !== 'fechaInicio') return;
+      try { if (ev.target.showPicker) ev.target.showPicker(); } catch (e) { /* ya abierto o sin calendario emergente */ }
     });
 
     document.addEventListener('change', function (ev) {

@@ -37,6 +37,17 @@
     --md-secondary-container:    #d3e3fd;
     --md-on-secondary-container: #041e49;
 
+    /* Botones y cifras (5-nov-2026): sin el azul intenso. Botón normal tonal gris con letra oscura, acción
+       principal en azul muy suave, botón relleno (Guardar) en azul pizarra apagado y cifras en el color del texto. */
+    --md-boton:              #e7ebf2;
+    --md-boton-activo:       #dbe1ea;
+    --md-on-boton:           #1f2a3a;
+    --md-principal-suave:    #dfe8f6;
+    --md-on-principal-suave: #1c3557;
+    --md-relleno:            #34507a;
+    --md-cifra:              #1f2a3a;
+    --md-foco:               #5c6f8c;   /* aro de foco con teclado y borde de un campo activo */
+
     /* Colores de las iniciales de los usuarios (tonos suaves, como los de Contactos) */
     --md-av-azul:      #d3e3fd;  --md-av-azul-texto:      #0842a0;
     --md-av-verde:     #c4eed0;  --md-av-verde-texto:     #0f5223;
@@ -152,9 +163,11 @@
 
   /* Foco con teclado: una sola regla (especificidad 0) */
   :where(a, button, input, select, textarea, summary, [tabindex], [data-accion]):focus-visible {
-    outline: 2px solid var(--md-primary);
+    outline: 2px solid var(--md-foco);
     outline-offset: 2px;
   }
+  /* Los campos marcan el foco con su propio borde (sin el recuadro azul por fuera) */
+  :where(input, select, textarea):focus-visible { outline: none; }
 
   .oculto { display: none !important; }
 
@@ -397,7 +410,7 @@
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
-  .boton.compacto { flex: none; padding: 8px 14px; font-size: var(--fs-sm); background: var(--md-surface); }
+  .boton.compacto { flex: none; padding: 8px 14px; font-size: var(--fs-sm); }
   .tarjeta-cuerpo { flex: 1; min-width: 0; }
   .tarjeta-titulo { font-weight: 600; font-size: var(--fs-lg); line-height: 1.3; }
   .tarjeta-detalle { color: var(--md-on-surface-med); font-size: var(--fs-sm); margin-top: 2px; }
@@ -440,25 +453,71 @@
   .etiqueta.por-enviar { --icono: var(--ic-subiendo); background: var(--md-surface-container-high); color: var(--md-on-surface-med); }
 
   /* ---------- Campos (como .md-campo--compacto de fisio: etiqueta encima) ---------- */
-  .selector-fecha {
+  /* Fecha de Inicio y mes del Historial (5-nov-2026): una pastilla blanca con las flechas (chevrones SVG,
+     centrados) a los lados y, en medio, la fecha escrita («Hoy, jue 5 nov»). El campo de fecha real está
+     encima de la fecha, transparente: al tocarlo se abre el calendario del móvil. */
+  .selector-fecha, .selector-mes {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin: 4px 0 8px;
+    gap: 4px;
+    margin: 4px 0 12px;
+    padding: 4px;
+    border-radius: var(--md-shape-full);
+    background: var(--md-surface);
   }
-  .selector-fecha label { font-weight: 600; font-size: var(--fs-sm); color: var(--md-on-surface-med); }
-  .selector-fecha input { width: auto; flex: 1; min-width: 0; }
-  /* Flechas de día y de mes: botones de icono tonales (sin borde), como en Material 3 */
-  .selector-fecha .flecha-dia, .selector-mes .boton {
+  .flecha-redonda {
+    position: relative;
     flex: none;
-    width: var(--alto-boton);
+    width: 48px;
+    height: 48px;
     padding: 0;
-    border-color: transparent;
-    background: var(--md-surface-container-high);
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
     color: var(--md-on-surface);
-    font-size: 26px;
-    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color var(--dur-1) var(--ease);
+    -webkit-tap-highlight-color: transparent;
   }
+  .flecha-redonda svg { display: block; width: 24px; height: 24px; }
+  .flecha-redonda:active { background: var(--md-boton); }
+  .flecha-redonda:disabled { color: var(--md-outline); background: transparent; cursor: default; }
+  .fecha-pastilla {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 0 8px;
+    border-radius: var(--md-shape-full);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--dur-1) var(--ease);
+  }
+  .fecha-pastilla svg { flex: none; width: 20px; height: 20px; color: var(--md-on-surface-med); }
+  .fecha-pastilla .texto-fecha { overflow: hidden; text-overflow: ellipsis; }
+  .fecha-pastilla:active { background: var(--md-boton); }
+  .fecha-pastilla input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .fecha-pastilla:has(input:focus-visible) { box-shadow: inset 0 0 0 2px var(--md-foco); }
 
   input, select, textarea {
     display: block;
@@ -488,8 +547,7 @@
   textarea { min-height: 88px; resize: vertical; line-height: 1.45; }
   input::placeholder, textarea::placeholder { color: var(--md-placeholder); opacity: 1; }
   input:focus, select:focus, textarea:focus {
-    border-color: var(--md-primary);
-    box-shadow: inset 0 0 0 .5px var(--md-primary);
+    border-color: var(--md-foco);
   }
   input:disabled, select:disabled, textarea:disabled {
     background-color: var(--md-surface-variant);
@@ -506,7 +564,7 @@
     font-weight: 600;
     color: var(--md-on-surface-med);
   }
-  .campo:focus-within > label { color: var(--md-primary); }
+  .campo:focus-within > label { color: var(--md-on-surface); }
 
   .ayuda { color: var(--md-on-surface-med); font-size: var(--fs-sm); margin: 6px 4px 12px; line-height: 1.4; }
   /* Ayuda del pase (solo las primeras veces): una frase corta, en una línea a partir de unos 370 px */
@@ -555,10 +613,10 @@
     gap: 8px;
     min-height: var(--alto-boton);
     padding: 10px 24px;
-    border: 1px solid var(--md-outline-strong);
+    border: 1px solid transparent;
     border-radius: var(--md-shape-full);
-    background: transparent;
-    color: var(--md-primary);
+    background: var(--md-boton);
+    color: var(--md-on-boton);
     font: inherit;
     font-size: var(--fs-md);
     font-weight: 600;
@@ -568,23 +626,25 @@
     text-decoration: none;
     cursor: pointer;
     user-select: none;
-    transition: border-color var(--dur-1) var(--ease);
+    transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
   }
+  .boton:active { background: var(--md-boton-activo); }
   /* Desactivado como en Material, pero legible: gris sin transparencias (también el botón lleno) */
   .boton:disabled, .boton.primario:disabled, .boton.lleno:disabled, .boton.peligro:disabled, .boton.peligro-lleno:disabled {
-    border-color: var(--md-disabled);
+    border-color: transparent;
+    background: var(--md-disabled);
     color: var(--md-on-disabled);
     box-shadow: none;
     cursor: default;
   }
   .boton.primario:disabled, .boton.lleno:disabled, .boton.peligro-lleno:disabled { background: var(--md-disabled); }
   /* Acción principal: tonal, como en fisio (máximo uno por pantalla o bloque) */
-  .boton.primario { background: var(--md-primary-container); border-color: transparent; color: var(--md-primary-dark); }
+  .boton.primario { background: var(--md-principal-suave); border-color: transparent; color: var(--md-on-principal-suave); }
   /* Botón relleno de Material 3: solo para Guardar el pase de lista, la acción que más se repite */
-  .boton.lleno { background: var(--md-primary); border-color: transparent; color: var(--md-on-primary); box-shadow: var(--md-elev-1); }
+  .boton.lleno { background: var(--md-relleno); border-color: transparent; color: var(--md-on-primary); box-shadow: var(--md-elev-1); }
   .boton svg { flex: none; }
   /* Acción de riesgo: letra roja con borde (como .btn-toolbar.peligro de fisio), para no competir con la principal */
-  .boton.peligro { border-color: color-mix(in srgb, var(--md-error) 45%, var(--md-outline)); color: var(--md-error); }
+  .boton.peligro { background: var(--md-error-bg); border-color: transparent; color: var(--md-error); }
   /* Confirmar algo que no se deshace (dentro del panel de confirmación) */
   .boton.peligro-lleno { background: var(--md-error); border-color: transparent; color: var(--md-on-primary); }
   .boton.ancho { width: 100%; }
@@ -1048,14 +1108,7 @@
   .nav-boton.activa svg { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
 
   /* ---------- Historial ---------- */
-  .selector-mes {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-  .selector-mes strong { font-size: var(--fs-title); font-weight: 600; text-transform: capitalize; }
+  .selector-mes strong { flex: 1; min-width: 0; text-align: center; font-size: var(--fs-md); font-weight: 600; text-transform: capitalize; }
   /* Resumen del mes: la asistencia como cifra grande y, al lado, los contadores de sesiones */
   .resumen-mes {
     display: flex;
@@ -1068,7 +1121,7 @@
     background: var(--md-surface);
   }
   .cifra-mes { display: flex; flex-direction: column; }
-  .cifra-mes strong { font-size: var(--fs-kpi); font-weight: 600; line-height: 1.15; color: var(--md-primary); font-variant-numeric: tabular-nums; }
+  .cifra-mes strong { font-size: var(--fs-kpi); font-weight: 600; line-height: 1.15; color: var(--md-cifra); font-variant-numeric: tabular-nums; }
   .cifra-mes span { font-size: var(--fs-sm); color: var(--md-on-surface-med); }
   .resumen-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
   .resumen-mes .resumen-chips { margin-bottom: 0; }
@@ -1174,7 +1227,7 @@
     border-radius: var(--md-shape-lg);
     background: var(--md-surface);
   }
-  .kpi-valor { display: flex; align-items: center; gap: 2px; font-size: var(--fs-kpi); font-weight: 600; line-height: 1.15; color: var(--md-primary); }
+  .kpi-valor { display: flex; align-items: center; gap: 2px; font-size: var(--fs-kpi); font-weight: 600; line-height: 1.15; color: var(--md-cifra); }
   /* Botón ⓘ junto al % del informe: abre la explicación del cálculo */
   .info-kpi {
     flex: none;
@@ -1193,6 +1246,37 @@
   }
   .info-kpi:active { background: var(--md-surface-container-high); }
   .kpi-texto { font-size: var(--fs-sm); color: var(--md-on-surface-med); margin-top: 2px; }
+
+  /* Títulos de sección del Informe (5-nov-2026): icono en un cuadro tonal y el título en el color del texto */
+  h3.titulo-informe {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 28px 4px 12px;
+    font-size: var(--fs-lg);
+    font-weight: 600;
+    color: var(--md-on-surface);
+  }
+  .titulo-informe .icono-titulo {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--md-shape-md);
+    background: var(--md-secondary-container);
+    color: var(--md-on-secondary-container);
+  }
+  .titulo-informe .icono-titulo svg { width: 20px; height: 20px; }
+
+  /* Exportar: el texto a la izquierda y un botón ajustado a la derecha */
+  .bloque.exportar { display: flex; align-items: center; gap: 12px; }
+  .exportar-texto { flex: 1; min-width: 0; }
+  .bloque.exportar h3 { margin: 0; }
+  .exportar-texto p { margin: 2px 0 0; font-size: var(--fs-sm); color: var(--md-on-surface-med); }
+  .bloque.exportar .boton { flex: none; padding-left: 18px; padding-right: 20px; }
+  .bloque.exportar .boton svg { width: 20px; height: 20px; }
 
   /* Periodo (botón que abre un panel) y taller */
   .filtros-informe { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 16px; }
@@ -1257,7 +1341,7 @@
   .ti-nombre small { font-size: var(--fs-sm); font-weight: 400; color: var(--md-on-surface-med); }
   .ti-cifras { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .ti-cifras .cifra { display: flex; flex-direction: column; min-width: 0; }
-  .ti-cifras strong { font-size: var(--fs-title); font-weight: 600; line-height: 1.2; color: var(--md-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ti-cifras strong { font-size: var(--fs-title); font-weight: 600; line-height: 1.2; color: var(--md-cifra); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .ti-cifras .cifra > span { font-size: var(--fs-sm); color: var(--md-on-surface-med); }
   .ti-desglose { margin: 0; padding: 4px 16px 12px; border-top: 1px solid var(--md-outline); }
   .ti-desglose > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: var(--fs-md); }
