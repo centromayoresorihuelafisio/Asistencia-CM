@@ -38,7 +38,7 @@
     return rango;
   };
   Hoja.prototype.setFrozenRows = function () { return this; };
-  ['setColumnWidth', 'autoResizeColumns', 'setTabColor', 'hideSheet'].forEach(function (m) { Hoja.prototype[m] = function () { return this; }; });
+  ['setColumnWidth', 'autoResizeColumns', 'setTabColor', 'hideSheet', 'setRowHeight', 'setHiddenGridlines'].forEach(function (m) { Hoja.prototype[m] = function () { return this; }; });
 
   function Libro() { this.hojas = []; }
   Libro.prototype.getSheetByName = function (n) { return this.hojas.find(function (h) { return h.nombre === n; }) || null; };
@@ -54,6 +54,7 @@
     openById: function () { throw new Error('openById no simulado'); },
     create: function (n) { const l = new Libro(); l.insertSheet('Hoja 1'); return l; },
     flush: function () {},
+    BorderStyle: { SOLID: 'SOLID' },
     newDataValidation: cadena,
     getUi: cadena
   };
