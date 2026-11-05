@@ -2,10 +2,32 @@
  * Main.gs — Entrada de la web app y menú de la hoja.
  */
 
+/**
+ * Icono de la app en la pestaña del navegador y en la pantalla de inicio del móvil (5-nov-2026): una lista con una
+ * marca, en el azul pizarra de la app. Apps Script solo lo pone con setFaviconUrl, que pide una URL.
+ * - ICONO_APP_URL: si algún día el icono está alojado en una dirección https (por ejemplo, un PNG de 192 × 192 en
+ *   un sitio web del centro), se pone aquí y se usa esa.
+ * - Si está vacía, se prueba con el propio dibujo como dirección data: (no hay que alojar nada). Si Google no la
+ *   acepta, se sigue sin icono, como hasta ahora: la app se abre igual.
+ */
+const ICONO_APP_URL = '';
+const ICONO_APP_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">' +
+  '<rect width="96" height="96" rx="22" fill="#34507a"/>' +
+  '<g fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M44 30h28M44 48h28M44 66h18"/><path d="M20 30l5 5 9-10"/></g>' +
+  '<circle cx="26" cy="48" r="4.5" fill="#fff"/><circle cx="26" cy="66" r="4.5" fill="#fff"/></svg>';
+
 function doGet() {
-  return HtmlService.createTemplateFromFile('Index').evaluate()
+  const salida = HtmlService.createTemplateFromFile('Index').evaluate()
     .setTitle('Asistencia talleres')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  try {
+    salida.setFaviconUrl(ICONO_APP_URL ||
+      'data:image/svg+xml;base64,' + Utilities.base64Encode(ICONO_APP_SVG, Utilities.Charset.UTF_8));
+  } catch (e) {
+    console.warn('No se ha podido poner el icono de la app: ' + e);
+  }
+  return salida;
 }
 
 function include(nombre) {

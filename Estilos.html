@@ -84,6 +84,8 @@
     --fs-title: 20px;   /* títulos de pantalla y de panel */
     --fs-kpi:   28px;   /* cifras grandes */
     --fs-kpi-grande: 40px;   /* el % de asistencia del Informe */
+    --fs-titulo-grande: 28px;   /* título de la barra grande de las pantallas principales (5-nov-2026) */
+    --fs-insignia: 11px;        /* número de pendientes sobre el icono de Inicio */
 
     /* --- Tamaños táctiles --- */
     --alto-boton: 52px;
@@ -124,6 +126,9 @@
     --dur-giro:    .8s;
     --dur-barrido: 1s;
     --dur-brillo:  1.4s;     /* brillo de los esqueletos de carga */
+    --dur-cifras:  400ms;    /* cifras del Informe y del Historial al subir, y su barra (Cliente.html, MS_CIFRAS) */
+    --dur-anillo:  600ms;    /* anillo del progreso del día al rellenarse */
+    --dur-vt:      280ms;    /* la tarjeta de Inicio que crece hasta el pase (View Transitions) */
     --ease: cubic-bezier(.2, 0, 0, 1);
 
     /* --- Capas --- */
@@ -149,6 +154,11 @@
   @keyframes md-sale    { to { opacity: 0; transform: translateX(24px); } }
   /* Icono del chip al cambiar de estado: aparece desde pequeño (corto y sin rebote) */
   @keyframes md-icono   { from { opacity: 0; transform: scale(.4) rotate(-45deg); } to { opacity: 1; transform: none; } }
+  /* Cambiar de día o de mes (flechas o deslizar): la pantalla entra desde el lado hacia el que se va */
+  @keyframes md-desde-derecha-corto   { from { opacity: 0; transform: translateX(32px); } to { opacity: 1; transform: none; } }
+  @keyframes md-desde-izquierda-corto { from { opacity: 0; transform: translateX(-32px); } to { opacity: 1; transform: none; } }
+  /* «Todo al día» y el número de pendientes: aparecen creciendo un poco */
+  @keyframes md-aparece { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
 
   * { box-sizing: border-box; }
 
@@ -188,6 +198,20 @@
   }
   /* Barra superior de Material 3: sin línea ni sombra; al desplazar la pantalla toma el color del contenedor */
   .barra.elevada { background: var(--md-surface-container); }
+  /* Barra grande (5-nov-2026): en las pantallas principales el título va grande al principio de la vista
+     (.titulo-grande) y el de la barra solo aparece cuando el grande se ha ido por debajo de ella. */
+  .barra .barra-titulo { transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease); }
+  .barra.grande:not(.titulo-visible) .barra-titulo { opacity: 0; transform: translateY(6px); pointer-events: none; }
+  .titulo-grande { margin: -4px 4px 16px; }
+  .titulo-grande h1 {
+    margin: 0;
+    font-size: var(--fs-titulo-grande);
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+  }
+  .titulo-grande p { margin: 4px 0 0; font-size: var(--fs-sm); color: var(--md-on-surface-med); }
   .barra-volver {
     position: relative;
     flex: none;
@@ -945,6 +969,18 @@
   .vista.anim-adelante > * { animation: md-desde-derecha var(--dur-pantalla) var(--ease); }
   .vista.anim-atras > *    { animation: md-desde-izquierda var(--dur-pantalla) var(--ease); }
   .vista.anim-fundido > *  { animation: md-fundido var(--dur-seccion) var(--ease); }
+  /* Día o mes siguiente o anterior (5-nov-2026): el título, los filtros y el selector no se mueven */
+  .vista.anim-siguiente > :not(.titulo-grande):not(.selector-fecha):not(.selector-mes):not(.filtros-informe) {
+    animation: md-desde-derecha-corto var(--dur-pantalla) var(--ease);
+  }
+  .vista.anim-anterior > :not(.titulo-grande):not(.selector-fecha):not(.selector-mes):not(.filtros-informe) {
+    animation: md-desde-izquierda-corto var(--dur-pantalla) var(--ease);
+  }
+  /* Mientras se desliza entre días o meses, el contenido sigue un poco al dedo (--desliz, de -1 a 1) */
+  .vista[style*="--desliz"] > :not(.titulo-grande):not(.selector-fecha):not(.selector-mes):not(.filtros-informe) {
+    transform: translateX(calc(var(--desliz) * 48px));
+    opacity: calc(1 - var(--desliz) * var(--desliz) * .5);
+  }
 
   /* Panel inferior (hoja que sube desde abajo y baja al cerrarse) */
   .fondo-panel {
@@ -973,6 +1009,14 @@
   }
   .panel.cerrando { transform: translateY(100%); pointer-events: none; }
   .panel.arrastrando { transition: none; }
+  /* Panel de dos alturas (5-nov-2026): se abre a media pantalla y el asa lo sube hasta ocuparla entera */
+  .panel.media, .panel.completa {
+    max-height: none;
+    transition: transform var(--dur-panel) var(--ease), height var(--dur-panel) var(--ease), border-radius var(--dur-panel) var(--ease);
+  }
+  .panel.media { height: 50vh; height: 50dvh; }
+  .panel.completa { height: 100vh; height: 100dvh; border-radius: 0; }
+  .panel.arrastrando.media, .panel.arrastrando.completa { transition: none; }
   /* Asa: zona de 28 px arriba del panel que se arrastra hacia abajo para cerrarlo */
   .panel > .panel-asa {
     position: absolute;
@@ -1136,6 +1180,27 @@
   }
   .nav-boton:active svg { background: var(--md-surface-container-high); }
   .nav-boton.activa { color: var(--md-on-surface); font-weight: 600; }
+  /* Número de pendientes en la pestaña Inicio (5-nov-2026): un circulito rojo sobre la esquina del icono */
+  .nav-icono { position: relative; display: block; }
+  .nav-icono svg { display: block; }
+  .insignia {
+    position: absolute;
+    top: -4px;
+    right: 10px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border: 2px solid var(--md-surface-container);
+    border-radius: var(--md-shape-full);
+    background: var(--md-error);
+    color: var(--md-on-primary);
+    font-size: var(--fs-insignia);
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    animation: md-aparece var(--dur-2) var(--ease);
+  }
   .nav-boton.activa svg { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
 
   /* ---------- Historial ---------- */
@@ -1719,9 +1784,105 @@
   /* La respuesta en el propio botón (hechoEnBoton): verde con una marca durante un momento */
   .boton.hecho { background: var(--md-success-bg); border-color: transparent; color: var(--md-success); }
 
+  /* ---------- Deslizar una fila del pase (5-nov-2026) ----------
+     El contenido de la fila sigue al dedo (--dx) y, en el hueco que deja, aparece el fondo con el color y el icono
+     del estado que se pondrá (--desliz-color, de la hoja Estados); pasado el umbral, más marcado.
+     pan-y: el navegador solo hace el scroll vertical, así el gesto lateral llega a la app. */
+  .fila-usuario { touch-action: pan-y pinch-zoom; }
+  .fila-usuario.deslizando > :not(.desliz-fondo):not(.onda) { transform: translateX(var(--dx, 0)); }
+  .fila-usuario.volviendo > :not(.desliz-fondo):not(.onda) { transition: transform var(--dur-panel) var(--ease); }
+  .fila-usuario.volviendo > .desliz-fondo { transition: width var(--dur-panel) var(--ease); }
+  .desliz-fondo {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    background: color-mix(in oklab, var(--desliz-color) 16%, var(--md-surface));
+    color: color-mix(in oklab, var(--desliz-color) 70%, var(--md-on-surface));
+    transition: background-color var(--dur-2) var(--ease);
+  }
+  .desliz-fondo.a-la-izquierda { right: 0; justify-content: flex-end; padding-right: 20px; }
+  .desliz-fondo.a-la-derecha { left: 0; justify-content: flex-start; padding-left: 20px; }
+  .desliz-fondo svg { flex: none; width: 24px; height: 24px; transition: transform var(--dur-2) var(--ease); }
+  .desliz-fondo.listo { background: color-mix(in oklab, var(--desliz-color) 45%, var(--md-surface)); color: var(--md-on-surface); }
+  .desliz-fondo.listo svg { transform: scale(1.2); }
+
+  /* ---------- Inicio: progreso del día y «Todo al día» (5-nov-2026) ---------- */
+  .titulo-hoy { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 24px 4px 8px; }
+  .titulo-hoy h2.seccion { margin: 0; min-width: 0; }
+  .progreso-dia { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--md-on-surface-med); white-space: nowrap; }
+  .progreso-dia svg { flex: none; width: 28px; height: 28px; transform: rotate(-90deg); }
+  .progreso-dia circle { fill: none; stroke-width: 3; }
+  .progreso-dia .anillo-fondo { stroke: var(--md-surface-container-high); }
+  .progreso-dia .anillo { stroke: var(--md-relleno); stroke-linecap: round; transition: stroke-dashoffset var(--dur-anillo) var(--ease); }
+  .progreso-dia.completo { color: var(--md-success); font-weight: 600; }
+  .progreso-dia.completo .anillo { stroke: var(--md-success); }
+  .estado-vacio.todo-al-dia { padding: 24px 16px 8px; }
+  .estado-vacio.todo-al-dia svg.dibujo { width: 96px; height: 96px; animation: md-aparece var(--dur-3) var(--ease); }
+  .estado-vacio.todo-al-dia p { margin-bottom: 0; }
+  .dibujo-halo { fill: var(--md-success-bg); }
+  .dibujo-circulo { fill: var(--md-success); }
+  .dibujo-marca { stroke: var(--md-on-primary); }
+  .dibujo-destello { stroke: var(--md-success); }
+
+  /* ---------- Tirar hacia abajo para actualizar Inicio (5-nov-2026) ----------
+     El círculo baja con el dedo (--tirar-y), gira con él (--tirar-giro) y se ve más cuanto más se tira
+     (--tirar-trazo); al soltar pasado el umbral, gira solo hasta que llegan los datos. */
+  .tirar {
+    position: fixed;
+    top: 64px;
+    left: 50%;
+    z-index: var(--z-carga);
+    width: 40px;
+    height: 40px;
+    margin-left: -20px;
+    border-radius: 50%;
+    background: var(--md-surface);
+    color: var(--md-on-surface-med);
+    box-shadow: var(--md-elev-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: translateY(calc(var(--tirar-y, 0px) - 48px));
+    opacity: var(--tirar-trazo, 0);
+    pointer-events: none;
+  }
+  .tirar svg { transform: rotate(var(--tirar-giro, 0deg)); }
+  .tirar.listo { color: var(--md-relleno); }
+  .tirar.girando { opacity: 1; color: var(--md-relleno); }
+  .tirar.girando svg { animation: md-spin var(--dur-giro) linear infinite; }
+
+  /* ---------- Cifras que suben (5-nov-2026) ---------- */
+  .cifra-sube { font-variant-numeric: tabular-nums; }
+  .kpi-destacado .pct-barra > span.llenando { transition: width var(--dur-cifras) var(--ease); }
+
+  /* ---------- Transición de la tarjeta al pase (View Transitions, 5-nov-2026) ---------- */
+  ::view-transition-group(pase-abierto) {
+    animation-duration: var(--dur-vt);
+    animation-timing-function: var(--ease);
+    overflow: clip;
+    border-radius: var(--md-shape-lg);
+  }
+  ::view-transition-old(pase-abierto), ::view-transition-new(pase-abierto) {
+    height: 100%;
+    object-fit: cover;
+    object-position: top left;
+    animation-duration: var(--dur-vt);
+  }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--dur-vt); }
+
   /* Reducir movimiento: una sola llave. El girador sigue girando (es información), más despacio */
   @media (prefers-reduced-motion: reduce) {
-    :root { --dur-1: .01ms; --dur-2: .01ms; --dur-3: .01ms; --dur-pantalla: .01ms; --dur-seccion: .01ms; --dur-panel: .01ms; --dur-giro: 1.6s; }
-    .panel, .fondo-panel, .aviso, .fab, .vista[class*="anim-"] > *, .esq, .sale, .entra, .error-campo { animation: none; }
+    :root { --dur-1: .01ms; --dur-2: .01ms; --dur-3: .01ms; --dur-pantalla: .01ms; --dur-seccion: .01ms; --dur-panel: .01ms; --dur-giro: 1.6s;
+      --dur-cifras: .01ms; --dur-anillo: .01ms; --dur-vt: .01ms; }
+    .panel, .fondo-panel, .aviso, .fab, .vista[class*="anim-"] > *, .esq, .sale, .entra, .error-campo,
+    .insignia, .estado-vacio.todo-al-dia svg.dibujo { animation: none; }
+    .vista[style*="--desliz"] > * { transform: none; opacity: 1; }
   }
 </style>

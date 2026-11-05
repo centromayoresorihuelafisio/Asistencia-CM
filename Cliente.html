@@ -24,7 +24,11 @@
       scrolls: {},       // scroll de cada pantalla de la pila, para recuperarlo al volver
       pantallaNueva: null, // scroll y transición pendientes para el próximo pintar()
       nav: 0,            // sube con cada cambio de pantalla: una respuesta que llega tarde a otra pantalla se ignora
-      reintentar: null   // qué hace «Reintentar» en un error de carga (htmlError)
+      reintentar: null,  // qué hace «Reintentar» en un error de carga (htmlError)
+      tituloGrande: null, // { titulo, sub } de la pantalla principal abierta (barra grande, htmlTituloGrande)
+      animDeslizar: null, // 'siguiente' o 'anterior': transición del próximo pintar() tras cambiar de día o de mes
+      enTransicionVista: false, // hay una View Transition en curso (no se hace además la transición de siempre)
+      alPintarTransicion: null  // termina la View Transition cuando se pinta la pantalla nueva (abrirPaseConTransicion)
     };
 
     const $ = function (id) { return document.getElementById(id); };
@@ -460,6 +464,7 @@
         e = memoria[clave] = { funcion: funcion, args: args, listo: false, datos: null };
         e.promesa = llamarSinCarga(false, funcion, args).then(function (d) {
           if (memoria[clave] === e) { e.datos = d; e.listo = true; }
+          if (funcion === 'api_inicio') actualizarInsignia();
           return d;
         }, function (err) {
           if (memoria[clave] === e) delete memoria[clave];
@@ -747,6 +752,8 @@
 
     const MS_PANEL = 200;
     const MIN_ARRASTRE = 80;
+    const FRACCION_MEDIA = 0.5;   // alto de un panel de dos alturas al abrirse (.panel.media en Estilos.html)
+    const MIN_SUBIR = 40;         // arrastre hacia arriba que lo pasa a pantalla completa
     let panelCierre = null;   // temporizador que oculta el panel al terminar de bajar
     let panelOrigen = null;   // { el, id, accion }: lo que tenía el foco al abrir
 
@@ -755,7 +762,11 @@
       return !p.classList.contains('oculto') && !p.classList.contains('cerrando');
     }
 
-    function abrirPanel(html) {
+    /**
+     * dosAlturas (5-nov-2026): panel largo (estados del pase, grupo del Historial, periodo y taller del Informe). Si
+     * no cabe en media pantalla, se abre a media pantalla y se sube arrastrando el asa hasta ocuparla entera.
+     */
+    function abrirPanel(html, dosAlturas) {
       const panel = $('panel');
       const fondo = $('fondoPanel');
       if (panelCierre) { clearTimeout(panelCierre); panelCierre = null; }
@@ -770,7 +781,10 @@
         }
       }
       panel.innerHTML = '<div class="panel-asa" aria-hidden="true"></div>' + html;
-      panel.classList.remove('oculto', 'cerrando', 'arrastrando');
+      panel.classList.remove('oculto', 'cerrando', 'arrastrando', 'media', 'completa');
+      panel.style.height = '';
+      // Se mide ya abierto: solo va a media pantalla si su contenido no cabe en ella.
+      if (dosAlturas && panel.scrollHeight > window.innerHeight * FRACCION_MEDIA) panel.classList.add('media');
       fondo.classList.remove('oculto', 'cerrando');
       panel.removeAttribute('inert');
       panel.style.transform = '';
@@ -797,6 +811,7 @@
       panel.setAttribute('inert', '');
       panel.classList.remove('arrastrando');
       panel.style.transform = '';
+      panel.style.height = '';
       panel.classList.add('cerrando');
       fondo.classList.add('cerrando');
       colocarAviso();
@@ -914,12 +929,35 @@
       }
       nav.innerHTML = SECCIONES.filter(function (s) { return s[0] !== 'gestion' || esAdmin(); }).map(function (s) {
         return '<button type="button" class="nav-boton' + (s[0] === activa ? ' activa' : '') + '" data-accion="nav" data-destino="' + s[0] + '">' +
-          iconoSeccion(s, s[0] === activa) +
-          '<span>' + s[1] + '</span></button>';
+          '<span class="nav-icono">' + iconoSeccion(s, s[0] === activa) + '</span>' +
+          '<span class="nav-texto">' + s[1] + '</span></button>';
       }).join('');
       nav.classList.remove('oculto');
       $('vista').classList.add('con-nav');
+      actualizarInsignia();
       colocarAviso();
+    }
+
+    /**
+     * Número de la pestaña Inicio (5-nov-2026): un circulito rojo con los pendientes de hoy (api_inicio de hoy, ya en
+     * memoria), sin contar los que se están guardando o ya se han guardado en esta visita. Sin número si es 0.
+     */
+    function pendientesSinHacer() {
+      if (!app.init) return 0;
+      const e = memoria[claveMemoria('api_inicio', [app.init.hoy])];
+      const d = e && e.listo ? e.datos : (app.ultimoInicio && app.ultimoInicio.hoy === app.init.hoy ? app.ultimoInicio : null);
+      return d ? pendientesDe(d).length : 0;
+    }
+    function actualizarInsignia() {
+      const boton = $('navegacion').querySelector('[data-destino="inicio"]');
+      if (!boton) return;
+      const n = pendientesSinHacer();
+      const icono = boton.querySelector('.nav-icono');
+      const vieja = icono.querySelector('.insignia');
+      if (vieja) vieja.remove();
+      if (n) icono.insertAdjacentHTML('beforeend', '<span class="insignia" aria-hidden="true">' + (n > 99 ? '99+' : n) + '</span>');
+      if (n) boton.setAttribute('aria-label', 'Inicio, ' + (n === 1 ? '1 lista pendiente' : n + ' listas pendientes'));
+      else boton.removeAttribute('aria-label');
     }
 
     /** Prepara una pantalla principal (con barra inferior). */
@@ -930,6 +968,9 @@
       cerrarPanel();
       pie('');
       barra(titulo, sub, null);
+      // Barra grande (5-nov-2026): el título va a 28 px al principio de la pantalla y pasa a la barra al desplazar.
+      app.tituloGrande = { titulo: titulo, sub: sub || '' };
+      $('barra').classList.add('grande');
       navegacion(seccion);
       sincronizarHistorial();
     }
@@ -941,6 +982,8 @@
     function pantallaSecundaria(vista, titulo, sub, alVolver, clave) {
       cambiarPantalla(false, vista, vista + '|' + (clave || titulo));
       app.vista = vista;
+      app.tituloGrande = null;
+      $('barra').classList.remove('grande');
       cerrarPanel();
       pie('');
       barra(titulo, sub, alVolver);
@@ -1046,14 +1089,38 @@
      */
     function pintar(html, esEsqueleto) {
       const v = $('vista');
-      v.innerHTML = html;
+      v.innerHTML = htmlTituloGrande() + html;
       v.setAttribute('aria-busy', esEsqueleto ? 'true' : 'false');
       const n = app.pantallaNueva;
       app.pantallaNueva = esEsqueleto && n ? { anim: null, y: n.y } : null;
       window.scrollTo(0, n && !esEsqueleto ? n.y : 0);
-      if (n && n.anim) animarVista(n.anim);
+      // Deslizar entre días o meses (o sus flechas): la pantalla entra desde el lado hacia el que se va.
+      const anim = app.animDeslizar || (n && n.anim);
+      app.animDeslizar = null;
+      if (anim && !app.enTransicionVista) animarVista(anim);
+      actualizarBarra();
       mostrarBarraCarga();   // con esqueleto, sin barra arriba
       colocarAviso();   // la pantalla nueva puede tener botón flotante
+      if (app.alPintarTransicion) { const fin = app.alPintarTransicion; app.alPintarTransicion = null; fin(); }
+    }
+
+    /** Título grande de las pantallas principales (Inicio, Historial, Informe y Gestión), al principio de la vista. */
+    function htmlTituloGrande() {
+      const t = app.tituloGrande;
+      if (!t) return '';
+      return '<div class="titulo-grande"><h1>' + esc(t.titulo) + '</h1>' + (t.sub ? '<p>' + esc(t.sub) + '</p>' : '') + '</div>';
+    }
+
+    /**
+     * Barra de arriba según el scroll: toma color al desplazar y, en las pantallas con título grande, enseña el
+     * título pequeño cuando el grande se ha ido por debajo de ella.
+     */
+    function actualizarBarra() {
+      const b = $('barra');
+      const grande = app.tituloGrande ? $('vista').querySelector('.titulo-grande h1') : null;
+      const pasado = grande ? grande.getBoundingClientRect().bottom <= b.getBoundingClientRect().bottom : window.scrollY > 4;
+      b.classList.toggle('elevada', grande ? pasado : window.scrollY > 4);
+      b.classList.toggle('titulo-visible', !grande || pasado);
     }
 
     // ---------- Inicio ----------
@@ -1069,6 +1136,16 @@
         // La flecha ‹ suele ser lo siguiente: el día anterior se pide ya en segundo plano.
         enCola('api_inicio', [sumarDias(app.fecha, -1)]);
       }, irInicio);
+    }
+
+    /** Flechas y deslizar de Inicio: un día antes o después, sin pasar de hoy. Devuelve si ha cambiado. */
+    function saltarDia(n) {
+      const f = sumarDias(app.fecha, n);
+      if (f > app.init.hoy) return false;
+      app.fecha = f;
+      app.animDeslizar = n > 0 ? 'siguiente' : 'anterior';
+      irInicio();
+      return true;
     }
 
     /**
@@ -1144,7 +1221,14 @@
         html += '</div>';
       }
 
-      html += '<h2 class="seccion">' + (d.fecha === d.hoy ? 'Hoy' : esc(fechaLarga(d.fecha))) + '</h2>';
+      // Progreso del día y «Todo al día» (5-nov-2026): solo cuentan los grupos con alguien inscrito y sin día libre.
+      const prog = progresoDia(d);
+      if (prog.total && prog.hechas === prog.total && !pendientesDe(d).length && d.fecha === d.hoy) {
+        html += '<div class="estado-vacio todo-al-dia">' + DIBUJO_TODO_AL_DIA +
+          '<h2>Todo al día</h2><p>Todas las listas de hoy están pasadas.</p></div>';
+      }
+      html += '<div class="titulo-hoy"><h2 class="seccion">' + (d.fecha === d.hoy ? 'Hoy' : esc(fechaLarga(d.fecha))) + '</h2>' +
+        (prog.total ? htmlProgreso(prog, d.fecha) : '') + '</div>';
       if (!d.grupos.length) {
         html += '<p class="vacio">No hay clases este día.</p>';
       } else {
@@ -1176,7 +1260,70 @@
       });
       html += '</details>';
       pintar(html);
+      animarProgreso();
+      actualizarInsignia();
     }
+
+    /** Pendientes de Inicio sin los que se están guardando o ya se han guardado en esta visita. */
+    function pendientesDe(d) {
+      return d.pendientes.filter(function (p) {
+        const clave = claveBorrador(p.grupo_id, p.fecha);
+        return !app.hechos[clave] && app.guardando[clave] !== 'guardando';
+      });
+    }
+
+    /**
+     * Listas del día hechas de las que hay que pasar: grupos con alguien inscrito y sin día libre (salvo que se
+     * pasara lista igualmente). Cuenta como hecha la que está Hecha o Sin clase, o se está guardando ahora.
+     */
+    function progresoDia(d) {
+      let total = 0;
+      let hechas = 0;
+      d.grupos.forEach(function (g) {
+        const clave = claveBorrador(g.grupo_id, d.fecha);
+        const hecha = g.estadoSesion === 'realizada' || g.estadoSesion === 'cancelada' ||
+          !!app.hechos[clave] || app.guardando[clave] === 'guardando';
+        if (!g.inscritos || (g.diaEspecial && !hecha)) return;
+        total++;
+        if (hecha) hechas++;
+      });
+      return { total: total, hechas: hechas };
+    }
+
+    // Anillo del progreso: se pinta con lo que había la vez anterior y se rellena hasta lo de ahora (animarProgreso).
+    const RADIO_ANILLO = 9;
+    const VUELTA_ANILLO = 2 * Math.PI * RADIO_ANILLO;
+    const progresoVisto = {};   // fecha → fracción que se enseñó la última vez
+    let progresoNuevo = null;   // { fecha, fraccion } por animar tras pintar
+    function htmlProgreso(prog, fecha) {
+      const fraccion = prog.hechas / prog.total;
+      const antes = progresoVisto[fecha] === undefined ? fraccion : progresoVisto[fecha];
+      progresoNuevo = { fecha: fecha, fraccion: fraccion };
+      const texto = prog.hechas + ' de ' + prog.total + (prog.total === 1 ? ' lista hecha' : ' listas hechas');
+      return '<div class="progreso-dia' + (fraccion === 1 ? ' completo' : '') + '" role="img" aria-label="' + esc(texto) + '">' +
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><circle class="anillo-fondo" cx="12" cy="12" r="' + RADIO_ANILLO + '"/>' +
+        '<circle class="anillo" cx="12" cy="12" r="' + RADIO_ANILLO + '" stroke-dasharray="' + VUELTA_ANILLO.toFixed(2) +
+        '" stroke-dashoffset="' + (VUELTA_ANILLO * (1 - antes)).toFixed(2) + '"/></svg>' +
+        '<span aria-hidden="true">' + esc(texto) + '</span></div>';
+    }
+    function animarProgreso() {
+      const p = progresoNuevo;
+      progresoNuevo = null;
+      if (!p) return;
+      progresoVisto[p.fecha] = p.fraccion;
+      const anillo = $('vista').querySelector('.progreso-dia .anillo');
+      if (!anillo) return;
+      // Dos fotogramas: el primero pinta el valor anterior y el segundo arranca la transición hasta el nuevo.
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { anillo.setAttribute('stroke-dashoffset', (VUELTA_ANILLO * (1 - p.fraccion)).toFixed(2)); });
+      });
+    }
+
+    // Dibujo de «Todo al día»: una marca grande dentro de un círculo, con dos destellos.
+    const DIBUJO_TODO_AL_DIA = '<svg class="dibujo" viewBox="0 0 96 96" aria-hidden="true">' +
+      '<circle class="dibujo-halo" cx="48" cy="48" r="44"/><circle class="dibujo-circulo" cx="48" cy="48" r="32"/>' +
+      '<path class="dibujo-marca" d="M33 49l10 10 20-22" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path class="dibujo-destello" d="M80 14v8M76 18h8M15 70v6M12 73h6" fill="none" stroke-width="2.5" stroke-linecap="round"/></svg>';
 
     // ---------- Pase de lista ----------
 
@@ -1234,6 +1381,45 @@
         app.pase = d;
         pintarPase();
       }, function () { abrirPase(grupoId, fecha, vuelta, sinAvisoBorrador); });
+    }
+
+    /**
+     * Abrir un pase desde una tarjeta de Inicio con la View Transitions API (5-nov-2026): la tarjeta crece hasta ser
+     * la pantalla del pase. Donde no existe, o si el sistema pide reducir el movimiento, queda la transición de siempre.
+     * La transición acaba cuando se pinta la pantalla nueva (el esqueleto o el pase, pintar()), o a los
+     * MS_ESPERA_TRANSICION como mucho, para no dejar la pantalla congelada si el servidor tarda.
+     */
+    const MS_ESPERA_TRANSICION = 400;
+    function abrirPaseConTransicion(el, grupoId, fecha) {
+      const tarjeta = el.closest('.tarjeta') || el;
+      if (!document.startViewTransition || (sinMovimiento && sinMovimiento.matches) || app.enTransicionVista) {
+        abrirPase(grupoId, fecha, irInicio);
+        return;
+      }
+      tarjeta.style.viewTransitionName = 'pase-abierto';
+      app.enTransicionVista = true;
+      let vt;
+      try {
+        vt = document.startViewTransition(function () {
+          tarjeta.style.viewTransitionName = '';
+          $('vista').style.viewTransitionName = 'pase-abierto';
+          return new Promise(function (listo) {
+            const t = setTimeout(function () { app.alPintarTransicion = null; listo(); }, MS_ESPERA_TRANSICION);
+            app.alPintarTransicion = function () { clearTimeout(t); listo(); };
+            abrirPase(grupoId, fecha, irInicio);
+          });
+        });
+      } catch (e) {
+        app.enTransicionVista = false;
+        tarjeta.style.viewTransitionName = '';
+        abrirPase(grupoId, fecha, irInicio);
+        return;
+      }
+      const fin = function () {
+        app.enTransicionVista = false;
+        $('vista').style.viewTransitionName = '';
+      };
+      vt.finished.then(fin, fin);
     }
 
     /**
@@ -1503,7 +1689,7 @@
         '<button type="button" class="boton ancho" data-accion="cerrar-usuario">Hecho</button>' +
         (u.telefono ? '<a class="boton ancho separado" href="tel:' + esc(u.telefono) + '">' + ICONO_TELEFONO + ' Llamar al ' + esc(u.telefono) + '</a>' : '') +
         (u.inscripcion_id && !u.fecha_baja ? '<button type="button" class="boton peligro ancho separado" data-accion="pase-baja">Dar de baja de este grupo…</button>' : '') +
-        '</div>');
+        '</div>', true);
       const elegido = $('panel').querySelector('[data-elegido]');
       if (elegido) elegido.classList.add('elegido');
     }
@@ -1590,6 +1776,7 @@
       const siguiente = conSiguiente ? siguientePase(p) : null;
       app.guardando[clave] = 'guardando';
       seguirTrasPase(p, siguiente);
+      actualizarInsignia();
       enviarGuardado({ clave: clave, payload: payload, nombre: p.grupo.nombre, borrador: leerBorradorTexto(clave) });
     }
 
@@ -1716,6 +1903,7 @@
 
     function trasGuardarEnFondo(clave) {
       refrescarVista();
+      actualizarInsignia();
       // Si se ha vuelto a abrir ese mismo pase mientras se guardaba, se quita o cambia su aviso.
       if (app.vista === 'pase' && app.pase && claveBorrador(app.pase.grupo.grupo_id, app.pase.fecha) === clave) pintarPase();
     }
@@ -1763,6 +1951,7 @@
         else avisoDeshacer(textoConFecha('Sin clase · ' + c.nombre, c.fecha), function () { deshacerNoHubo(c, borrador, true); });
         // Si mientras tanto se ha ido a otra pantalla, no se la cambia.
         if (app.pase === p && app.vista === 'pase') seguirTrasPase(p, siguiente);
+        actualizarInsignia();
         precargar();
       }).catch(avisoError);
     }
@@ -1831,6 +2020,7 @@
         anticuar('sesion', c.grupo_id, c.fecha);
         aviso(textoConFecha((desdePase ? 'Clase recuperada · ' : 'Vuelve a Pendientes · ') + c.nombre, c.fecha));
         refrescarVista();
+        actualizarInsignia();
         precargar();
       }).catch(avisoError);
     }
@@ -2353,7 +2543,17 @@
         return '<button type="button" class="opcion-menu' + (elegido ? ' elegida' : '') + '" data-accion="grupo-hist" data-grupo="' + esc(g.grupo_id) + '"' +
           (elegido ? ' aria-current="true"' : '') + '>' + ICONO_TALLER + '<span class="opcion-texto">' + esc(tallerYGrupo(g.taller, g.nombre)) +
           (horario(g) ? '<small>' + esc(horario(g)) + '</small>' : '') + '</span>' + (elegido ? ICONO_ELEGIDO : '') + '</button>';
-      }).join('') + '</div></div>');
+      }).join('') + '</div></div>', true);
+    }
+
+    /** Flechas y deslizar del Historial: un mes antes o después, sin pasar del mes actual. Devuelve si ha cambiado. */
+    function saltarMes(n) {
+      const mes = sumarMes(app.hist.mes, n);
+      if (mes > app.init.hoy.substring(0, 7)) return false;
+      app.hist.mes = mes;
+      app.animDeslizar = n > 0 ? 'siguiente' : 'anterior';
+      cargarHistorial();
+      return true;
     }
 
     function elegirGrupoHistorial(grupoId) {
@@ -2397,7 +2597,7 @@
 
       const r = d.resumen;
       const cuantas = function (n, una, varias) { return n + ' ' + (n === 1 ? una : varias); };
-      html += '<div class="resumen-mes"><div class="cifra-mes"><strong>' + esc(porcentaje(r.porcentaje)) + '</strong>' +
+      html += '<div class="resumen-mes"><div class="cifra-mes"><strong>' + cifraQueSube(r.porcentaje, true) + '</strong>' +
         '<span>de asistencia en el mes</span></div>';
       html += '<div class="resumen-chips">' +
         '<span class="etiqueta realizada">' + cuantas(r.realizadas, 'hecha', 'hechas') + '</span>' +
@@ -2405,10 +2605,12 @@
         (r.pendientes ? '<span class="etiqueta pendiente">' + r.pendientes + ' sin pasar lista</span>' : '') +
         (r.especiales ? '<span class="etiqueta especial">' + cuantas(r.especiales, 'día libre', 'días libres') + '</span>' : '') +
         '</div></div>';
+      const claveCifras = 'hist|' + app.hist.grupo_id + '|' + app.hist.mes;
 
       if (!d.columnas.length) {
         html += '<p class="vacio">No hay clases en este mes.</p>';
         pintar(html);
+        animarCifras(claveCifras);
         return;
       }
       if (!d.filas.length) {
@@ -2417,6 +2619,7 @@
           '<h2>Sin usuarios</h2><p>Este grupo no tuvo a nadie inscrito en ' + esc(nombreMes(app.hist.mes)) + '.</p>' +
           '<button type="button" class="boton primario" data-accion="hist-inscribir">Inscribir usuarios</button></div>';
         pintar(html);
+        animarCifras(claveCifras);
         return;
       }
 
@@ -2464,6 +2667,7 @@
         '<span><span class="celda muestra col-especial"></span> Día libre</span>' +
         '<span><span class="celda muestra no-inscrito">·</span> No estaba en el grupo</span></div>';
       pintar(html);
+      animarCifras(claveCifras);
     }
 
     // ---------- Informe ----------
@@ -2492,7 +2696,7 @@
         const elegido = t.taller_id === app.inf.taller_id;
         return '<button type="button" class="opcion-menu' + (elegido ? ' elegida' : '') + '" data-accion="taller-informe" data-taller="' + esc(t.taller_id) + '"' +
           (elegido ? ' aria-current="true"' : '') + '>' + ICONO_TALLER + '<span class="opcion-texto">' + esc(t.taller) + '</span>' + (elegido ? ICONO_ELEGIDO : '') + '</button>';
-      }).join('') + '</div></div>');
+      }).join('') + '</div></div>', true);
     }
 
     function elegirTallerInforme(tallerId) {
@@ -2557,7 +2761,7 @@
         '<div class="campo"><label for="infDesde">Desde</label><input type="date" id="infDesde" value="' + esc(inf.desde) + '" max="' + esc(app.init.hoy) + '"></div>' +
         '<div class="campo"><label for="infHasta">Hasta</label><input type="date" id="infHasta" value="' + esc(inf.hasta) + '" max="' + esc(app.init.hoy) + '"></div></div>' +
         '<button type="button" class="boton primario ancho" data-accion="ver-informe">Ver estas fechas</button></div>';
-      abrirPanel(html);
+      abrirPanel(html, true);
     }
 
     /** Cambia el periodo del informe y lo carga (al momento si ya está en memoria). */
@@ -2588,13 +2792,13 @@
         // El % primero y más grande, en verde, ámbar o rojo según el nivel (5-nov-2026); el resto, en el color del texto.
         const hayPct = t.porcentaje !== null && t.porcentaje !== undefined;
         html += '<div class="kpis">' +
-          '<div class="kpi kpi-destacado' + (hayPct ? ' nivel-' + nivelPorcentaje(t.porcentaje) : '') + '"><div class="kpi-valor">' + esc(porcentaje(t.porcentaje)) +
+          '<div class="kpi kpi-destacado' + (hayPct ? ' nivel-' + nivelPorcentaje(t.porcentaje) : '') + '"><div class="kpi-valor">' + cifraQueSube(t.porcentaje, true) +
           '<button type="button" class="info-kpi" data-accion="info-porcentaje" aria-label="Cómo se calcula el % de asistencia">' + ICONO_INFO + '</button></div>' +
           '<div class="kpi-texto">de asistencia</div>' +
           (hayPct ? '<span class="pct-barra ' + nivelPorcentaje(t.porcentaje) + '"><span style="width:' + Math.max(0, Math.min(100, Math.round(t.porcentaje))) + '%"></span></span>' : '') +
           '</div>' +
-          kpi(t.usuarios, 'usuarios distintos atendidos') + kpi(t.realizadas, 'clases hechas') +
-          kpi(t.canceladas, 'sin clase') + kpi(altas + ' / ' + bajas, 'altas / bajas') + '</div>';
+          kpi(cifraQueSube(t.usuarios), 'usuarios distintos atendidos') + kpi(cifraQueSube(t.realizadas), 'clases hechas') +
+          kpi(cifraQueSube(t.canceladas), 'sin clase') + kpi(cifraQueSube(altas) + ' / ' + cifraQueSube(bajas), 'altas / bajas') + '</div>';
 
         if (esAdmin()) {
           html += '<div class="bloque exportar"><div class="exportar-texto"><h3>Exportar datos</h3>' +
@@ -2629,11 +2833,67 @@
         html += esqueleto('informe');
       }
       pintar(html, !d && !inf.error);
+      if (d) animarCifras('inf|' + inf.desde + '|' + inf.hasta + '|' + inf.taller_id);
     }
 
-    /** Cifra del informe. extra: HTML que va junto a la cifra (el botón ⓘ del %). */
-    function kpi(valorKpi, texto, extra) {
-      return '<div class="kpi"><div class="kpi-valor">' + esc(valorKpi) + (extra || '') + '</div><div class="kpi-texto">' + esc(texto) + '</div></div>';
+    /** Cifra del informe. valorHtml: ya escapado (cifraQueSube). extra: HTML que va junto a la cifra. */
+    function kpi(valorHtml, texto, extra) {
+      return '<div class="kpi"><div class="kpi-valor"><span>' + valorHtml + '</span>' + (extra || '') + '</div><div class="kpi-texto">' + esc(texto) + '</div></div>';
+    }
+
+    // ---------- Cifras que suben (5-nov-2026) ----------
+    // Las cifras del Informe y la del Historial suben de 0 a su valor en MS_CIFRAS y la barra del % se llena, solo
+    // la primera vez que se pinta cada dato (clave: pantalla, periodo o mes, grupo o taller). Sin animación si el
+    // sistema pide reducir el movimiento. Siempre en formato español («80,7 %»).
+
+    const MS_CIFRAS = 400;
+    const cifrasVistas = {};
+
+    /** Número (o % con pct) con lo necesario para animarlo; sin valor, «—». */
+    function cifraQueSube(v, pct) {
+      if (v === null || v === undefined || v === '' || isNaN(Number(v))) return esc(pct ? porcentaje(v) : v);
+      const decimales = (String(v).split('.')[1] || '').length;
+      return '<span class="cifra-sube" data-valor="' + Number(v) + '" data-decimales="' + decimales + '"' + (pct ? ' data-pct="1"' : '') + '>' +
+        esc(pct ? porcentaje(v) : String(v)) + '</span>';
+    }
+    function textoCifra(n, decimales, pct) {
+      const t = n.toFixed(decimales).replace('.', ',');
+      return pct ? t + ' %' : t;
+    }
+
+    function animarCifras(clave) {
+      if (cifrasVistas[clave]) return;
+      cifrasVistas[clave] = true;
+      if (sinMovimiento && sinMovimiento.matches) return;
+      const cifras = Array.prototype.slice.call($('vista').querySelectorAll('.cifra-sube'));
+      const barras = Array.prototype.slice.call($('vista').querySelectorAll('.kpi-destacado .pct-barra > span'));
+      if (!cifras.length && !barras.length) return;
+      const datos = cifras.map(function (el) {
+        return { el: el, valor: Number(el.getAttribute('data-valor')), dec: Number(el.getAttribute('data-decimales')) || 0,
+          pct: el.hasAttribute('data-pct'), final: el.textContent };
+      });
+      // Mientras sube, el ancho no baila (tabular-nums en Estilos.html) y el lector de pantalla lee el valor final.
+      datos.forEach(function (d) { d.el.setAttribute('aria-label', d.final); d.el.textContent = textoCifra(0, d.dec, d.pct); });
+      barras.forEach(function (b) { b.setAttribute('data-ancho', b.style.width); b.style.width = '0%'; });
+      const inicio = performance.now();
+      const paso = function (ahora) {
+        const t = Math.min(1, Math.max(0, (ahora - inicio) / MS_CIFRAS));
+        const f = 1 - Math.pow(1 - t, 3);   // sale rápido y frena al final
+        datos.forEach(function (d) {
+          if (!d.el.isConnected) return;
+          d.el.textContent = t < 1 ? textoCifra(d.valor * f, d.dec, d.pct) : d.final;
+        });
+        if (t < 1) requestAnimationFrame(paso);
+      };
+      requestAnimationFrame(function (ahora) {
+        barras.forEach(function (b) { b.classList.add('llenando'); b.style.width = b.getAttribute('data-ancho'); });
+        paso(ahora);
+      });
+      // Por si el navegador no da fotogramas (app en segundo plano): las cifras acaban siempre en su valor.
+      setTimeout(function () {
+        datos.forEach(function (d) { if (d.el.isConnected) d.el.textContent = d.final; });
+        barras.forEach(function (b) { b.style.width = b.getAttribute('data-ancho'); });
+      }, MS_CIFRAS + 200);
     }
 
     /** Panel del botón ⓘ del %: cómo se calcula. */
@@ -3287,6 +3547,233 @@
     }, { passive: true });
     document.addEventListener('pointerup', cortarPulsacion, { passive: true });
     document.addEventListener('pointercancel', cortarPulsacion, { passive: true });
+    // ---------- Deslizar (5-nov-2026) ----------
+    // Un gesto solo cuenta como deslizamiento si es claramente horizontal: más de MIN_DECIDIR px de lado y el
+    // doble de lado que de alto. Si empieza en vertical, se deja al scroll. Así no choca con el toque, la pulsación
+    // larga (que se corta al moverse) ni el scroll de la página (touch-action: pan-y en Estilos.html).
+    // - Fila del pase: hacia la izquierda, el primer estado «ausente» (Falta); hacia la derecha, el de por defecto
+    //   (Asistido). El fondo de color con el icono aparece al arrastrar; pasados UMBRAL_FILA px, se aplica al soltar.
+    // - Inicio y Historial (fuera de la cuadrícula): hacia la izquierda, el día o mes siguiente; hacia la derecha, el
+    //   anterior. Lo mismo que las flechas.
+
+    const MIN_DECIDIR = 12;
+    const UMBRAL_FILA = 80;
+    const UMBRAL_PAGINA = 70;
+    let gesto = null;   // { tipo: 'fila' | 'pagina', x, y, id, decidido, dx, fila, fondo }
+
+    function puedeDeslizarPagina(ev) {
+      if (app.vista !== 'inicio' && app.vista !== 'historial') return false;
+      if (panelAbierto() || !$('vista').contains(ev.target)) return false;
+      return !ev.target.closest('.marco-historial, .tabla-scroll, input, textarea, select, .selector-fecha, .selector-mes');
+    }
+
+    document.addEventListener('pointerdown', function (ev) {
+      gesto = null;
+      if (ev.button !== 0 || !ev.isPrimary) return;
+      const fila = app.vista === 'pase' ? ev.target.closest('.fila-usuario') : null;
+      if (fila && !ev.target.closest('.mas-opciones') && estadosAlternar()) {
+        gesto = { tipo: 'fila', x: ev.clientX, y: ev.clientY, id: ev.pointerId, decidido: false, dx: 0, fila: fila };
+      } else if (!fila && ev.pointerType !== 'touch' && puedeDeslizarPagina(ev)) {
+        // Con el dedo, el deslizamiento de página va por eventos táctiles (más abajo), sin tocar touch-action.
+        gesto = { tipo: 'pagina', x: ev.clientX, y: ev.clientY, id: ev.pointerId, decidido: false, dx: 0 };
+      }
+    }, { passive: true });
+
+    document.addEventListener('pointermove', function (ev) {
+      const g = gesto;
+      if (!g || ev.pointerId !== g.id) return;
+      const dx = ev.clientX - g.x;
+      const dy = ev.clientY - g.y;
+      if (!g.decidido) {
+        if (Math.abs(dy) > MIN_DECIDIR && Math.abs(dy) > Math.abs(dx)) { gesto = null; return; }   // vertical: scroll
+        if (Math.abs(dx) < MIN_DECIDIR || Math.abs(dx) < 2 * Math.abs(dy)) return;
+        g.decidido = true;
+        cortarPulsacion();
+        if (g.tipo === 'fila') {
+          try { g.fila.setPointerCapture(ev.pointerId); } catch (e) { /* sin captura: sigue igual */ }
+          g.fondo = document.createElement('span');
+          g.fondo.className = 'desliz-fondo';
+          g.fondo.setAttribute('aria-hidden', 'true');
+          g.fila.appendChild(g.fondo);
+          g.fila.classList.add('deslizando');
+        }
+      }
+      g.dx = dx;
+      if (g.tipo === 'fila') pintarDeslizFila(g);
+      else $('vista').style.setProperty('--desliz', String(Math.max(-1, Math.min(1, dx / 240))));
+    }, { passive: true });
+
+    /** Fondo de la fila mientras se arrastra: color e icono del estado que se pondrá, más marcado pasado el umbral. */
+    function pintarDeslizFila(g) {
+      const par = estadosAlternar();
+      const e = g.dx < 0 ? par.falta : par.presente;
+      const listo = Math.abs(g.dx) >= UMBRAL_FILA;
+      g.fila.style.setProperty('--dx', g.dx + 'px');
+      if (g.lado !== e.codigo) {
+        g.lado = e.codigo;
+        g.fondo.className = 'desliz-fondo ' + (g.dx < 0 ? 'a-la-izquierda' : 'a-la-derecha');
+        g.fondo.style.setProperty('--desliz-color', e.color);
+        g.fondo.innerHTML = iconoEstado(e) + '<span>' + esc(e.etiqueta) + '</span>';
+      }
+      g.fondo.style.width = Math.abs(g.dx) + 'px';
+      if (listo !== !!g.listo) {
+        g.listo = listo;
+        g.fondo.classList.toggle('listo', listo);
+        if (listo) vibrar();
+      }
+    }
+
+    function soltarGesto(ev, cancelado) {
+      const g = gesto;
+      if (!g || ev.pointerId !== g.id) return;
+      gesto = null;
+      if (!g.decidido) return;
+      saltarClic = true;   // el clic que llega al soltar no alterna el estado ni abre nada
+      setTimeout(function () { saltarClic = false; }, 0);
+      if (g.tipo === 'pagina') { soltarPagina(g.dx, cancelado); return; }
+      const fila = g.fila;
+      const i = Number(fila.getAttribute('data-indice'));
+      const par = estadosAlternar();
+      const nuevo = g.dx < 0 ? par.falta.codigo : par.presente.codigo;
+      const p = app.pase;
+      if (!cancelado && Math.abs(g.dx) >= UMBRAL_FILA && p && p.usuarios[i] && fila.isConnected) {
+        const u = p.usuarios[i];
+        if (u.estado !== nuevo) {
+          u.estado = nuevo;
+          vibrar();
+          fila.outerHTML = filaUsuario(u, i, true);
+          pintarPiePase();
+          guardarBorrador();
+          return;
+        }
+      }
+      // Sin cambio: la fila vuelve a su sitio.
+      fila.classList.add('volviendo');
+      fila.style.setProperty('--dx', '0px');
+      if (g.fondo) g.fondo.style.width = '0px';
+      setTimeout(function () {
+        fila.classList.remove('deslizando', 'volviendo');
+        fila.style.removeProperty('--dx');
+        if (g.fondo) g.fondo.remove();
+      }, MS_VUELTA_FILA);
+    }
+    const MS_VUELTA_FILA = 200;   // como --dur-panel
+
+    /** Fin de un deslizamiento de página: pasado el umbral, el día o mes siguiente (dx < 0) o el anterior. */
+    function soltarPagina(dx, cancelado) {
+      $('vista').style.removeProperty('--desliz');
+      if (cancelado || Math.abs(dx) < UMBRAL_PAGINA) return;
+      const n = dx < 0 ? 1 : -1;
+      const cambia = app.vista === 'inicio' ? saltarDia(n) : app.vista === 'historial' ? saltarMes(n) : true;
+      if (!cambia) aviso(app.vista === 'inicio' ? 'No se puede pasar de hoy.' : 'No se puede pasar del mes actual.');
+    }
+    document.addEventListener('pointerup', function (ev) { soltarGesto(ev, false); }, { passive: true });
+    document.addEventListener('pointercancel', function (ev) { soltarGesto(ev, true); }, { passive: true });
+
+    // ---------- Tirar hacia abajo para actualizar Inicio (5-nov-2026) ----------
+    // Con eventos táctiles (los de puntero se cortan en cuanto empieza el scroll): si Inicio está arriba del todo y
+    // el dedo baja, se para el scroll del navegador y baja un círculo que gira con el dedo. Pasados UMBRAL_TIRAR px,
+    // al soltar se olvida la memoria de Inicio y se vuelve a pedir; el círculo gira hasta que llegan los datos.
+
+    const UMBRAL_TIRAR = 72;
+    const MAX_TIRAR = 120;
+    let toque = null;   // { y, x, dy, dx, tirar (puede tirar), pagina (puede deslizar), modo: '' | 'tirar' | 'pagina' }
+    let refrescando = false;
+
+    // El dedo también desliza entre días y meses por aquí (y no con eventos de puntero): así no hace falta quitar
+    // el scroll lateral del navegador (touch-action), que necesitan las tablas.
+    document.addEventListener('touchstart', function (ev) {
+      toque = null;
+      if (ev.touches.length !== 1 || panelAbierto()) return;
+      const t = ev.touches[0];
+      const puedeTirar = app.vista === 'inicio' && !refrescando && window.scrollY <= 0 &&
+        ($('vista').contains(ev.target) || $('barra').contains(ev.target));
+      const puedePagina = puedeDeslizarPagina(ev);
+      if (!puedeTirar && !puedePagina) return;
+      toque = { y: t.clientY, x: t.clientX, dy: 0, dx: 0, tirar: puedeTirar, pagina: puedePagina, modo: '' };
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function (ev) {
+      const t = toque;
+      if (!t) return;
+      const dy = ev.touches[0].clientY - t.y;
+      const dx = ev.touches[0].clientX - t.x;
+      if (!t.modo) {
+        if (t.pagina && Math.abs(dx) >= MIN_DECIDIR && Math.abs(dx) >= 2 * Math.abs(dy)) {
+          t.modo = 'pagina';
+        } else if (t.tirar && dy >= MIN_DECIDIR && dy > Math.abs(dx) && window.scrollY <= 0) {
+          t.modo = 'tirar';
+        } else if (Math.abs(dy) > MIN_DECIDIR || Math.abs(dx) > MIN_DECIDIR) {
+          toque = null;   // otro gesto (scroll normal): se deja al navegador
+          return;
+        } else {
+          return;
+        }
+        cortarPulsacion();
+        gesto = null;
+      }
+      if (ev.cancelable) ev.preventDefault();   // sin scroll, rebote ni recarga del navegador
+      if (t.modo === 'pagina') {
+        t.dx = dx;
+        $('vista').style.setProperty('--desliz', String(Math.max(-1, Math.min(1, dx / 240))));
+      } else {
+        // Resistencia: el círculo baja la mitad que el dedo, hasta MAX_TIRAR px.
+        t.dy = Math.max(0, Math.min(MAX_TIRAR, (dy - MIN_DECIDIR) * 0.5));
+        pintarTirar(t.dy, false);
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchend', function () {
+      const t = toque;
+      toque = null;
+      if (!t || !t.modo) return;
+      saltarClic = true;
+      setTimeout(function () { saltarClic = false; }, 0);
+      if (t.modo === 'pagina') { soltarPagina(t.dx, false); return; }
+      if (t.dy >= UMBRAL_TIRAR * 0.5) refrescarInicio();
+      else pintarTirar(0, false);
+    }, { passive: true });
+    document.addEventListener('touchcancel', function () {
+      const t = toque;
+      toque = null;
+      if (!t) return;
+      if (t.modo === 'tirar') pintarTirar(0, false);
+      if (t.modo === 'pagina') soltarPagina(0, true);
+    }, { passive: true });
+
+    /** Coloca el círculo: dy px por debajo de la barra (0 = escondido). girando: gira solo, esperando al servidor. */
+    function pintarTirar(dy, girando) {
+      const el = $('tirar');
+      el.classList.toggle('oculto', dy <= 0 && !girando);
+      el.classList.toggle('girando', !!girando);
+      el.classList.toggle('listo', dy >= UMBRAL_TIRAR * 0.5);
+      el.style.setProperty('--tirar-y', dy + 'px');
+      el.style.setProperty('--tirar-giro', (dy * 4) + 'deg');
+      el.style.setProperty('--tirar-trazo', String(Math.min(1, dy / (UMBRAL_TIRAR * 0.5))));
+    }
+
+    /** Olvida la memoria de Inicio y la vuelve a pedir; el círculo gira mientras tanto. */
+    function refrescarInicio() {
+      refrescando = true;
+      pintarTirar(UMBRAL_TIRAR * 0.5, true);
+      olvidar('api_inicio');
+      const n = app.nav;
+      const fin = function () {
+        refrescando = false;
+        pintarTirar(0, false);
+      };
+      pedirCon(false, 'api_inicio', [app.fecha]).then(function (d) {
+        fin();
+        if (n !== app.nav || app.vista !== 'inicio') return;
+        pintarInicio(d);
+        precargarSesiones(d);
+        aviso('Inicio actualizado');
+      }, function (e) {
+        fin();
+        if (n === app.nav) avisoError(e);
+      });
+    }
+
     // Sin menú del navegador al mantener pulsada una fila.
     document.addEventListener('contextmenu', function (ev) {
       if (ev.target.closest('.fila-usuario')) ev.preventDefault();
@@ -3324,7 +3811,10 @@
       switch (accion) {
         case 'reintentar-carga': if (app.reintentar) app.reintentar(); break;
         case 'nav': irSeccion(dato('destino')); break;
-        case 'pase': abrirPase(dato('grupo'), dato('fecha'), irInicio); break;
+        case 'pase':
+          if (app.vista === 'inicio') abrirPaseConTransicion(el, dato('grupo'), dato('fecha'));
+          else abrirPase(dato('grupo'), dato('fecha'), irInicio);
+          break;
         case 'pase-desde-menu': {
           const g = dato('grupo');
           const f = dato('fecha');
@@ -3363,12 +3853,7 @@
         case 'confirmar-guardar': guardarPase(!!dato('siguiente')); break;
         case 'cancelar-sesion': abrirCancelarSesion(); break;
         case 'confirmar-cancelar': cancelarPase(!!dato('siguiente')); break;
-        case 'dia': {
-          // Flechas de Inicio: un día antes o después, sin pasar de hoy.
-          const f = sumarDias(app.fecha, Number(dato('salto')));
-          if (f <= app.init.hoy) { app.fecha = f; irInicio(); }
-          break;
-        }
+        case 'dia': saltarDia(Number(dato('salto'))); break;
         case 'no-hubo-clase': abrirNoHuboClase(dato('grupo'), dato('fecha')); break;
         case 'confirmar-no-hubo': cancelarDesdeInicio(); break;
         case 'reintentar-guardados': reintentarGuardados(true); break;
@@ -3400,7 +3885,7 @@
           break;
         }
         // Historial
-        case 'mes': app.hist.mes = sumarMes(app.hist.mes, Number(dato('salto'))); cargarHistorial(); break;
+        case 'mes': saltarMes(Number(dato('salto'))); break;
         case 'hist-inscribir': abrirGrupo(app.hist.grupo_id, 'alta', volverAHistorial); break;
         case 'pase-historial': abrirPase(app.hist.grupo_id, dato('fecha'), volverAHistorial); break;
         case 'ficha': abrirFicha(dato('usuario'), app.vista === 'historial' ? volverAHistorial : irUsuarios, dato('nombre')); break;
@@ -3504,25 +3989,55 @@
     window.addEventListener('resize', colocarAviso);
 
     // Arrastrar el asa del panel hacia abajo: lo sigue con el dedo y, pasados MIN_ARRASTRE px, lo cierra.
+    // Un panel de dos alturas (5-nov-2026) también sube: a media pantalla, arrastrar hacia arriba lo hace crecer
+    // con el dedo y, pasados MIN_SUBIR px, se queda a pantalla completa. A pantalla completa, arrastrar hacia abajo
+    // lo devuelve a media pantalla, y si se baja más allá de esa altura (más MIN_ARRASTRE), se cierra.
     let arrastre = null;
     $('panel').addEventListener('pointerdown', function (ev) {
       if (!ev.target.closest('.panel-asa') || !panelAbierto()) return;
-      arrastre = { y: ev.clientY, dy: 0, id: ev.pointerId };
+      const panel = $('panel');
+      arrastre = { y: ev.clientY, dy: 0, id: ev.pointerId, alto: panel.offsetHeight,
+        modo: panel.classList.contains('completa') ? 'completa' : panel.classList.contains('media') ? 'media' : '' };
       try { ev.target.setPointerCapture(ev.pointerId); } catch (e) { /* sin captura: sigue igual */ }
-      $('panel').classList.add('arrastrando');
+      panel.classList.add('arrastrando');
     });
     $('panel').addEventListener('pointermove', function (ev) {
       if (!arrastre || ev.pointerId !== arrastre.id) return;
-      arrastre.dy = Math.max(0, ev.clientY - arrastre.y);
-      $('panel').style.transform = 'translateY(' + arrastre.dy + 'px)';
+      const panel = $('panel');
+      const dy = ev.clientY - arrastre.y;
+      arrastre.dy = arrastre.modo ? dy : Math.max(0, dy);
+      if (arrastre.modo === 'media' && dy < 0) {
+        // Crece con el dedo, como mucho hasta la pantalla entera.
+        panel.style.transform = '';
+        panel.style.height = Math.min(window.innerHeight, arrastre.alto - dy) + 'px';
+      } else {
+        panel.style.height = '';
+        panel.style.transform = 'translateY(' + Math.max(0, dy) + 'px)';
+      }
     });
     function soltarArrastre(ev) {
       if (!arrastre || ev.pointerId !== arrastre.id) return;
-      const dy = arrastre.dy;
+      const a = arrastre;
       arrastre = null;
-      $('panel').classList.remove('arrastrando');
-      if (dy > MIN_ARRASTRE) cerrarPanelComoFondo();
-      else $('panel').style.transform = '';
+      const panel = $('panel');
+      panel.classList.remove('arrastrando');
+      if (a.modo === 'media' && a.dy < 0) {
+        panel.style.height = '';
+        panel.classList.toggle('completa', -a.dy > MIN_SUBIR);
+        panel.classList.toggle('media', -a.dy <= MIN_SUBIR);
+        return;
+      }
+      if (a.modo === 'completa' && a.dy > MIN_ARRASTRE) {
+        // Primero vuelve a media pantalla; si se ha bajado más allá de esa altura, se cierra.
+        const media = window.innerHeight * FRACCION_MEDIA;
+        if (a.dy > a.alto - media + MIN_ARRASTRE) { cerrarPanelComoFondo(); return; }
+        panel.style.transform = '';
+        panel.classList.remove('completa');
+        panel.classList.add('media');
+        return;
+      }
+      if (a.dy > MIN_ARRASTRE) cerrarPanelComoFondo();
+      else panel.style.transform = '';
     }
     $('panel').addEventListener('pointerup', soltarArrastre);
     $('panel').addEventListener('pointercancel', soltarArrastre);
@@ -3545,9 +4060,7 @@
     window.addEventListener('online', function () { if (app.init) reintentarGuardados(false); });
 
     // Barra superior de Material 3: al desplazar la pantalla toma el color del contenedor (sin línea ni sombra).
-    window.addEventListener('scroll', function () {
-      $('barra').classList.toggle('elevada', window.scrollY > 4);
-    }, { passive: true });
+    window.addEventListener('scroll', actualizarBarra, { passive: true });
 
     // Onda de Material al pulsar: un círculo que crece desde el dedo y se desvanece. Si el sistema pide
     // reducir el movimiento, no se dibuja (queda el oscurecimiento suave de siempre).
