@@ -888,12 +888,20 @@
       colocarAviso();
     }
 
+    // Cada sección: [id, nombre, icono relleno (la activa), icono de contorno (las demás)], como en Android 14 (5-nov-2026).
+    const ENGRANAJE = 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm8.2 5l1.6 1.3-1.8 3.1-2-.7a7 7 0 0 1-1.9 1.1l-.3 2.1h-3.6l-.3-2.1a7 7 0 0 1-1.9-1.1l-2 .7-1.8-3.1 1.6-1.3a7 7 0 0 1 0-2.2L2.2 10l1.8-3.1 2 .7A7 7 0 0 1 7.9 6.5l.3-2.1h3.6l.3 2.1a7 7 0 0 1 1.9 1.1l2-.7L17.8 10l-1.6 1.3a7 7 0 0 1 0 2.2z';
     const SECCIONES = [
-      ['inicio', 'Inicio', '<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>'],
-      ['historial', 'Historial', '<path d="M4 5h16v3H4zM4 10.5h16v3H4zM4 16h16v3H4z"/>'],
-      ['informe', 'Informe', '<path d="M5 20V10h3v10zM10.5 20V4h3v16zM16 20v-7h3v7z"/>'],
-      ['gestion', 'Gestión', '<path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm8.2 5l1.6 1.3-1.8 3.1-2-.7a7 7 0 0 1-1.9 1.1l-.3 2.1h-3.6l-.3-2.1a7 7 0 0 1-1.9-1.1l-2 .7-1.8-3.1 1.6-1.3a7 7 0 0 1 0-2.2L2.2 10l1.8-3.1 2 .7A7 7 0 0 1 7.9 6.5l.3-2.1h3.6l.3 2.1a7 7 0 0 1 1.9 1.1l2-.7L17.8 10l-1.6 1.3a7 7 0 0 1 0 2.2z"/>']
+      ['inicio', 'Inicio', 'M4 11l8-7 8 7v9h-5v-6H9v6H4z', 'M4.5 11.2 12 4.6l7.5 6.6V19.5h-4.5v-6h-6v6H4.5z'],
+      ['historial', 'Historial', 'M4 5h16v3H4zM4 10.5h16v3H4zM4 16h16v3H4z', 'M4.5 6.5h15M4.5 12h15M4.5 17.5h15'],
+      ['informe', 'Informe', 'M5 20V10h3v10zM10.5 20V4h3v16zM16 20v-7h3v7z', 'M6.5 19.5V10.5M12 19.5V4.5M17.5 19.5v-6'],
+      ['gestion', 'Gestión', ENGRANAJE, ENGRANAJE]
     ];
+    function iconoSeccion(s, activa) {
+      return activa
+        ? '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="currentColor" fill-rule="evenodd"><path d="' + s[2] + '"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"' +
+          ' stroke-linejoin="round" stroke-linecap="round"><path d="' + s[3] + '"/></svg>';
+    }
 
     /** Muestra la barra inferior con la sección activa, o la oculta (activa = null). */
     function navegacion(activa) {
@@ -906,7 +914,7 @@
       }
       nav.innerHTML = SECCIONES.filter(function (s) { return s[0] !== 'gestion' || esAdmin(); }).map(function (s) {
         return '<button type="button" class="nav-boton' + (s[0] === activa ? ' activa' : '') + '" data-accion="nav" data-destino="' + s[0] + '">' +
-          '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="currentColor">' + s[2] + '</svg>' +
+          iconoSeccion(s, s[0] === activa) +
           '<span>' + s[1] + '</span></button>';
       }).join('');
       nav.classList.remove('oculto');
@@ -1418,20 +1426,21 @@
 
     function pintarPiePase() {
       const cuenta = contadores();
-      let html = '<div class="contadores">';
+      let html = '<div class="pie-fila"><div class="contadores">';
       app.init.estados.concat(Object.keys(cuenta).filter(function (c) {
         return !app.init.estados.some(function (e) { return e.codigo === c; });
       }).map(function (c) { return estadoInfo(c); })).forEach(function (e) {
         if (!cuenta[e.codigo]) return;
-        html += chipEstado(e.codigo, '<span class="numero">' + cuenta[e.codigo] + '</span> ' + esc(e.etiqueta));
+        // Solo el icono y el número, para que quepan junto a Guardar; el nombre lo lee el lector de pantalla.
+        html += chipEstado(e.codigo, '<span class="numero">' + cuenta[e.codigo] + '</span><span class="solo-lector"> ' + esc(e.etiqueta) + '</span>');
       });
       // Sin nadie inscrito no hay pie: la pantalla ofrece «Inscribir usuarios» (pintarPase).
       if (!app.pase.usuarios.length) { pie(''); return; }
       // Un solo botón a todo el ancho (4-nov-2026); «No hubo clase» está en el menú «⋮» de la barra.
       // Si queda otro pase por hacer (abierto desde Inicio), Guardar abre ese a continuación (guardarPase).
       const haySiguiente = siguientePase(app.pase);
-      html += '</div><button type="button" class="boton lleno ancho" data-accion="guardar">' + ICONO_GUARDAR +
-        (haySiguiente ? 'Guardar y seguir' : 'Guardar') + '</button>';
+      html += '</div><button type="button" class="boton lleno" data-accion="guardar">' + ICONO_GUARDAR +
+        (haySiguiente ? 'Guardar y seguir' : 'Guardar') + '</button></div>';
       pie(html);
     }
 
@@ -2331,20 +2340,51 @@
       }).catch(function (e) { if (sigue()) pintarHistorial(null, e); });
     }
 
+    /** Nombre del grupo elegido en el Historial. */
+    function nombreGrupoHistorial() {
+      const g = app.init.grupos.find(function (x) { return x.grupo_id === app.hist.grupo_id; });
+      return g ? tallerYGrupo(g.taller, g.nombre) : 'Sin grupos';
+    }
+
+    /** Panel del botón del grupo del Historial: los grupos de la monitora, con sus días y hora. */
+    function abrirPanelGrupoHistorial() {
+      abrirPanel('<div><h3>Grupo</h3><div class="menu-opciones">' + app.init.grupos.map(function (g) {
+        const elegido = g.grupo_id === app.hist.grupo_id;
+        return '<button type="button" class="opcion-menu' + (elegido ? ' elegida' : '') + '" data-accion="grupo-hist" data-grupo="' + esc(g.grupo_id) + '"' +
+          (elegido ? ' aria-current="true"' : '') + '>' + ICONO_TALLER + '<span class="opcion-texto">' + esc(tallerYGrupo(g.taller, g.nombre)) +
+          (horario(g) ? '<small>' + esc(horario(g)) + '</small>' : '') + '</span>' + (elegido ? ICONO_ELEGIDO : '') + '</button>';
+      }).join('') + '</div></div>');
+    }
+
+    function elegirGrupoHistorial(grupoId) {
+      cerrarPanel();
+      if (grupoId === app.hist.grupo_id) return;
+      app.hist.grupo_id = grupoId;
+      cargarHistorial();
+    }
+
+    /** Nivel de un % de asistencia: 'alto' desde el 75 %, 'medio' desde el 50 % y 'bajo' por debajo. */
+    function nivelPorcentaje(p) {
+      const n = Math.round(p);
+      return n >= 75 ? 'alto' : n >= 50 ? 'medio' : 'bajo';
+    }
+
     /** % de asistencia con una barrita debajo: verde desde el 75 %, ámbar desde el 50 % y roja por debajo. */
     function barraPorcentaje(p) {
       if (p === null || p === undefined) return '—';
       const n = Math.round(p);
-      const nivel = n >= 75 ? 'alto' : n >= 50 ? 'medio' : 'bajo';
+      const nivel = nivelPorcentaje(p);
       return n + '<span class="pct-barra ' + nivel + '"><span style="width:' + Math.max(0, Math.min(100, n)) + '%"></span></span>';
     }
 
     /** d: datos de api_historial; sin datos, la cabecera con la cuadrícula vacía (cargando) o el error de carga. */
     function pintarHistorial(d, error) {
       const mesActual = app.init.hoy.substring(0, 7);
-      let html = '<div class="campo"><label for="histGrupo">Grupo</label><select id="histGrupo">' +
-        opciones(app.init.grupos, app.hist.grupo_id, function (g) { return g.grupo_id; }, function (g) { return tallerYGrupo(g.taller, g.nombre); }) +
-        '</select></div>' +
+      // El grupo, como el periodo y el taller del Informe: una pastilla que abre un panel (5-nov-2026; antes, un desplegable).
+      const nombreGrupo = nombreGrupoHistorial();
+      let html = '<div class="filtros-informe"><button type="button" class="boton boton-periodo" data-accion="abrir-grupo-hist"' +
+        ' aria-label="Grupo: ' + esc(nombreGrupo) + '. Cambiar el grupo">' + ICONO_TALLER +
+        '<span class="texto-filtro">' + esc(nombreGrupo) + '</span><span class="flecha-abajo" aria-hidden="true"></span></button></div>' +
         '<div class="selector-mes"><button type="button" class="flecha-redonda" data-accion="mes" data-salto="-1" aria-label="Mes anterior">' + ICONO_ANTERIOR + '</button>' +
         '<strong>' + esc(nombreMes(app.hist.mes)) + '</strong>' +
         '<button type="button" class="flecha-redonda" data-accion="mes" data-salto="1" aria-label="Mes siguiente"' +
@@ -2545,12 +2585,16 @@
         const t = d.total;
         const altas = d.altasBajas.reduce(function (s, m) { return s + m.altas; }, 0);
         const bajas = d.altasBajas.reduce(function (s, m) { return s + m.bajas; }, 0);
+        // El % primero y más grande, en verde, ámbar o rojo según el nivel (5-nov-2026); el resto, en el color del texto.
+        const hayPct = t.porcentaje !== null && t.porcentaje !== undefined;
         html += '<div class="kpis">' +
+          '<div class="kpi kpi-destacado' + (hayPct ? ' nivel-' + nivelPorcentaje(t.porcentaje) : '') + '"><div class="kpi-valor">' + esc(porcentaje(t.porcentaje)) +
+          '<button type="button" class="info-kpi" data-accion="info-porcentaje" aria-label="Cómo se calcula el % de asistencia">' + ICONO_INFO + '</button></div>' +
+          '<div class="kpi-texto">de asistencia</div>' +
+          (hayPct ? '<span class="pct-barra ' + nivelPorcentaje(t.porcentaje) + '"><span style="width:' + Math.max(0, Math.min(100, Math.round(t.porcentaje))) + '%"></span></span>' : '') +
+          '</div>' +
           kpi(t.usuarios, 'usuarios distintos atendidos') + kpi(t.realizadas, 'clases hechas') +
-          kpi(porcentaje(t.porcentaje), 'de asistencia', '<button type="button" class="info-kpi" data-accion="info-porcentaje" aria-label="Cómo se calcula el % de asistencia">' +
-            ICONO_INFO + '</button>') +
-          kpi(t.canceladas, 'sin clase') +
-          kpi(altas, 'altas') + kpi(bajas, 'bajas') + '</div>';
+          kpi(t.canceladas, 'sin clase') + kpi(altas + ' / ' + bajas, 'altas / bajas') + '</div>';
 
         if (esAdmin()) {
           html += '<div class="bloque exportar"><div class="exportar-texto"><h3>Exportar datos</h3>' +
@@ -2632,14 +2676,14 @@
      */
     function tarjetasInforme(titulo, filas, nombres, icono) {
       if (!filas.length) return tituloInforme(titulo, icono) + '<p class="vacio">Sin datos en este periodo.</p>';
-      const cifra = function (v, texto) { return '<span class="cifra"><strong>' + esc(v) + '</strong><span>' + esc(texto) + '</span></span>'; };
+      const cifra = function (v, texto, clase) { return '<span class="cifra' + (clase ? ' ' + clase : '') + '"><strong>' + esc(v) + '</strong><span>' + esc(texto) + '</span></span>'; };
       const linea = function (texto, v) { return '<div><dt>' + esc(texto) + '</dt><dd>' + esc(v) + '</dd></div>'; };
       return tituloInforme(titulo, icono) + '<div class="lista">' + filas.map(function (r) {
         const n = nombres(r);
         return '<details class="tarjeta-informe"><summary>' +
           '<span class="ti-nombre">' + esc(n[0]) + (n[1] ? '<small>' + esc(n[1]) + '</small>' : '') + '</span>' +
           '<span class="ti-cifras">' + cifra(r.realizadas, r.realizadas === 1 ? 'sesión' : 'sesiones') +
-          cifra(porcentaje(r.porcentaje), 'asistencia') + cifra(r.usuarios, r.usuarios === 1 ? 'usuario' : 'usuarios') + '</span>' +
+          cifra(porcentaje(r.porcentaje), 'asistencia', r.porcentaje === null || r.porcentaje === undefined ? '' : 'nivel-' + nivelPorcentaje(r.porcentaje)) + cifra(r.usuarios, r.usuarios === 1 ? 'usuario' : 'usuarios') + '</span>' +
           '</summary><dl class="ti-desglose">' +
           linea('Sin clase', r.canceladas) + linea('Asistencias', r.presentes) + linea('Faltas', r.ausentes) + linea('Otros (no cuentan)', r.neutros) +
           '</dl></details>';
@@ -3365,6 +3409,8 @@
         case 'abrir-periodo': abrirPanelPeriodo(); break;
         case 'abrir-taller': abrirPanelTaller(); break;
         case 'taller-informe': elegirTallerInforme(dato('taller')); break;
+        case 'abrir-grupo-hist': abrirPanelGrupoHistorial(); break;
+        case 'grupo-hist': elegirGrupoHistorial(dato('grupo')); break;
         case 'periodo': elegirPeriodo(dato('desde'), dato('hasta')); break;
         case 'abrir-exportar': abrirPanelExportar(); break;
         case 'exportar-descargar': descargarInforme(); break;
@@ -3417,10 +3463,6 @@
       if (ev.target.id === 'fechaInicio' && ev.target.value) {
         app.fecha = ev.target.value;
         irInicio();
-      }
-      if (ev.target.id === 'histGrupo') {
-        app.hist.grupo_id = ev.target.value;
-        cargarHistorial();
       }
       if (ev.target.id === 'gTaller') {
         $('campoTallerNuevo').classList.toggle('oculto', ev.target.value !== '__nuevo__');

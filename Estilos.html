@@ -83,6 +83,7 @@
     --fs-lg:    18px;   /* títulos de tarjeta */
     --fs-title: 20px;   /* títulos de pantalla y de panel */
     --fs-kpi:   28px;   /* cifras grandes */
+    --fs-kpi-grande: 40px;   /* el % de asistencia del Informe */
 
     /* --- Tamaños táctiles --- */
     --alto-boton: 52px;
@@ -253,13 +254,13 @@
     margin: 24px 4px 8px;
   }
   h2.seccion.peligro { color: var(--md-error); }
-  /* Subtítulo de lista (como en los ajustes de Android): pequeño y en el color principal */
+  /* Subtítulo de lista (como en los ajustes de Android): pequeño, en gris oscuro (5-nov-2026; antes, azul) */
   h3.taller, h3.subtitulo-lista {
     font-size: var(--fs-sm);
     font-weight: 600;
     letter-spacing: .02em;
-    color: var(--md-primary);
-    margin: 16px 8px 8px;
+    color: var(--md-on-surface-med);
+    margin: 18px 8px 8px;
   }
 
   .vacio { color: var(--md-on-surface-med); text-align: center; padding: 24px 8px; }
@@ -363,7 +364,20 @@
     text-align: left;
     cursor: pointer;
   }
-  .tarjeta.pendiente { background: var(--md-error-bg); }
+  /* Pendiente: tarjeta blanca con una franja roja redondeada a la izquierda (5-nov-2026; antes, todo el fondo rosa) */
+  .tarjeta.pendiente { background: var(--md-surface); }
+  .tarjeta.pendiente::before {
+    content: "";
+    position: absolute;
+    left: 6px;
+    top: 14px;
+    bottom: 14px;
+    width: 4px;
+    border-radius: var(--md-shape-full);
+    background: var(--md-error);
+    pointer-events: none;
+  }
+  .tarjeta.pendiente .tarjeta-abrir { padding-left: 24px; }
 
   /* Lista agrupada (Material You, como los ajustes de Android): filas blancas separadas por 2 px,
      esquinas grandes solo arriba del todo y abajo del todo */
@@ -905,6 +919,23 @@
   }
   .pie > * { max-width: 720px; margin-left: auto; margin-right: auto; }
   .contadores { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  /* Pie del pase (5-nov-2026): los contadores (icono y número) a la izquierda y Guardar a la derecha, en una fila */
+  .pie-fila { display: flex; align-items: center; gap: 12px; }
+  .pie-fila .contadores { flex: 1; min-width: 0; margin: 0; gap: 4px; }
+  .pie-fila .contadores .chip { gap: 4px; padding: 4px 10px 4px 6px; }
+  .pie-fila .boton { flex: none; padding-left: 20px; padding-right: 24px; }
+  .contadores .numero { font-variant-numeric: tabular-nums; }
+  .solo-lector {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
   .contadores .chip { min-width: 0; min-height: 32px; padding: 4px 12px 4px 8px; font-size: var(--fs-sm); }
   .contadores .chip svg { width: 18px; height: 18px; }
   .pie .botones + .botones { margin-top: 8px; }
@@ -1246,6 +1277,13 @@
   }
   .info-kpi:active { background: var(--md-surface-container-high); }
   .kpi-texto { font-size: var(--fs-sm); color: var(--md-on-surface-med); margin-top: 2px; }
+  /* El % de asistencia: primero, a todo el ancho, más grande y del color de su nivel (como la barrita del Historial) */
+  .kpi-destacado { grid-column: 1 / -1; }
+  .kpi-destacado .kpi-valor { font-size: var(--fs-kpi-grande); }
+  .kpi-destacado .pct-barra { width: 100%; height: 6px; margin: 10px 0 2px; }
+  .nivel-alto .kpi-valor, .ti-cifras .nivel-alto strong { color: var(--md-success); }
+  .nivel-medio .kpi-valor, .ti-cifras .nivel-medio strong { color: var(--md-warning-text); }
+  .nivel-bajo .kpi-valor, .ti-cifras .nivel-bajo strong { color: var(--md-error); }
 
   /* Títulos de sección del Informe (5-nov-2026): icono en un cuadro tonal y el título en el color del texto */
   h3.titulo-informe {
