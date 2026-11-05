@@ -82,8 +82,12 @@ function api_informe(desde, hasta, taller_id) {
   return responder_(function (m) { return informeParaCliente_(m, desde, hasta, taller_id); });
 }
 
-function api_exportarInforme(desde, hasta, taller_id) {
-  return responder_(function (m) { return exportarInforme_(m, desde, hasta, taller_id); });
+function api_exportarInforme(desde, hasta, taller_id, formato) {
+  return responder_(function (m) { return exportarInforme_(m, desde, hasta, taller_id, formato); });
+}
+
+function api_enviarInforme(desde, hasta, taller_id, formato, correo) {
+  return responder_(function (m) { return enviarInforme_(m, desde, hasta, taller_id, formato, correo); });
 }
 
 // ---------- Gestión (solo admin) ----------

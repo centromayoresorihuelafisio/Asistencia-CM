@@ -62,8 +62,25 @@
   window.LockService = { getScriptLock: function () { return { tryLock: function () { return true; }, releaseLock: function () {} }; } };
   window.Utilities = {
     formatDate: function (d, z, p) { return fmt(d, p); },
-    getUuid: function () { return 'id-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+    getUuid: function () { return 'id-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); },
+    // Exportar el informe (5-nov-2026): el «PDF» y el «Excel» simulados son texto (el HTML o una línea), para ver que se descargan.
+    base64Encode: function (bytes) { return btoa(String.fromCharCode.apply(null, bytes)); },
+    newBlob: function (texto, tipo) { return new Blob_(texto, tipo); }
   };
+  function Blob_(texto, tipo) { this.texto = texto; this.tipo = tipo; this.nombre = ''; }
+  Blob_.prototype.getAs = function (tipo) { return new Blob_(this.texto, tipo); };
+  Blob_.prototype.setName = function (n) { this.nombre = n; return this; };
+  Blob_.prototype.getBytes = function () { return Array.from(new TextEncoder().encode(this.texto)); };
+  Libro.prototype.getId = function () { return 'simulado'; };
+  window.SIM.borrados = [];
+  window.SIM.correos = [];
+  window.ScriptApp = { getOAuthToken: function () { return 'token'; } };
+  window.UrlFetchApp = { fetch: function (url, op) {
+    if (op && op.method === 'delete') window.SIM.borrados.push(url);
+    return { getResponseCode: function () { return op && op.method === 'delete' ? 204 : 200; }, getBlob: function () { return new Blob_('xlsx simulado de ' + url, 'xlsx'); } };
+  } };
+  window.DriveApp = { getFileById: function () { return { setTrashed: function () {} }; } };
+  window.MailApp = { getRemainingDailyQuota: function () { return 100; }, sendEmail: function (o) { window.SIM.correos.push(o); } };
   const correo = 'admin@ejemplo.test';
   window.Session = { getActiveUser: function () { return { getEmail: function () { return correo; } }; }, getEffectiveUser: function () { return { getEmail: function () { return correo; } }; } };
 

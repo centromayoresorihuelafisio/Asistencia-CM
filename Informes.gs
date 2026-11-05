@@ -250,7 +250,14 @@ function informeParaCliente_(monitora, desde, hasta, tallerId) {
   return r;
 }
 
-// ---------- Exportar a una hoja nueva ----------
+// ---------- Exportar: descargar o enviar por correo (5-nov-2026) ----------
+// El archivo se crea, se manda al móvil (o por correo) y no se queda en el Drive de quien despliega:
+// el PDF se hace desde HTML, sin Drive; la hoja de cálculo necesita una hoja de paso, que se borra al terminar.
+
+const FORMATOS_EXPORTAR_ = {
+  pdf: { extension: 'pdf', tipo: 'application/pdf' },
+  xlsx: { extension: 'xlsx', tipo: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+};
 
 const COLUMNAS_ACUMULADO_ = [
   ['Sesiones realizadas', 'realizadas'], ['Sesiones canceladas', 'canceladas'], ['Asistencias', 'presentes'],
@@ -278,42 +285,10 @@ function filasAcumulado_(lista, primeras) {
   });
 }
 
-/** Crea una hoja de cálculo nueva en Drive con todas las tablas del informe y el detalle. Devuelve su enlace. */
-function exportarInforme_(monitora, desde, hasta, tallerId) {
-  comprobarAdmin_(monitora);
-  const r = informe_(monitora, desde, hasta, tallerId);
-  const titulo = 'Asistencia talleres ' + fechaNumerica_(desde) + ' a ' + fechaNumerica_(hasta) + (r.taller ? ' – ' + r.taller : '');
-  const libro = SpreadsheetApp.create(titulo);
+/** Todas las tablas del informe: [{ nombre, cabecera, filas, formatos, enPdf }]. El detalle solo va en la hoja de cálculo. */
+function tablasInforme_(r, desde, hasta) {
   const cabAcum = COLUMNAS_ACUMULADO_.map(function (c) { return c[0]; });
-
-  const resumen = libro.getSheets()[0];
-  resumen.setName('Resumen');
   const t = r.total;
-  escribirTabla_(resumen, ['Dato', 'Valor'], [
-    ['Periodo', fechaNumerica_(desde) + ' a ' + fechaNumerica_(hasta)],
-    ['Taller', r.taller || 'Todos'],
-    ['Sesiones realizadas', t.realizadas],
-    ['Sesiones canceladas', t.canceladas],
-    ['Usuarios distintos atendidos', t.usuarios],
-    ['Asistencias', t.presentes],
-    ['Ausencias', t.ausentes],
-    ['Otros registros (eventos…)', t.neutros],
-    ['% asistencia', t.porcentaje === null ? '' : t.porcentaje],
-    ['Altas', r.altasBajas.reduce(function (s, m) { return s + m.altas; }, 0)],
-    ['Bajas', r.altasBajas.reduce(function (s, m) { return s + m.bajas; }, 0)],
-    ['% asistencia = asistencias ÷ (asistencias + ausencias). Los eventos no cuentan.', '']
-  ]);
-
-  escribirTabla_(libro.insertSheet('Por taller'), ['Taller'].concat(cabAcum), filasAcumulado_(r.porTaller, ['taller']));
-  escribirTabla_(libro.insertSheet('Por grupo'), ['Taller', 'Grupo'].concat(cabAcum), filasAcumulado_(r.porGrupo, ['taller', 'grupo']));
-  escribirTabla_(libro.insertSheet('Por mes'), ['Mes'].concat(cabAcum), filasAcumulado_(r.porMes, ['mes']), { 0: '@' });
-  escribirTabla_(libro.insertSheet('Por estado'), ['Estado', 'Cuenta como', 'Registros'],
-    r.porEstado.map(function (e) { return [e.etiqueta, e.tipo, e.registros]; }));
-  escribirTabla_(libro.insertSheet('Altas y bajas'), ['Mes', 'Altas', 'Bajas'],
-    r.altasBajas.map(function (m) { return [m.mes, m.altas, m.bajas]; }), { 0: '@' });
-  escribirTabla_(libro.insertSheet('Motivos de baja'), ['Motivo', 'Bajas'],
-    r.motivosBaja.map(function (m) { return [m.motivo, m.bajas]; }));
-
   const usuarios = usuariosPorId_();
   const tipos = tiposEstado_();
   const detalle = r._detalle
@@ -323,11 +298,133 @@ function exportarInforme_(monitora, desde, hasta, tallerId) {
       const e = tipos[a.estado] || { etiqueta: a.estado, tipo: '' };
       return [textoAFecha_(a.fecha), a.mes, a.taller, a.grupo, id, (usuarios[id] || {}).nombre || '', e.etiqueta, e.tipo, a.observaciones];
     });
-  escribirTabla_(libro.insertSheet('Detalle'),
-    ['Fecha', 'Mes', 'Taller', 'Grupo', 'ID usuario', 'Usuario', 'Estado', 'Cuenta como', 'Observaciones'],
-    detalle, { 0: 'dd/mm/yyyy', 1: '@', 4: '@' });
+  return [
+    { nombre: 'Resumen', enPdf: true, cabecera: ['Dato', 'Valor'], filas: [
+      ['Periodo', fechaNumerica_(desde) + ' a ' + fechaNumerica_(hasta)],
+      ['Taller', r.taller || 'Todos'],
+      ['Sesiones realizadas', t.realizadas],
+      ['Sesiones canceladas', t.canceladas],
+      ['Usuarios distintos atendidos', t.usuarios],
+      ['Asistencias', t.presentes],
+      ['Ausencias', t.ausentes],
+      ['Otros registros (eventos…)', t.neutros],
+      ['% asistencia', t.porcentaje === null ? '' : t.porcentaje],
+      ['Altas', r.altasBajas.reduce(function (s, m) { return s + m.altas; }, 0)],
+      ['Bajas', r.altasBajas.reduce(function (s, m) { return s + m.bajas; }, 0)],
+      ['% asistencia = asistencias ÷ (asistencias + ausencias). Los eventos no cuentan.', '']
+    ] },
+    { nombre: 'Por taller', enPdf: true, cabecera: ['Taller'].concat(cabAcum), filas: filasAcumulado_(r.porTaller, ['taller']) },
+    { nombre: 'Por grupo', enPdf: true, cabecera: ['Taller', 'Grupo'].concat(cabAcum), filas: filasAcumulado_(r.porGrupo, ['taller', 'grupo']) },
+    { nombre: 'Por mes', enPdf: true, cabecera: ['Mes'].concat(cabAcum), filas: filasAcumulado_(r.porMes, ['mes']), formatos: { 0: '@' } },
+    { nombre: 'Por estado', enPdf: true, cabecera: ['Estado', 'Cuenta como', 'Registros'],
+      filas: r.porEstado.map(function (e) { return [e.etiqueta, e.tipo, e.registros]; }) },
+    { nombre: 'Altas y bajas', enPdf: true, cabecera: ['Mes', 'Altas', 'Bajas'],
+      filas: r.altasBajas.map(function (m) { return [m.mes, m.altas, m.bajas]; }), formatos: { 0: '@' } },
+    { nombre: 'Motivos de baja', enPdf: true, cabecera: ['Motivo', 'Bajas'],
+      filas: r.motivosBaja.map(function (m) { return [m.motivo, m.bajas]; }) },
+    { nombre: 'Detalle', enPdf: false,
+      cabecera: ['Fecha', 'Mes', 'Taller', 'Grupo', 'ID usuario', 'Usuario', 'Estado', 'Cuenta como', 'Observaciones'],
+      filas: detalle, formatos: { 0: 'dd/mm/yyyy', 1: '@', 4: '@' } }
+  ];
+}
 
-  return { url: libro.getUrl(), nombre: titulo };
+/**
+ * El archivo del informe: { titulo, nombre, tipo, blob }. formato: 'pdf' o 'xlsx'.
+ * Nombre del archivo sin barras: «Asistencia talleres 2026-09-01 a 2026-11-05 - Pilates.pdf».
+ */
+function archivoInforme_(monitora, desde, hasta, tallerId, formato) {
+  comprobarAdmin_(monitora);
+  const f = FORMATOS_EXPORTAR_[formato];
+  if (!f) throw errorApp_('Elige el formato: PDF u hoja de cálculo.');
+  const r = informe_(monitora, desde, hasta, tallerId);
+  const titulo = 'Asistencia talleres ' + fechaNumerica_(desde) + ' a ' + fechaNumerica_(hasta) + (r.taller ? ' – ' + r.taller : '');
+  const nombre = ('Asistencia talleres ' + desde + ' a ' + hasta + (r.taller ? ' - ' + r.taller : ''))
+    .replace(/[\\/:*?"<>|]/g, '-') + '.' + f.extension;
+  const tablas = tablasInforme_(r, desde, hasta);
+  const blob = formato === 'pdf' ? informePdf_(tablas, titulo) : informeXlsx_(tablas, titulo);
+  blob.setName(nombre);
+  return { titulo: titulo, nombre: nombre, tipo: f.tipo, blob: blob };
+}
+
+/** Para descargar en el dispositivo: { nombre, tipo, base64 }. */
+function exportarInforme_(monitora, desde, hasta, tallerId, formato) {
+  const a = archivoInforme_(monitora, desde, hasta, tallerId, formato);
+  return { nombre: a.nombre, tipo: a.tipo, base64: Utilities.base64Encode(a.blob.getBytes()) };
+}
+
+/** Envía el informe como adjunto, desde la cuenta de quien despliega. Devuelve { correo }. */
+function enviarInforme_(monitora, desde, hasta, tallerId, formato, correo) {
+  comprobarAdmin_(monitora);
+  const para = String(correo || '').trim().toLowerCase();
+  if (!/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(para)) throw errorApp_('Escribe un correo como nombre@gmail.com.');
+  if (MailApp.getRemainingDailyQuota() < 1) throw errorApp_('Hoy ya no se pueden enviar más correos. Descárgalo o inténtalo mañana.');
+  const a = archivoInforme_(monitora, desde, hasta, tallerId, formato);
+  MailApp.sendEmail({
+    to: para,
+    subject: a.titulo,
+    body: 'Adjunto el informe de asistencia a los talleres (' + a.nombre + ').',
+    name: 'Asistencia talleres',
+    attachments: [a.blob]
+  });
+  return { correo: para };
+}
+
+function escHtml_(v) {
+  return String(v === null || v === undefined ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** PDF hecho desde HTML (sin pasar por Drive), con las tablas en las que enPdf es true. */
+function informePdf_(tablas, titulo) {
+  const celda = function (v) {
+    const esNumero = typeof v === 'number';
+    return '<td' + (esNumero ? '' : ' class="t"') + '>' + escHtml_(esNumero ? String(v).replace('.', ',') : v) + '</td>';
+  };
+  const css = 'body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#202124}' +
+    'h1{font-size:15pt;margin:0 0 12px}h2{font-size:11pt;margin:18px 0 6px}' +
+    'table{border-collapse:collapse;width:100%}th,td{border:1px solid #dadce0;padding:3px 5px;text-align:right}' +
+    'th{background:#e8eaf6}.t{text-align:left}p{color:#5f6368}';
+  const cuerpo = tablas.filter(function (t) { return t.enPdf; }).map(function (t) {
+    if (!t.filas.length) return '<h2>' + escHtml_(t.nombre) + '</h2><p>Sin datos.</p>';
+    return '<h2>' + escHtml_(t.nombre) + '</h2><table><thead><tr>' +
+      t.cabecera.map(function (c) { return '<th class="t">' + escHtml_(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      t.filas.map(function (f) { return '<tr>' + f.map(celda).join('') + '</tr>'; }).join('') +
+      '</tbody></table>';
+  }).join('');
+  const html = '<html><head><meta charset="utf-8"><style>' + css + '</style></head><body><h1>' + escHtml_(titulo) + '</h1>' +
+    cuerpo + '</body></html>';
+  return Utilities.newBlob(html, 'text/html', 'informe.html').getAs('application/pdf');
+}
+
+/** Hoja de cálculo: una de paso con todas las tablas, exportada a .xlsx y borrada enseguida. */
+function informeXlsx_(tablas, titulo) {
+  const libro = SpreadsheetApp.create(titulo);
+  const id = libro.getId();
+  try {
+    tablas.forEach(function (t, i) {
+      const hoja = i === 0 ? libro.getSheets()[0].setName(t.nombre) : libro.insertSheet(t.nombre);
+      escribirTabla_(hoja, t.cabecera, t.filas, t.formatos);
+    });
+    SpreadsheetApp.flush();
+    const resp = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' + id + '/export?format=xlsx', {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() !== 200) throw errorApp_('No se ha podido crear la hoja de cálculo. Inténtalo de nuevo.');
+    return resp.getBlob();
+  } finally {
+    borrarArchivoDePaso_(id);
+  }
+}
+
+/** Borra del todo la hoja de paso; si no se puede, la manda a la papelera. */
+function borrarArchivoDePaso_(id) {
+  try {
+    const resp = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + id, {
+      method: 'delete', headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() < 300) return;
+  } catch (e) { /* se intenta con la papelera */ }
+  try { DriveApp.getFileById(id).setTrashed(true); } catch (e) { console.error('No se ha podido borrar la hoja de paso del informe.'); }
 }
 
 function fechaNumerica_(texto) {

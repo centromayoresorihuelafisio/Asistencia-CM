@@ -13,7 +13,7 @@
       pestana: 'lista',
       busqueda: 0,       // nº de la última búsqueda (para ignorar respuestas viejas)
       hist: { grupo_id: '', mes: '' },
-      inf: { desde: '', hasta: '', taller_id: '', datos: null, enlace: null },
+      inf: { desde: '', hasta: '', taller_id: '', datos: null },
       gest: null,        // datos de api_gestion
       usuarios: { texto: '' },
       guardando: {},     // pases de lista guardándose en segundo plano: 'grupo|fecha' → 'guardando' o 'error'
@@ -383,7 +383,7 @@
     const ocupados = [];       // { el, html } de los botones ocupados
     const EN_CURSO = {
       'inscribir': 'Inscribiendo…', 'crear-usuario': 'Inscribiendo…', 'g-inscribir-usuario': 'Inscribiendo…',
-      'g-crear-usuario': 'Creando…', 'exportar-informe': 'Creando la hoja…',
+      'g-crear-usuario': 'Creando…', 'exportar-descargar': 'Preparando el archivo…', 'exportar-correo': 'Enviando…',
       'confirmar-no-hubo': 'Marcando sin clase…', 'confirmar-cancelar': 'Marcando sin clase…',
       'g-guardar-dia': 'Añadiendo…'
     };
@@ -2444,7 +2444,6 @@
       cerrarPanel();
       if (tallerId === app.inf.taller_id) return;
       app.inf.taller_id = tallerId;
-      app.inf.enlace = null;
       cargarInforme();
     }
 
@@ -2513,7 +2512,6 @@
       if (desde === inf.desde && hasta === inf.hasta) return;
       inf.desde = desde;
       inf.hasta = hasta;
-      inf.enlace = null;
       cargarInforme();
     }
 
@@ -2541,9 +2539,8 @@
 
         if (esAdmin()) {
           html += '<div class="bloque"><h3>Exportar para la memoria</h3>' +
-            '<p class="ayuda">Crea una hoja de cálculo nueva en tu Google Drive con todas estas tablas y el detalle de cada registro. Desde ella puedes copiar a Word o descargar en Excel.</p>' +
-            (inf.enlace ? '<a class="boton ancho" href="' + esc(inf.enlace.url) + '" target="_blank" rel="noopener">Abrir «' + esc(inf.enlace.nombre) + '»</a>' : '') +
-            '<button type="button" class="boton primario ancho" data-accion="exportar-informe" style="margin-top:8px">Crear hoja de cálculo</button></div>';
+            '<p class="ayuda">Descárgalo en este aparato o envíalo por correo, en PDF o en hoja de cálculo (Excel). No se guarda nada en Google Drive.</p>' +
+            '<button type="button" class="boton primario ancho" data-accion="abrir-exportar" style="margin-top:8px">Exportar…</button></div>';
         }
 
         html += tarjetasInforme('Por taller', d.porTaller, function (r) { return [r.taller, '']; });
@@ -2655,13 +2652,68 @@
       });
     }
 
-    function exportarInforme() {
+    // --- Exportar (5-nov-2026): descargar en el aparato o enviar por correo, en PDF u hoja de cálculo ---
+
+    const CLAVE_CORREO_INFORME = 'asistencia|correoInforme';
+    const FORMATOS_INFORME = [
+      { valor: 'pdf', texto: 'PDF', sub: 'Para leer, imprimir o adjuntar. Todas las tablas, sin el detalle de cada registro.' },
+      { valor: 'xlsx', texto: 'Hoja de cálculo (Excel)', sub: 'Todas las tablas y el detalle de cada registro.' }
+    ];
+
+    function abrirPanelExportar() {
       const inf = app.inf;
-      llamar('api_exportarInforme', inf.datos.desde, inf.datos.hasta, inf.taller_id).then(function (r) {
-        inf.enlace = r;
-        aviso('Hoja creada en tu Google Drive.');
-        if (app.vista === 'informe') pintarInforme();
+      const formato = app.formatoInforme || 'pdf';
+      const correo = leerBorradorTexto(CLAVE_CORREO_INFORME) || '';
+      abrirPanel('<div><h3>Exportar el informe</h3>' +
+        '<p class="ayuda">' + esc(textoPeriodo(inf.datos.desde, inf.datos.hasta)) + ' · ' + esc(nombreTallerInforme()) + '</p>' +
+        opcionesRadio('exFormato', 'Formato', FORMATOS_INFORME, formato) +
+        '<button type="button" class="boton primario ancho" data-accion="exportar-descargar">Descargar</button>' +
+        '<h4 class="subtitulo-panel">O enviarlo por correo</h4>' +
+        '<div class="campo"><label for="exCorreo">Correo</label><input type="email" id="exCorreo" inputmode="email" autocomplete="email" ' +
+        'enterkeyhint="send" placeholder="nombre@gmail.com" value="' + esc(correo) + '"></div>' +
+        '<button type="button" class="boton ancho" data-accion="exportar-correo">Enviar por correo</button></div>');
+    }
+
+    function formatoElegido() {
+      const f = elegido('exFormato') || 'pdf';
+      app.formatoInforme = f;
+      return f;
+    }
+
+    function descargarInforme() {
+      const d = app.inf.datos;
+      llamar('api_exportarInforme', d.desde, d.hasta, app.inf.taller_id, formatoElegido()).then(function (r) {
+        cerrarPanel();
+        guardarEnAparato(r);
+        aviso('Informe descargado');
       }).catch(avisoError);
+    }
+
+    function enviarInforme() {
+      const d = app.inf.datos;
+      const correo = valor('exCorreo').trim().toLowerCase();
+      if (!/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(correo)) return errorCampo('exCorreo', 'Escribe un correo como nombre@gmail.com.');
+      try { window.localStorage.setItem(CLAVE_CORREO_INFORME, correo); } catch (e) { /* se ignora */ }
+      llamar('api_enviarInforme', d.desde, d.hasta, app.inf.taller_id, formatoElegido(), correo).then(function (r) {
+        cerrarPanel();
+        aviso('Informe enviado · ' + r.correo);
+      }).catch(avisoError);
+    }
+
+    /** Descarga un archivo que llega del servidor como { nombre, tipo, base64 }. */
+    function guardarEnAparato(r) {
+      const bin = window.atob(r.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: r.tipo }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = r.nombre;
+      a.className = 'oculto';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
     }
 
     // ---------- Gestión ----------
@@ -3285,7 +3337,9 @@
         case 'abrir-taller': abrirPanelTaller(); break;
         case 'taller-informe': elegirTallerInforme(dato('taller')); break;
         case 'periodo': elegirPeriodo(dato('desde'), dato('hasta')); break;
-        case 'exportar-informe': exportarInforme(); break;
+        case 'abrir-exportar': abrirPanelExportar(); break;
+        case 'exportar-descargar': descargarInforme(); break;
+        case 'exportar-correo': enviarInforme(); break;
         case 'info-porcentaje': abrirInfoPorcentaje(); break;
         // Gestión
         case 'g-grupos': irGrupos(); break;
