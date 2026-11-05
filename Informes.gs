@@ -416,15 +416,19 @@ function informeXlsx_(tablas, titulo) {
   }
 }
 
-/** Borra del todo la hoja de paso; si no se puede, la manda a la papelera. */
+/**
+ * Borra del todo la hoja de paso con el servicio avanzado de Drive (v3, activado en appsscript.json; 5-nov-2026:
+ * la llamada directa a la API de Drive fallaba porque la API no estaba activada en el proyecto y el archivo
+ * acababa en la papelera). Si no se puede, la manda a la papelera, que se vacía sola a los 30 días.
+ */
 function borrarArchivoDePaso_(id) {
   try {
-    const resp = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + id, {
-      method: 'delete', headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true
-    });
-    if (resp.getResponseCode() < 300) return;
-  } catch (e) { /* se intenta con la papelera */ }
-  try { DriveApp.getFileById(id).setTrashed(true); } catch (e) { console.error('No se ha podido borrar la hoja de paso del informe.'); }
+    Drive.Files.remove(id);
+    return;
+  } catch (e) {
+    console.error('No se ha podido borrar del todo la hoja de paso del informe: ' + (e && e.message));
+  }
+  try { DriveApp.getFileById(id).setTrashed(true); } catch (e) { console.error('No se ha podido mandar a la papelera la hoja de paso del informe.'); }
 }
 
 function fechaNumerica_(texto) {

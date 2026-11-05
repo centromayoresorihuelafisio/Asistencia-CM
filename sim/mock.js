@@ -79,7 +79,8 @@
     if (op && op.method === 'delete') window.SIM.borrados.push(url);
     return { getResponseCode: function () { return op && op.method === 'delete' ? 204 : 200; }, getBlob: function () { return new Blob_('xlsx simulado de ' + url, 'xlsx'); } };
   } };
-  window.DriveApp = { getFileById: function () { return { setTrashed: function () {} }; } };
+  window.DriveApp = { getFileById: function () { return { setTrashed: function () { window.SIM.papelera = (window.SIM.papelera || 0) + 1; } }; } };
+  window.Drive = { Files: { remove: function (id) { window.SIM.borrados.push(id); } } };
   window.MailApp = { getRemainingDailyQuota: function () { return 100; }, sendEmail: function (o) { window.SIM.correos.push(o); } };
   const correo = 'admin@ejemplo.test';
   window.Session = { getActiveUser: function () { return { getEmail: function () { return correo; } }; }, getEffectiveUser: function () { return { getEmail: function () { return correo; } }; } };
