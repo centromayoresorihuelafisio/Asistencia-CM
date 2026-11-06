@@ -15,6 +15,7 @@
       hist: { grupo_id: '', mes: '' },
       inf: { desde: '', hasta: '', taller_id: '', datos: null },
       gest: null,        // datos de api_gestion
+      conf: null,        // datos de api_configuracion (solo admin)
       usuarios: { texto: '' },
       guardando: {},     // pases de lista guardándose en segundo plano: 'grupo|fecha' → 'guardando' o 'error'
       porGuardar: {},    // listas enviadas aún sin confirmar: 'grupo|fecha' → { payload, nombre, intentos, rechazo… } (enviarGuardado)
@@ -521,9 +522,9 @@
         // Datos de un usuario (nombre, teléfono, activo)
         varias(['api_usuario', 'api_usuariosGestion', 'api_gestion', 'api_grupo', 'api_sesion', 'api_historial', 'api_usuariosAlta']);
       } else if (cambio === 'dias') {
-        varias(['api_inicio', 'api_sesion', 'api_historial', 'api_gestion']);
+        varias(['api_inicio', 'api_sesion', 'api_historial', 'api_gestion', 'api_configuracion']);
       } else if (cambio === 'lista') {
-        olvidar('api_gestion');
+        varias(['api_gestion', 'api_configuracion']);
       } else {
         // Grupos, estados o curso: afecta a casi todo
         olvidarTodo();
@@ -586,10 +587,9 @@
       if (app.inf.desde && (app.inf.desde !== p.desde || app.inf.hasta !== p.hasta || app.inf.taller_id)) {
         enCola('api_informe', [app.inf.desde, app.inf.hasta, app.inf.taller_id]);
       }
-      if (esAdmin()) {
-        enCola('api_gestion', [], false, function (d) { app.gest = d; });
-        enCola('api_usuariosGestion', ['']);
-      }
+      enCola('api_gestion', [], false, function (d) { app.gest = d; });
+      enCola('api_usuariosGestion', ['']);
+      if (esAdmin()) enCola('api_configuracion', [], false, function (d) { app.conf = d; });
       grupos.forEach(function (g) { enCola('api_grupo', [g.grupo_id]); });
       enCola('api_usuariosAlta', []);
     }
@@ -917,7 +917,10 @@
       ['inicio', 'Inicio', 'M4 11l8-7 8 7v9h-5v-6H9v6H4z', 'M4.5 11.2 12 4.6l7.5 6.6V19.5h-4.5v-6h-6v6H4.5z'],
       ['historial', 'Historial', 'M4 5h16v3H4zM4 10.5h16v3H4zM4 16h16v3H4z', 'M4.5 6.5h15M4.5 12h15M4.5 17.5h15'],
       ['informe', 'Informe', 'M5 20V10h3v10zM10.5 20V4h3v16zM16 20v-7h3v7z', 'M6.5 19.5V10.5M12 19.5V4.5M17.5 19.5v-6'],
-      ['gestion', 'Gestión', ENGRANAJE, ENGRANAJE]
+      // Gestión, para todas (6-nov-2026): varias personas. Ajustes (pantalla «Configuración»), solo admin: la rueda.
+      ['gestion', 'Gestión', 'M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13zm8 0c-.3 0-.6 0-1 .1 1.2.8 2 2 2 3.4V19h6v-2.5c0-2.3-4.7-3.5-7-3.5z',
+        'M8 10.5a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5zM2 19v-2c0-1.9 3.6-3.2 6-3.2s6 1.3 6 3.2v2zM16 10.5a2.75 2.75 0 1 0 0-5.5M17 13.9c2.4.3 5 1.4 5 3.1v2h-4'],
+      ['ajustes', 'Ajustes', ENGRANAJE, ENGRANAJE]
     ];
     function iconoSeccion(s, activa) {
       return activa
@@ -935,7 +938,9 @@
         colocarAviso();
         return;
       }
-      nav.innerHTML = SECCIONES.filter(function (s) { return s[0] !== 'gestion' || esAdmin(); }).map(function (s) {
+      const visibles = SECCIONES.filter(function (s) { return s[0] !== 'ajustes' || esAdmin(); });
+      nav.classList.toggle('cinco', visibles.length > 4);
+      nav.innerHTML = visibles.map(function (s) {
         return '<button type="button" class="nav-boton' + (s[0] === activa ? ' activa' : '') + '" data-accion="nav" data-destino="' + s[0] + '">' +
           '<span class="nav-icono">' + iconoSeccion(s, s[0] === activa) + '</span>' +
           '<span class="nav-texto">' + s[1] + '</span></button>';
@@ -1089,6 +1094,7 @@
       if (destino === 'historial') irHistorial();
       else if (destino === 'informe') irInforme();
       else if (destino === 'gestion') irGestion();
+      else if (destino === 'ajustes') irConfiguracion();
       else irInicio();
     }
 
@@ -1259,7 +1265,7 @@
 
       html += '<details class="plegable"><summary>Mis grupos (' + app.init.grupos.length + ')</summary>';
       if (!app.init.grupos.length) {
-        html += '<p class="vacio">No tienes grupos asignados.' + (esAdmin() ? ' Créalos en Gestión › Grupos.' : '') + '</p>';
+        html += '<p class="vacio">No tienes grupos asignados. Créalos en Gestión › Grupos.</p>';
       }
       app.init.grupos.forEach(function (g) {
         html += '<div class="grupo-fila"><div class="tarjeta-titulo">' + esc(g.nombre) + '</div>' +
@@ -2648,8 +2654,9 @@
       });
       html += '<th class="pct">%</th></tr></thead><tbody>';
       d.filas.forEach(function (f) {
-        html += '<tr><th class="fija nombre-hist"' + (esAdmin() ? ' data-accion="ficha" data-usuario="' + esc(f.usuario_id) + '" data-nombre="' + esc(f.nombre) + '"' : '') + '>' +
-          esc(nombreVisible(f.nombre)) + (esAdmin() ? '<span class="abre-ficha" aria-hidden="true">›</span>' : '') + '</th>';
+        // La ficha, para todas desde el 6-nov-2026: son usuarios de un grupo suyo.
+        html += '<tr><th class="fija nombre-hist" data-accion="ficha" data-usuario="' + esc(f.usuario_id) + '" data-nombre="' + esc(f.nombre) + '">' +
+          esc(nombreVisible(f.nombre)) + '<span class="abre-ficha" aria-hidden="true">›</span></th>';
         f.celdas.forEach(function (codigo, i) {
           const c = d.columnas[i];
           if (codigo === '-') { html += '<td class="no-inscrito" title="No estaba en el grupo">·</td>'; return; }
@@ -2738,15 +2745,15 @@
 
     /**
      * Periodos rápidos del Informe, hasta hoy y sin empezar antes del curso: el curso, el trimestre del curso
-     * (sep–dic, ene–mar y abr–ago) y el mes.
+     * (desde el 6-nov-2026, con los inicios del 2.º y 3.º trimestre de Configuración › Curso) y el mes.
      */
     function periodosInforme() {
       const hoy = app.init.hoy;
       const curso = periodoInforme();
       const desdeCurso = function (t) { return t < curso.desde ? curso.desde : t; };
-      const anio = hoy.substring(0, 4);
-      const mes = Number(hoy.substring(5, 7));
-      const inicioTrimestre = mes >= 9 ? anio + '-09-01' : mes >= 4 ? anio + '-04-01' : anio + '-01-01';
+      const t2 = app.init.trimestre2;
+      const t3 = app.init.trimestre3;
+      const inicioTrimestre = t3 && hoy >= t3 ? t3 : t2 && hoy >= t2 ? t2 : curso.desde;
       return [
         { texto: 'Este curso', desde: curso.desde, hasta: hoy },
         { texto: 'Este trimestre', desde: desdeCurso(inicioTrimestre), hasta: hoy },
@@ -3059,21 +3066,24 @@
       setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
     }
 
-    // ---------- Gestión ----------
+    // ---------- Gestión (todas, cada una con lo suyo) y Configuración (solo admin), 6-nov-2026 ----------
 
-    /** Tras un cambio en Gestión: olvida lo anticuado y vuelve a pedir los datos de Gestión y de la app (grupos, estados…). */
+    /**
+     * Tras un cambio en Gestión o Configuración: olvida lo anticuado y vuelve a pedir los datos de Gestión, los de
+     * Configuración (admin) y los de la app (grupos, estados…).
+     */
     function recargarDatos(cambio) {
       anticuar(cambio);
-      return Promise.all([pedir('api_gestion'), llamar('api_init')]).then(function (r) {
+      return Promise.all([pedir('api_gestion'), llamar('api_init'), esAdmin() ? pedir('api_configuracion') : null]).then(function (r) {
         app.gest = r[0];
         app.init = r[1];
+        if (r[2]) app.conf = r[2];
         precargar();
       });
     }
 
     function irGestion() {
-      if (!esAdmin()) { irInicio(); return; }
-      pantallaPrincipal('gestion', 'Gestión', 'Grupos, usuarios y ajustes');
+      pantallaPrincipal('gestion', 'Gestión', esAdmin() ? 'Grupos, usuarios y días libres' : 'Tus grupos, usuarios y días libres');
       cargarPantalla('api_gestion', [], function () {
         pintar(esqueleto('gestion'), true);
       }, function (d) {
@@ -3097,37 +3107,63 @@
       return '<span class="icono-entrada" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">' + ICONOS_GESTION[nombre] + '</svg></span>';
     }
 
+    function textoProximos(n) { return n + (n === 1 ? ' próximo' : ' próximos'); }
+
+    function entradaGestion(accion, icono, titulo, detalle) {
+      return '<button type="button" class="tarjeta" data-accion="' + accion + '">' + iconoGestion(icono) + '<div class="tarjeta-cuerpo">' +
+        '<div class="tarjeta-titulo">' + esc(titulo) + '</div><div class="tarjeta-detalle">' + esc(detalle) + '</div></div>' + FLECHA + '</button>';
+    }
+
     function pintarGestion() {
       const g = app.gest;
       const hoy = app.init.hoy;
-      const proximos = g.diasEspeciales.filter(function (d) { return d.fecha >= hoy; }).length;
+      const proximos = diasDeGrupos().filter(function (d) { return d.fecha >= hoy; }).length;
       const activos = g.grupos.filter(function (x) { return x.activo; }).length;
-      const entrada = function (accion, icono, titulo, detalle) {
-        return '<button type="button" class="tarjeta" data-accion="' + accion + '">' + iconoGestion(icono) + '<div class="tarjeta-cuerpo">' +
-          '<div class="tarjeta-titulo">' + esc(titulo) + '</div><div class="tarjeta-detalle">' + esc(detalle) + '</div></div>' + FLECHA + '</button>';
-      };
       pintar('<div class="lista">' +
-        entrada('g-grupos', 'grupos', 'Grupos y talleres', activos + ' grupos activos') +
-        entrada('g-usuarios', 'usuarios', 'Usuarios', g.totalUsuarios + ' en la base de datos') +
-        entrada('g-monitoras', 'monitoras', 'Monitoras', g.monitoras.filter(function (m) { return m.activa; }).length + ' activas · claves de la app') +
-        entrada('g-dias', 'dias', 'Días libres', proximos + ' próximos · festivos, vacaciones, asuntos propios…') +
-        entrada('g-estados', 'estados', 'Estados de asistencia', g.estados.map(function (e) { return e.etiqueta; }).join(', ')) +
-        entrada('g-curso', 'curso', 'Curso', g.config.curso + ' · ' + fechaNumerica(g.config.inicio) + ' a ' + fechaNumerica(g.config.fin)) +
-        entrada('g-listas', 'listas', 'Listas', 'Motivos de baja, tipos de día libre y observaciones rápidas') +
-        // Solo en la app instalable (PWA, 6-nov-2026): cambiar la dirección de la copia o la clave
-        (window.PWA ? entrada('g-conexion', 'conexion', 'Conexión de la app', window.PWA.descripcion()) : '') + '</div>'
+        entradaGestion('g-grupos', 'grupos', 'Grupos y talleres', (esAdmin() ? '' : 'Tuyos · ') + activos + (activos === 1 ? ' grupo activo' : ' grupos activos')) +
+        entradaGestion('g-usuarios', 'usuarios', 'Usuarios', g.totalUsuarios + ' en la base de datos') +
+        entradaGestion('g-dias', 'dias', 'Días libres', textoProximos(proximos) + ' · asuntos propios y otros días sin clase de un grupo') + '</div>'
       );
     }
 
     function volverGestion() { irGestion(); }
 
+    /** Pestaña Ajustes (solo admin): la pantalla se titula «Configuración». */
+    function irConfiguracion() {
+      if (!esAdmin()) { irInicio(); return; }
+      pantallaPrincipal('ajustes', 'Configuración', 'Curso, estados, listas y monitoras');
+      cargarPantalla('api_configuracion', [], function () {
+        pintar(esqueleto('gestion'), true);
+      }, function (d) {
+        app.conf = d;
+        pintarConfiguracion();
+      }, irConfiguracion);
+    }
+
+    function pintarConfiguracion() {
+      const c = app.conf;
+      const proximos = c.periodos.filter(function (d) { return d.fecha >= app.init.hoy; }).length;
+      pintar('<div class="lista">' +
+        entradaGestion('g-curso', 'curso', 'Curso', c.config.curso + ' · ' + fechaNumerica(c.config.inicio) + ' a ' + fechaNumerica(c.config.fin) + ' · trimestres') +
+        entradaGestion('g-periodos', 'dias', 'Periodos no lectivos', textoProximos(proximos) + ' · festivos y vacaciones de todos los grupos') +
+        entradaGestion('g-estados', 'estados', 'Estados de asistencia', c.estados.map(function (e) { return e.etiqueta; }).join(', ')) +
+        entradaGestion('g-listas', 'listas', 'Listas', 'Motivos de baja, tipos de día libre y observaciones rápidas') +
+        entradaGestion('g-monitoras', 'monitoras', 'Monitoras', c.monitoras.filter(function (m) { return m.activa; }).length + ' activas · claves de la app') +
+        // Solo en la app instalable (PWA, 6-nov-2026): cambiar la dirección de la copia o la clave
+        (window.PWA ? entradaGestion('g-conexion', 'conexion', 'Conexión de la app', window.PWA.descripcion()) : '') + '</div>'
+      );
+    }
+
+    function volverConfiguracion() { irConfiguracion(); }
+
     // --- Grupos ---
 
     /** Grupos por taller, cada taller en una lista agrupada; «Nuevo grupo» en el botón flotante. */
     function irGrupos() {
-      pantallaSecundaria('g-grupos', 'Grupos y talleres', app.gest.grupos.length + ' grupos', volverGestion);
+      const n = app.gest.grupos.length;
+      pantallaSecundaria('g-grupos', 'Grupos y talleres', (esAdmin() ? '' : 'Tuyos · ') + n + (n === 1 ? ' grupo' : ' grupos'), volverGestion);
       let html = '';
-      if (!app.gest.grupos.length) html += '<p class="vacio">Todavía no hay grupos. Crea el primero con «Nuevo grupo».</p>';
+      if (!n) html += '<p class="vacio">' + (esAdmin() ? 'Todavía no hay grupos.' : 'Todavía no tienes grupos.') + ' Crea el primero con «Nuevo grupo».</p>';
       let tallerActual = null;
       app.gest.grupos.forEach(function (g) {
         if (g.taller !== tallerActual) {
@@ -3163,7 +3199,8 @@
             '><span>' + d[1] + '</span></label>';
         }).join('') + '</div></div>' +
         '<div class="campo"><label for="gHora">Hora</label><input type="time" id="gHora" value="' + esc(g.hora) + '"></div>' +
-        casillasMonitoras(g.monitoras) +
+        // Las monitoras del grupo solo las cambia el admin; el grupo que crea una monitora queda a su nombre.
+        (esAdmin() ? casillasMonitoras(g.monitoras) : (nuevo ? '<p class="ayuda">El grupo quedará a tu nombre. Para añadir otra monitora, pídeselo a la persona administradora.</p>' : '')) +
         (nuevo ? '' : '<label class="check"><input type="checkbox" id="gActivo"' + (g.activo ? ' checked' : '') + '> Grupo activo (si lo desactivas, deja de aparecer para pasar lista; su historial se conserva)</label>') +
         '<button type="button" class="boton primario ancho" data-accion="g-guardar-grupo" data-grupo="' + esc(g.grupo_id) + '">' +
         (nuevo ? 'Crear grupo' : 'Guardar cambios') + '</button></div>';
@@ -3191,7 +3228,7 @@
             (marcadas.indexOf(m.email) >= 0 ? ' checked' : '') + '><span class="opcion-texto">' + esc(m.texto) +
             '<small>' + esc(m.sub) + '</small></span></label>';
         }).join('') + '</div>' +
-        '<p class="ayuda">Si hay varias (por ejemplo, una sustituta), marca todas. Se dan de alta en Gestión › Monitoras.</p></div>';
+        '<p class="ayuda">Si hay varias (por ejemplo, una sustituta), marca todas. Se dan de alta en Ajustes › Monitoras.</p></div>';
     }
 
     function guardarGrupo(grupoId) {
@@ -3210,7 +3247,7 @@
       if (taller === '__nuevo__' && !datos.taller_nuevo) return errorCampo('gTallerNuevo', 'Escribe el nombre del taller nuevo.');
       if (!datos.nombre) return errorCampo('gNombre', 'Escribe el nombre del grupo.');
       if (!datos.dias.length) return errorCampo('gDias', 'Elige al menos un día de clase.');
-      if (!datos.monitoras) return errorCampo('gMonitoras', 'Elige al menos una monitora.');
+      if (esAdmin() && !datos.monitoras) return errorCampo('gMonitoras', 'Elige al menos una monitora.');
       llamar('api_guardarGrupo', datos).then(function () {
         aviso(grupoId ? 'Grupo guardado.' : 'Grupo creado.');
         return recargarDatos('gestion');
@@ -3237,6 +3274,11 @@
         $('gListaUsuarios').innerHTML = (r.encontrados > r.usuarios.length
           ? '<p class="ayuda">Se muestran ' + r.usuarios.length + ' de ' + r.encontrados + '. Escribe para afinar la búsqueda.</p>' : '') +
           (r.usuarios.length ? '<div class="lista">' + r.usuarios.map(function (u) {
+            // Una monitora solo abre la ficha de los usuarios de sus grupos (propio); los demás, solo nombre e ID.
+            if (u.propio === false) {
+              return filaPersona({ nombre: u.nombre, clase: u.activo ? '' : 'inactiva',
+                detalle: 'ID ' + esc(u.usuario_id) + ' · ' + (u.grupos ? 'de otros grupos' : 'sin grupo') });
+            }
             return filaPersona({ nombre: u.nombre, boton: true, clase: u.activo ? '' : 'inactiva',
               atributos: ' data-accion="ficha" data-usuario="' + esc(u.usuario_id) + '" data-nombre="' + esc(u.nombre) + '"',
               detalle: 'ID ' + esc(u.usuario_id) + (u.telefono ? ' · ' + esc(u.telefono) : '') + ' · ' +
@@ -3246,14 +3288,26 @@
       }).catch(function (e) { if ($('gListaUsuarios')) $('gListaUsuarios').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>'; });
     }
 
+    /**
+     * Usuario nuevo. Una monitora lo crea ya inscrito en uno de sus grupos (api_altaUsuario): solo ve la ficha de
+     * los usuarios de sus grupos. El admin puede crearlo sin grupo.
+     */
     function formularioUsuarioNuevo() {
       pantallaSecundaria('g-usuario-nuevo', 'Nuevo usuario', '', irUsuarios);
+      const suyos = esAdmin() ? null : app.gest.grupos.filter(function (g) { return g.activo; });
+      if (suyos && !suyos.length) {
+        pintar('<p class="vacio">Para crear un usuario hace falta inscribirlo en uno de tus grupos, y todavía no tienes ninguno activo. Crea antes el grupo en Gestión › Grupos.</p>');
+        return;
+      }
       pintar('<div class="bloque">' +
         '<div class="campo"><label for="uId">ID del centro</label><input type="text" id="uId" autocomplete="off" inputmode="numeric" enterkeyhint="next"></div>' +
         '<div class="campo"><label for="uNombre">Apellidos y nombre</label><input type="text" id="uNombre" autocomplete="off" autocapitalize="characters" enterkeyhint="next" placeholder="APELLIDO APELLIDO NOMBRE">' +
         '<p class="ayuda">Sin comas, sin diminutivos. Se guarda en mayúsculas.</p></div>' +
         '<div class="campo"><label for="uTelefono">Teléfono (opcional)</label><input type="tel" id="uTelefono" autocomplete="off" inputmode="tel" enterkeyhint="done"></div>' +
-        '<button type="button" class="boton primario ancho" data-accion="g-crear-usuario">Crear usuario</button></div>');
+        (suyos ? opcionesRadio('uGrupoNuevo', 'Inscribir en', suyos.map(function (g) {
+          return { valor: g.grupo_id, texto: tallerYGrupo(g.taller, g.nombre), sub: horario(g) };
+        }), suyos.length === 1 ? suyos[0].grupo_id : '') + campoFecha('uFechaAlta', 'Desde') : '') +
+        '<button type="button" class="boton primario ancho" data-accion="g-crear-usuario">' + (suyos ? 'Crear e inscribir' : 'Crear usuario') + '</button></div>');
     }
 
     function crearUsuario(aunqueParecido) {
@@ -3261,6 +3315,7 @@
       const datos = { usuario_id: valor('uId'), nombre: valor('uNombre'), telefono: valor('uTelefono'), crear_aunque_parecido: !!aunqueParecido };
       if (!datos.usuario_id) return errorCampo('uId', 'Escribe el ID del centro.');
       if (!datos.nombre) return errorCampo('uNombre', 'Escribe los apellidos y el nombre.');
+      if (!esAdmin()) { crearEInscribir(datos); return; }
       llamar('api_guardarUsuario', datos, true).then(function (r) {
         if (r.parecidos) {
           avisarParecidos(datos.nombre.toUpperCase(), r.parecidos, 'Ver ficha',
@@ -3274,6 +3329,33 @@
         sigue(function () { abrirFicha(r.usuario_id, irUsuarios, r.nombre); })();
         precargar();
       }).catch(avisoError);
+    }
+
+    /** Monitora: crea el usuario inscrito en uno de sus grupos (si el ID ya existe, solo lo inscribe, regla 6). */
+    function crearEInscribir(datos) {
+      const grupoId = elegido('uGrupoNuevo');
+      datos.fecha_alta = valor('uFechaAlta');
+      if (!grupoId) return errorCampo('uGrupoNuevo', 'Elige el grupo en el que se inscribe.');
+      if (!datos.fecha_alta) return errorCampo('uFechaAlta', 'Indica el primer día en el grupo.');
+      const inscribir = function (d) {
+        const sigue = siSiguePara();
+        llamar('api_altaUsuario', grupoId, d).then(function (r) {
+          if (r.parecidos) {
+            // «Inscribir a este»: el que ya existe (con su ID, alta solo inscribe). «Es otra persona»: se crea.
+            avisarParecidos(d.nombre.toUpperCase(), r.parecidos, 'Inscribir',
+              function (id) { inscribir({ usuario_id: id, fecha_alta: d.fecha_alta }); },
+              function () { inscribir(Object.assign({}, d, { crear_aunque_parecido: true })); });
+            return;
+          }
+          anticuar('inscripciones');
+          anticuar('usuario-nuevo');
+          if (r.creado) app.gest.totalUsuarios++;
+          aviso((r.creado ? 'Usuario creado e inscrito: ' : 'Inscripción hecha: ') + nombreVisible(r.nombre));
+          sigue(function () { abrirFicha(d.usuario_id, irUsuarios, r.nombre); })();
+          precargar();
+        }).catch(avisoError);
+      };
+      inscribir(datos);
     }
 
     /**
@@ -3369,58 +3451,94 @@
       return g ? tallerYGrupo(g.taller, g.nombre) : grupoId;
     }
 
-    /** Lista de próximos y pasados; «Añadir día» en el botón flotante, que abre el formulario en un panel. */
-    function irDias() {
-      pantallaSecundaria('g-dias', 'Días libres', 'No cuentan como pendientes', volverGestion);
-      const hoy = app.init.hoy;
-      const fila = function (d) {
-        return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(fechaCorta(d.fecha)) + ' ' + d.fecha.substring(0, 4) +
-          '</strong> · ' + esc(d.tipo || 'Día libre') + '</div><div class="sub">' + esc(d.descripcion || '') + (d.descripcion ? ' · ' : '') +
-          esc(nombreGrupoGestion(d.grupo_id)) + '</div></div>' +
-          '<button type="button" class="boton peligro compacto" data-accion="g-borrar-dia" data-fecha="' + esc(d.fecha) + '" data-grupo="' +
-          esc(d.grupo_id || '') + '">Quitar</button></div>';
-      };
-      const proximos = app.gest.diasEspeciales.filter(function (d) { return d.fecha >= hoy; });
-      const pasados = app.gest.diasEspeciales.filter(function (d) { return d.fecha < hoy; }).reverse();
-      let html = '<h3 class="subtitulo-lista">Próximos (' + proximos.length + ')</h3>' +
-        (proximos.length ? '<div class="lista">' + proximos.map(fila).join('') + '</div>' : '<p class="vacio">No hay ninguno apuntado.</p>');
-      if (pasados.length) html += '<details class="plegable"><summary>Pasados (' + pasados.length + ')</summary><div class="relleno"><div class="lista">' + pasados.map(fila).join('') + '</div></div></details>';
-      pintar(html + fab('g-dia-nuevo', 'Añadir día'));
+    /** Días libres de un grupo (los de todos los grupos son los periodos no lectivos de Configuración). */
+    function diasDeGrupos() {
+      return app.gest.diasEspeciales.filter(function (d) { return d.grupo_id; });
     }
 
-    function abrirPanelDia() {
+    /** Fila de un día libre; con «Quitar» si se puede cambiar desde esta pantalla. */
+    function filaDiaLibre(d, quitar) {
+      return '<div class="resultado"><div class="cuerpo"><div><strong>' + esc(fechaCorta(d.fecha)) + ' ' + d.fecha.substring(0, 4) +
+        '</strong> · ' + esc(d.tipo || 'Día libre') + '</div><div class="sub">' + esc(d.descripcion || '') + (d.descripcion ? ' · ' : '') +
+        esc(nombreGrupoGestion(d.grupo_id)) + '</div></div>' +
+        (quitar ? '<button type="button" class="boton peligro compacto" data-accion="g-borrar-dia" data-fecha="' + esc(d.fecha) + '" data-grupo="' +
+          esc(d.grupo_id || '') + '">Quitar</button>' : '') + '</div>';
+    }
+
+    /** Próximos y, plegados, pasados. */
+    function listaDiasLibres(dias, quitar, textoVacio) {
       const hoy = app.init.hoy;
-      abrirPanel('<div><h3>Añadir día libre</h3><div class="fila-campos">' +
+      const fila = function (d) { return filaDiaLibre(d, quitar); };
+      const proximos = dias.filter(function (d) { return d.fecha >= hoy; });
+      const pasados = dias.filter(function (d) { return d.fecha < hoy; }).reverse();
+      let html = '<h3 class="subtitulo-lista">Próximos (' + proximos.length + ')</h3>' +
+        (proximos.length ? '<div class="lista">' + proximos.map(fila).join('') + '</div>' : '<p class="vacio">' + textoVacio + '</p>');
+      if (pasados.length) html += '<details class="plegable"><summary>Pasados (' + pasados.length + ')</summary><div class="relleno"><div class="lista">' + pasados.map(fila).join('') + '</div></div></details>';
+      return html;
+    }
+
+    /**
+     * Gestión › Días libres: los de un grupo (cada monitora, los de sus grupos), con «Añadir día» en el botón
+     * flotante. Debajo, plegados y sin poder tocarlos, los de todos los grupos (Configuración › Periodos no lectivos).
+     */
+    function irDias() {
+      pantallaSecundaria('g-dias', 'Días libres', 'No cuentan como pendientes', volverGestion);
+      const generales = app.gest.diasEspeciales.filter(function (d) { return !d.grupo_id && d.fecha >= app.init.hoy; });
+      let html = listaDiasLibres(diasDeGrupos(), true, 'No hay ninguno apuntado.');
+      html += '<details class="plegable"><summary>De todos los grupos (' + textoProximos(generales.length) + ')</summary><div class="relleno">' +
+        '<p class="ayuda">Festivos y vacaciones del centro. ' + (esAdmin() ? 'Se cambian en Ajustes › Periodos no lectivos.' : 'Los apunta la persona administradora.') + '</p>' +
+        (generales.length ? '<div class="lista">' + generales.map(function (d) { return filaDiaLibre(d, false); }).join('') + '</div>' : '<p class="vacio">No hay ninguno apuntado.</p>') +
+        '</div></details>';
+      pintar(html + (app.gest.grupos.some(function (g) { return g.activo; }) ? fab('g-dia-nuevo', 'Añadir día') : ''));
+    }
+
+    /** Configuración › Periodos no lectivos: los días libres de todos los grupos (grupo vacío). */
+    function irPeriodos() {
+      pantallaSecundaria('g-periodos', 'Periodos no lectivos', 'Todos los grupos · no cuentan como pendientes', volverConfiguracion);
+      pintar('<p class="ayuda">Festivos y vacaciones del centro: ningún grupo tiene clase. Los días libres de un solo grupo se apuntan en Gestión › Días libres.</p>' +
+        listaDiasLibres(app.conf.periodos, true, 'No hay ninguno apuntado.') + fab('g-periodo-nuevo', 'Añadir periodo'));
+    }
+
+    /** Panel para añadir un día o un intervalo. general: de todos los grupos (Configuración); si no, de un grupo. */
+    function abrirPanelDia(general) {
+      const hoy = app.init.hoy;
+      const tipos = (general ? app.conf : app.gest).listas.tipo_dia;
+      const grupos = app.gest ? app.gest.grupos.filter(function (g) { return g.activo; }) : [];
+      abrirPanel('<div><h3>' + (general ? 'Añadir periodo no lectivo' : 'Añadir día libre') + '</h3><div class="fila-campos">' +
         '<div class="campo"><label for="dDesde">Día (o desde)</label><input type="date" id="dDesde" value="' + esc(hoy) + '"></div>' +
         '<div class="campo"><label for="dHasta">Hasta (opcional)</label><input type="date" id="dHasta"></div></div>' +
         '<p class="ayuda">Para unas vacaciones, rellena «hasta»: se apuntan solo los días en que había clase.</p>' +
-        opcionesRadio('dTipo', 'Tipo', app.gest.listas.tipo_dia.map(function (t) { return { valor: t, texto: t }; }), app.gest.listas.tipo_dia[0] || '') +
+        opcionesRadio('dTipo', 'Tipo', tipos.map(function (t) { return { valor: t, texto: t }; }), tipos[0] || '') +
         '<div class="campo"><label for="dDescripcion">Descripción (opcional)</label><input type="text" id="dDescripcion" enterkeyhint="done" placeholder="Ej.: Navidad, Inmaculada…"></div>' +
-        '<div class="campo"><label for="dGrupo">Afecta a</label><select id="dGrupo"><option value="">Todos los grupos</option>' +
-        opciones(app.gest.grupos.filter(function (g) { return g.activo; }), '', function (g) { return g.grupo_id; }, function (g) { return tallerYGrupo(g.taller, g.nombre); }) +
-        '</select></div><div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Cancelar</button>' +
-        '<button type="button" class="boton primario" data-accion="g-guardar-dia">Añadir</button></div></div>');
+        (general ? '<p class="ayuda">Afecta a todos los grupos.</p>'
+          : opcionesRadio('dGrupo', 'Grupo', grupos.map(function (g) { return { valor: g.grupo_id, texto: tallerYGrupo(g.taller, g.nombre), sub: horario(g) }; }),
+            grupos.length === 1 ? grupos[0].grupo_id : '')) +
+        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Cancelar</button>' +
+        '<button type="button" class="boton primario" data-accion="g-guardar-dia" data-general="' + (general ? '1' : '') + '">Añadir</button></div></div>', true);
     }
 
-    function guardarDia() {
-      const datos = { desde: valor('dDesde'), hasta: valor('dHasta'), tipo: elegido('dTipo'), descripcion: valor('dDescripcion'), grupo_id: valor('dGrupo') };
+    function guardarDia(general) {
+      const tipos = (general ? app.conf : app.gest).listas.tipo_dia;
+      const datos = { desde: valor('dDesde'), hasta: valor('dHasta'), tipo: elegido('dTipo'), descripcion: valor('dDescripcion'), grupo_id: general ? '' : elegido('dGrupo') };
       if (!datos.desde) return errorCampo('dDesde', 'Indica el día.');
       if (datos.hasta && datos.hasta < datos.desde) return errorCampo('dHasta', 'Este día es anterior al primero.');
-      if (!datos.tipo && app.gest.listas.tipo_dia.length) return errorCampo('dTipo', 'Elige el tipo.');
+      if (!datos.tipo && tipos.length) return errorCampo('dTipo', 'Elige el tipo.');
+      if (!general && !datos.grupo_id) return errorCampo('dGrupo', 'Elige el grupo.');
       llamar('api_guardarDiaEspecial', datos).then(function (r) {
         cerrarPanel();
         aviso(r.dias === 1 ? 'Día apuntado.' : r.dias + ' días apuntados.');
         return recargarDatos('dias');
-      }).then(siSigue(irDias)).catch(avisoError);
+      }).then(siSigue(general ? irPeriodos : irDias)).catch(avisoError);
     }
 
     function borrarDia(fecha, grupoId) {
+      const volver = app.vista === 'g-periodos' ? irPeriodos : irDias;
       confirmar('¿Quitar este día libre?', esc(fechaLarga(fecha)) + ' · ' + esc(nombreGrupoGestion(grupoId)), 'Sí, quitar', true, function () {
         llamar('api_borrarDiaEspecial', fecha, grupoId).then(function () {
           cerrarPanel();
           aviso('Día quitado.');
           return recargarDatos('dias');
-        }).then(siSigue(irDias)).catch(function (e) { cerrarPanel(); avisoError(e); });
+        }).then(siSigue(volver)).catch(function (e) { cerrarPanel(); avisoError(e); });
       }, 'Quitando…');
     }
 
@@ -3428,11 +3546,11 @@
 
     /** Los estados como una lista (letra con su color, nombre y cómo cuenta); cada uno se edita en un panel. */
     function irEstados() {
-      pantallaSecundaria('g-estados', 'Estados de asistencia', 'Lo que se marca en el pase de lista', volverGestion);
+      pantallaSecundaria('g-estados', 'Estados de asistencia', 'Lo que se marca en el pase de lista', volverConfiguracion);
       const tipoTexto = function (t) { const x = TIPOS_ESTADO.find(function (y) { return y[0] === t; }); return x ? x[1] : t; };
       pintar('<p class="ayuda">La letra es la que se ve en el historial. Cada pase de lista empieza con todos en «' +
         esc(estadoInfo(app.init.estadoPorDefecto).etiqueta) + '». Toca un estado para cambiarlo.</p>' +
-        '<div class="lista">' + app.gest.estados.map(function (e) {
+        '<div class="lista">' + app.conf.estados.map(function (e) {
           return '<button type="button" class="tarjeta' + (e.activo ? '' : ' inactiva') + '" data-accion="g-estado" data-codigo="' + esc(e.codigo) + '">' +
             '<span class="celda grande" style="' + estiloColor(e.color) + '" aria-hidden="true">' + esc(e.letra) + '</span>' +
             '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(e.etiqueta) + '</div><div class="tarjeta-detalle">' + esc(tipoTexto(e.tipo)) + '</div></div>' +
@@ -3442,7 +3560,7 @@
 
     /** Panel de un estado (codigo vacío = nuevo; su código interno se saca solo del nombre). */
     function abrirPanelEstado(codigo) {
-      const e = codigo ? app.gest.estados.find(function (x) { return x.codigo === codigo; })
+      const e = codigo ? app.conf.estados.find(function (x) { return x.codigo === codigo; })
         : { codigo: '', etiqueta: '', letra: '', color: '#6a1b9a', tipo: 'neutro', activo: true };
       if (!e) return;
       const porDefecto = e.codigo === app.init.estadoPorDefecto;
@@ -3460,7 +3578,7 @@
     /** Código interno de un estado nuevo: las 3 primeras letras del nombre («Excursión» → EXC), con un número si ya existe. */
     function codigoEstadoNuevo(etiqueta) {
       const base = paraBuscar(etiqueta).replace(/[^A-Z0-9]/g, '').substring(0, 3) || 'EST';
-      const existe = function (c) { return app.gest.estados.some(function (e) { return e.codigo === c; }); };
+      const existe = function (c) { return app.conf.estados.some(function (e) { return e.codigo === c; }); };
       let codigo = base;
       for (let n = 2; existe(codigo); n++) codigo = base + n;
       return codigo;
@@ -3498,8 +3616,8 @@
     }
 
     function irMonitoras() {
-      const lista = app.gest.monitoras;
-      pantallaSecundaria('g-monitoras', 'Monitoras', lista.filter(function (m) { return m.activa; }).length + ' activas', volverGestion);
+      const lista = app.conf.monitoras;
+      pantallaSecundaria('g-monitoras', 'Monitoras', lista.filter(function (m) { return m.activa; }).length + ' activas', volverConfiguracion);
       pintar('<p class="ayuda">Cada monitora entra en la app con su clave y solo ve sus grupos (los que la tienen en Gestión › Grupos). ' +
         'Toca una para darle o cambiarle la clave.</p>' +
         (lista.length ? '<div class="lista">' + lista.map(function (m) {
@@ -3515,7 +3633,7 @@
 
     /** Panel de una monitora (email vacío = nueva). */
     function abrirPanelMonitora(email) {
-      const m = email ? app.gest.monitoras.find(function (x) { return x.email === email; })
+      const m = email ? app.conf.monitoras.find(function (x) { return x.email === email; })
         : { email: '', nombre: '', rol: 'monitora', activa: true, tieneClave: false, grupos: 0 };
       if (!m) return;
       const nueva = !m.email;
@@ -3526,7 +3644,7 @@
           '<p class="ayuda">Sirve para reconocerla y asignarle grupos; no hace falta que use Google. No se puede cambiar después.</p></div>' : '') +
         opcionesRadio('mRol', 'Qué puede hacer', [
           { valor: 'monitora', texto: 'Monitora', sub: 'Pasa lista, altas y bajas, historial e informe de sus grupos' },
-          { valor: 'admin', texto: 'Administración', sub: 'Todo, con todos los grupos y la pestaña Gestión' }
+          { valor: 'admin', texto: 'Administración', sub: 'Todo, con todos los grupos y la pestaña Ajustes' }
         ], m.rol) +
         (nueva ? '' : '<label class="check"><input type="checkbox" id="mActiva"' + (m.activa ? ' checked' : '') + '> Activa (si la desactivas, su clave deja de funcionar al momento)</label>') +
         '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Cancelar</button>' +
@@ -3558,17 +3676,18 @@
 
     /** Crea la clave (si ya tenía una, pregunta antes: la anterior deja de valer). */
     function pedirClaveMonitora(email) {
-      const m = app.gest.monitoras.find(function (x) { return x.email === email; });
+      const m = app.conf.monitoras.find(function (x) { return x.email === email; });
       if (!m) return;
       const crear = function () {
         llamar('api_nuevaClaveMonitora', email).then(function (r) {
           app.claveCreada = { email: email, nombre: m.nombre || email, clave: r.clave, url: r.url, urlApp: r.urlApp };
           // La lista se pinta ya con «con clave» y después se abre el panel con la clave (volver a pintar la
-          // pantalla cerraría el panel). Los datos de Gestión se vuelven a pedir en segundo plano.
+          // pantalla cerraría el panel). Los datos de Configuración y Gestión se vuelven a pedir en segundo plano.
           m.tieneClave = true;
           if (app.vista === 'g-monitoras') irMonitoras();
           mostrarClaveMonitora();
           anticuar('gestion');
+          pedir('api_configuracion').then(function (d) { app.conf = d; }).catch(function () { /* se verá al volver */ });
           pedir('api_gestion').then(function (d) { app.gest = d; }).catch(function () { /* se verá al volver */ });
         }).catch(avisoError);
       };
@@ -3638,43 +3757,52 @@
     // --- Curso ---
 
     function irCurso() {
-      const c = app.gest.config;
-      pantallaSecundaria('g-curso', 'Curso', '', volverGestion);
+      const c = app.conf.config;
+      pantallaSecundaria('g-curso', 'Curso', '', volverConfiguracion);
       pintar('<div class="bloque">' +
         '<div class="campo"><label for="cCurso">Nombre del curso</label><input type="text" id="cCurso" enterkeyhint="done" value="' + esc(c.curso) + '" placeholder="2026-2027"></div>' +
         '<div class="fila-campos"><div class="campo"><label for="cInicio">Primer día de clase</label><input type="date" id="cInicio" value="' + esc(c.inicio) + '"></div>' +
         '<div class="campo"><label for="cFin">Último día de clase</label><input type="date" id="cFin" value="' + esc(c.fin) + '"></div></div>' +
+        // Trimestres (6-nov-2026): el periodo «Este trimestre» del Informe.
+        '<div class="fila-campos"><div class="campo"><label for="cTrimestre2">Empieza el 2.º trimestre</label><input type="date" id="cTrimestre2" value="' + esc(c.trimestre2) + '"></div>' +
+        '<div class="campo"><label for="cTrimestre3">Empieza el 3.º trimestre</label><input type="date" id="cTrimestre3" value="' + esc(c.trimestre3) + '"></div></div>' +
         '<div class="campo"><label for="cPendientes">Avisar de listas sin pasar de los últimos… (días)</label>' +
         '<input type="number" id="cPendientes" inputmode="numeric" enterkeyhint="next" min="1" max="60" value="' + esc(c.diasPendientes) + '"></div>' +
         '<div class="campo"><label for="cFaltas">Avisar en el pase de lista a partir de… faltas seguidas</label>' +
         '<input type="number" id="cFaltas" inputmode="numeric" enterkeyhint="done" min="2" max="20" value="' + esc(c.faltasSeguidas) + '"></div>' +
-        '<p class="ayuda">Fuera de estas fechas no se avisa de pendientes. Los grupos nuevos se apuntan en el curso indicado.</p>' +
+        '<p class="ayuda">Fuera de estas fechas no se avisa de pendientes. Los grupos nuevos se apuntan en el curso indicado. Los trimestres son los de «Este trimestre» en el Informe.</p>' +
         '<button type="button" class="boton primario ancho" data-accion="g-guardar-curso">Guardar</button></div>');
     }
 
     function guardarCurso() {
-      const datos = { curso: valor('cCurso'), inicio: valor('cInicio'), fin: valor('cFin'), diasPendientes: valor('cPendientes'), faltasSeguidas: valor('cFaltas') };
+      const datos = { curso: valor('cCurso'), inicio: valor('cInicio'), fin: valor('cFin'), trimestre2: valor('cTrimestre2'), trimestre3: valor('cTrimestre3'),
+        diasPendientes: valor('cPendientes'), faltasSeguidas: valor('cFaltas') };
       const entero = function (v, min, max) { const n = Number(v); return v !== '' && Math.floor(n) === n && n >= min && n <= max; };
       if (!datos.curso) return errorCampo('cCurso', 'Escribe el nombre del curso (por ejemplo, 2026-2027).');
       if (!datos.inicio) return errorCampo('cInicio', 'Indica el primer día de clase.');
       if (!datos.fin) return errorCampo('cFin', 'Indica el último día de clase.');
       if (datos.fin < datos.inicio) return errorCampo('cFin', 'El último día es anterior al primero.');
+      if (!datos.trimestre2) return errorCampo('cTrimestre2', 'Indica el primer día del 2.º trimestre.');
+      if (datos.trimestre2 <= datos.inicio || datos.trimestre2 > datos.fin) return errorCampo('cTrimestre2', 'Tiene que caer dentro del curso, después del primer día.');
+      if (!datos.trimestre3) return errorCampo('cTrimestre3', 'Indica el primer día del 3.º trimestre.');
+      if (datos.trimestre3 <= datos.trimestre2) return errorCampo('cTrimestre3', 'Tiene que ser posterior al inicio del 2.º trimestre.');
+      if (datos.trimestre3 > datos.fin) return errorCampo('cTrimestre3', 'Tiene que caer dentro del curso.');
       if (!entero(datos.diasPendientes, 1, 60)) return errorCampo('cPendientes', 'Escribe un número de días entre 1 y 60.');
       if (!entero(datos.faltasSeguidas, 2, 20)) return errorCampo('cFaltas', 'Escribe un número entre 2 y 20.');
       llamar('api_guardarConfig', datos).then(function () {
         aviso('Curso guardado.');
         return recargarDatos('gestion');
-      }).then(siSigue(volverGestion)).catch(avisoError);
+      }).then(siSigue(volverConfiguracion)).catch(avisoError);
     }
 
     // --- Listas ---
 
     function irListas() {
-      const l = app.gest.listas;
-      pantallaSecundaria('g-listas', 'Listas', 'Motivos de baja, tipos de día libre y observaciones rápidas', volverGestion);
+      const l = app.conf.listas;
+      pantallaSecundaria('g-listas', 'Listas', 'Motivos de baja, tipos de día libre y observaciones rápidas', volverConfiguracion);
       pintar('<div class="bloque"><h3>Motivos de baja</h3>' +
         '<div class="campo"><label for="lMotivos">Uno por línea</label><textarea id="lMotivos" rows="7">' + esc(l.motivo_baja.join('\n')) + '</textarea>' +
-        '<p class="ayuda">«' + esc(app.gest.motivoReservado) + '» se mantiene siempre: lo usa la acción de cambiar de grupo.</p></div>' +
+        '<p class="ayuda">«' + esc(app.conf.motivoReservado) + '» se mantiene siempre: lo usa la acción de cambiar de grupo.</p></div>' +
         '<button type="button" class="boton primario ancho" data-accion="g-guardar-lista" data-lista="motivo_baja" data-campo="lMotivos">Guardar motivos</button></div>' +
         '<div class="bloque"><h3>Tipos de día libre</h3>' +
         '<div class="campo"><label for="lTipos">Uno por línea</label><textarea id="lTipos" rows="5">' + esc(l.tipo_dia.join('\n')) + '</textarea></div>' +
@@ -4097,12 +4225,14 @@
         case 'g-guardar-usuario': guardarFicha(); break;
         case 'g-inscribir-usuario': inscribirDesdeFicha(); break;
         case 'g-dias': irDias(); break;
-        case 'g-guardar-dia': guardarDia(); break;
+        case 'g-periodos': irPeriodos(); break;
+        case 'g-guardar-dia': guardarDia(!!dato('general')); break;
         case 'g-borrar-dia': borrarDia(dato('fecha'), dato('grupo')); break;
         case 'g-estados': irEstados(); break;
         case 'g-estado': abrirPanelEstado(dato('codigo')); break;
         case 'g-estado-nuevo': abrirPanelEstado(''); break;
-        case 'g-dia-nuevo': abrirPanelDia(); break;
+        case 'g-dia-nuevo': abrirPanelDia(false); break;
+        case 'g-periodo-nuevo': abrirPanelDia(true); break;
         case 'g-guardar-estado': guardarEstado(dato('codigo')); break;
         case 'g-curso': irCurso(); break;
         case 'g-guardar-curso': guardarCurso(); break;

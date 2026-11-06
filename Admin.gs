@@ -1,6 +1,10 @@
 /**
- * Admin.gs — Pestaña «Gestión» de la app: grupos, talleres, usuarios, días sin clase, estados, curso y listas.
- * Todo es solo para admin. Así casi nunca hace falta tocar la hoja de cálculo a mano.
+ * Admin.gs — Pestañas «Gestión» y «Configuración» de la app (separadas el 6-nov-2026).
+ * - Gestión, para todas: grupos y talleres, usuarios y días libres. Cada monitora, con lo suyo (sus grupos, los
+ *   usuarios de sus grupos y los días libres de sus grupos); el admin, todo.
+ * - Configuración, solo admin: curso y trimestres, periodos no lectivos (días libres de todos los grupos), estados,
+ *   listas y monitoras con sus claves.
+ * Así casi nunca hace falta tocar la hoja de cálculo a mano.
  * Este archivo solo define funciones (nada a nivel superior que dependa de otros archivos).
  */
 
@@ -24,21 +28,75 @@ function ordenarDias_(dias) {
   return ORDEN_DIAS.filter(function (d) { return dias.indexOf(d) >= 0; });
 }
 
-// ---------- Datos de la pestaña Gestión ----------
+function esAdmin_(monitora) {
+  return monitora.rol === ROL.ADMIN;
+}
+
+/**
+ * Usuarios «de» una monitora: los que tienen o han tenido alguna inscripción en uno de sus grupos.
+ * Son los únicos de los que ve la ficha y el teléfono y cuyos datos puede cambiar (regla 9). Devuelve un mapa
+ * { usuario_id: true }, o null si es admin (lo ve todo).
+ */
+function usuariosDeMonitora_(monitora) {
+  if (esAdmin_(monitora)) return null;
+  const suyos = {};
+  leerTabla_(HOJAS.GRUPOS).forEach(function (g) { if (g.grupo_id && puedeGrupo_(monitora, g)) suyos[g.grupo_id] = true; });
+  const mapa = {};
+  leerTabla_(HOJAS.INSCRIPCIONES).forEach(function (i) { if (suyos[i.grupo_id]) mapa[normalizarId_(i.usuario_id)] = true; });
+  return mapa;
+}
+
+function comprobarUsuarioDeMonitora_(monitora, usuarioId) {
+  const suyos = usuariosDeMonitora_(monitora);
+  if (suyos && !suyos[usuarioId]) throw errorApp_('Este usuario no está en ninguno de tus grupos.');
+}
+
+/** Días libres para el cliente, por fecha. */
+function diasParaCliente_(filas) {
+  return filas
+    .filter(function (d) { return esFechaValida_(d.fecha); })
+    .map(function (d) { return { fecha: d.fecha, tipo: d.tipo, descripcion: d.descripcion, grupo_id: d.grupo_id || '' }; })
+    .sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; });
+}
+
+// ---------- Datos de la pestaña Gestión (todas, cada una con lo suyo) ----------
 
 function datosGestion_(monitora) {
-  comprobarAdmin_(monitora);
   const talleres = talleresPorId_();
-  return {
-    grupos: leerTabla_(HOJAS.GRUPOS).filter(function (g) { return g.grupo_id; }).map(function (g) {
+  const admin = esAdmin_(monitora);
+  const grupos = leerTabla_(HOJAS.GRUPOS).filter(function (g) { return g.grupo_id && puedeGrupo_(monitora, g); });
+  const suyos = {};
+  grupos.forEach(function (g) { suyos[g.grupo_id] = true; });
+  const datos = {
+    grupos: grupos.map(function (g) {
       return Object.assign(grupoParaCliente_(g, talleres), {
         monitoras: g.monitoras, curso: g.curso, activo: g.activo !== NO,
         inscritos: inscritosEn_(g.grupo_id, hoy_()).length
       });
     }).sort(function (a, b) { return (a.taller + a.nombre).localeCompare(b.taller + b.nombre, 'es'); }),
+    // Todos los talleres, para elegir al crear o editar un grupo (solo nombres).
     talleres: leerTabla_(HOJAS.TALLERES).filter(function (t) { return t.taller_id; }).map(function (t) {
       return { taller_id: t.taller_id, nombre: t.nombre || t.taller_id, activo: t.activo !== NO };
     }).sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); }),
+    listas: { tipo_dia: valoresLista_(LISTA_TIPO_DIA) },
+    // Los días libres de sus grupos y los de todos los grupos (grupo vacío), que aquí solo se ven: se cambian en
+    // Configuración › Periodos no lectivos.
+    diasEspeciales: diasParaCliente_(leerTabla_(HOJAS.DIAS_ESPECIALES).filter(function (d) {
+      return !d.grupo_id || admin || suyos[d.grupo_id];
+    })),
+    totalUsuarios: leerTabla_(HOJAS.USUARIOS).filter(function (u) { return u.usuario_id; }).length,
+    correo: monitora.email
+  };
+  // Para las casillas de monitoras del formulario de grupo, que solo ve el admin.
+  if (admin) datos.monitoras = monitorasParaCliente_();
+  return datos;
+}
+
+// ---------- Datos de la pestaña Configuración (solo admin) ----------
+
+function datosConfiguracion_(monitora) {
+  comprobarAdmin_(monitora);
+  return {
     estados: leerTabla_(HOJAS.ESTADOS).filter(function (e) { return e.codigo; }).map(estadoParaCliente_),
     config: config_(),
     listas: {
@@ -47,12 +105,7 @@ function datosGestion_(monitora) {
       obs_rapida: valoresLista_(LISTA_OBS_RAPIDA)
     },
     motivoReservado: MOTIVO_CAMBIO_GRUPO,
-    diasEspeciales: leerTabla_(HOJAS.DIAS_ESPECIALES)
-      .filter(function (d) { return esFechaValida_(d.fecha); })
-      .map(function (d) { return { fecha: d.fecha, tipo: d.tipo, descripcion: d.descripcion, grupo_id: d.grupo_id }; })
-      .sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; }),
-    totalUsuarios: leerTabla_(HOJAS.USUARIOS).length,
-    correo: monitora.email,
+    periodos: diasParaCliente_(leerTabla_(HOJAS.DIAS_ESPECIALES).filter(function (d) { return !d.grupo_id; })),
     monitoras: monitorasParaCliente_()
   };
 }
@@ -62,23 +115,27 @@ function datosGestion_(monitora) {
 /**
  * Crea o modifica un grupo.
  * datos: { grupo_id (vacío = nuevo), nombre, taller_id, taller_nuevo, dias: ['L','X'], hora, monitoras, activo }
+ * Una monitora solo modifica sus grupos y no cambia sus monitoras (se conservan las que tenía); el grupo que crea
+ * queda a su nombre. El admin, todo.
  */
 function guardarGrupo_(monitora, datos) {
-  comprobarAdmin_(monitora);
   datos = datos || {};
+  const admin = esAdmin_(monitora);
   const nombre = String(datos.nombre || '').replace(/\s+/g, ' ').trim();
   if (!nombre) throw errorApp_('Escribe el nombre del grupo.');
   const dias = ordenarDias_((datos.dias || []).map(function (d) { return String(d).toUpperCase(); }));
   if (!dias.length) throw errorApp_('Elige al menos un día de clase.');
   const hora = String(datos.hora || '').trim();
   if (hora && !/^\d{1,2}:\d{2}$/.test(hora)) throw errorApp_('La hora debe tener el formato 10:00.');
-  const correos = String(datos.monitoras || '').toLowerCase().split(/[,;\s]+/).filter(Boolean);
-  if (correos.some(function (c) { return c.indexOf('@') < 0; })) throw errorApp_('Revisa los correos de las monitoras: alguno no es válido.');
-  // Cada monitora del grupo tiene que estar en la hoja Monitoras (6-nov-2026): si no, no podría entrar a verlo.
-  const conocidas = leerTabla_(HOJAS.MONITORAS).map(function (m) { return String(m.email).toLowerCase(); });
-  const desconocida = correos.find(function (c) { return conocidas.indexOf(c) < 0; });
-  if (desconocida) throw errorApp_(desconocida + ' no está en Gestión › Monitoras. Dala de alta primero.');
-  if (!correos.length) correos.push(monitora.email);
+  const correos = admin ? String(datos.monitoras || '').toLowerCase().split(/[,;\s]+/).filter(Boolean) : [monitora.email];
+  if (admin) {
+    if (correos.some(function (c) { return c.indexOf('@') < 0; })) throw errorApp_('Revisa los correos de las monitoras: alguno no es válido.');
+    // Cada monitora del grupo tiene que estar en la hoja Monitoras (6-nov-2026): si no, no podría entrar a verlo.
+    const conocidas = leerTabla_(HOJAS.MONITORAS).map(function (m) { return String(m.email).toLowerCase(); });
+    const desconocida = correos.find(function (c) { return conocidas.indexOf(c) < 0; });
+    if (desconocida) throw errorApp_(desconocida + ' no está en Configuración › Monitoras. Dala de alta primero.');
+    if (!correos.length) correos.push(monitora.email);
+  }
   const tallerNuevo = String(datos.taller_nuevo || '').replace(/\s+/g, ' ').trim();
 
   return conBloqueo_(function () {
@@ -111,6 +168,8 @@ function guardarGrupo_(monitora, datos) {
     if (datos.grupo_id) {
       const g = grupos.find(function (x) { return x.grupo_id === datos.grupo_id; });
       if (!g) throw errorApp_('No se encuentra el grupo. Vuelve a abrir la pantalla.');
+      if (!puedeGrupo_(monitora, g)) throw errorApp_('No tienes acceso a este grupo.');
+      if (!admin) campos.monitoras = g.monitoras;   // la monitora no cambia las monitoras del grupo
       Object.assign(g, campos);
       actualizarFilas_(HOJAS.GRUPOS, [g]);
       return { grupo_id: g.grupo_id };
@@ -123,8 +182,13 @@ function guardarGrupo_(monitora, datos) {
 
 // ---------- Usuarios ----------
 
+/**
+ * Busca usuarios (máx. 100). Una monitora busca entre todos, pero el teléfono solo lo ve (y solo busca por él) en los
+ * usuarios de sus grupos; propio dice si puede abrir su ficha.
+ */
 function usuariosGestion_(monitora, texto) {
-  comprobarAdmin_(monitora);
+  const suyos = usuariosDeMonitora_(monitora);
+  const esSuyo = function (id) { return !suyos || !!suyos[id]; };
   const hoy = hoy_();
   const gruposActivos = {};
   leerTabla_(HOJAS.INSCRIPCIONES).forEach(function (i) {
@@ -138,28 +202,32 @@ function usuariosGestion_(monitora, texto) {
   const todos = leerTabla_(HOJAS.USUARIOS).filter(function (u) { return u.usuario_id; });
   const filtrados = !t ? todos : todos.filter(function (u) {
     return normalizarId_(u.usuario_id).indexOf(tId) === 0 || sinTildes_(u.nombre).indexOf(t) >= 0 ||
-      (tId.length >= 3 && String(u.telefono).indexOf(tId) >= 0);
+      (tId.length >= 3 && String(u.telefono).indexOf(tId) >= 0 && esSuyo(normalizarId_(u.usuario_id)));
   });
   const lista = filtrados.map(function (u) {
     const id = normalizarId_(u.usuario_id);
-    return { usuario_id: id, nombre: u.nombre, telefono: u.telefono, activo: u.activo !== NO, grupos: gruposActivos[id] || 0 };
+    const propio = esSuyo(id);
+    return { usuario_id: id, nombre: u.nombre, telefono: propio ? u.telefono : '', activo: u.activo !== NO,
+      grupos: gruposActivos[id] || 0, propio: propio };
   }).sort(compararNombres_);
   return { total: todos.length, encontrados: lista.length, usuarios: lista.slice(0, 100) };
 }
 
+/** Ficha de un usuario. Una monitora, solo de los usuarios de sus grupos, y solo con sus grupos. */
 function fichaUsuario_(monitora, usuarioId) {
-  comprobarAdmin_(monitora);
   const id = normalizarId_(usuarioId);
   const u = usuariosPorId_()[id];
   if (!u) throw errorApp_('No existe ningún usuario con el ID ' + id + '.');
+  comprobarUsuarioDeMonitora_(monitora, id);
   const talleres = talleresPorId_();
   const grupos = {};
   leerTabla_(HOJAS.GRUPOS).forEach(function (g) { grupos[g.grupo_id] = g; });
+  const visible = function (grupoId) { return esAdmin_(monitora) || puedeGrupo_(monitora, grupos[grupoId]); };
   const tipos = tiposEstado_();
   const cfg = config_();
 
   const inscripciones = leerTabla_(HOJAS.INSCRIPCIONES)
-    .filter(function (i) { return normalizarId_(i.usuario_id) === id; })
+    .filter(function (i) { return normalizarId_(i.usuario_id) === id && visible(i.grupo_id); })
     .map(function (i) {
       const g = grupos[i.grupo_id];
       return {
@@ -173,7 +241,7 @@ function fichaUsuario_(monitora, usuarioId) {
   // Resumen de asistencia del curso actual, por grupo.
   const porGrupo = {};
   asistenciaQueCuenta_().forEach(function (a) {   // sin las de sesiones canceladas (regla 5)
-    if (normalizarId_(a.usuario_id) !== id) return;
+    if (normalizarId_(a.usuario_id) !== id || !visible(a.grupo_id)) return;
     if (cfg.inicio && a.fecha < cfg.inicio) return;
     if (cfg.fin && a.fecha > cfg.fin) return;
     const r = porGrupo[a.grupo_id] = porGrupo[a.grupo_id] || { grupo: a.grupo, taller: a.taller, presentes: 0, ausentes: 0, neutros: 0 };
@@ -194,9 +262,11 @@ function fichaUsuario_(monitora, usuarioId) {
   };
 }
 
-/** Crea (nuevo = true) o modifica un usuario. El ID no se puede cambiar. */
+/**
+ * Crea (nuevo = true) o modifica un usuario. El ID no se puede cambiar.
+ * Una monitora crea cualquiera, pero solo modifica los usuarios de sus grupos.
+ */
 function guardarUsuario_(monitora, datos, nuevo) {
-  comprobarAdmin_(monitora);
   datos = datos || {};
   const id = normalizarId_(datos.usuario_id);
   const nombre = normalizarNombre_(datos.nombre);
@@ -215,6 +285,7 @@ function guardarUsuario_(monitora, datos, nuevo) {
       anadirFilas_(HOJAS.USUARIOS, [Object.assign({ usuario_id: id }, campos)]);
     } else {
       if (!existente) throw errorApp_('No se encuentra el usuario. Vuelve a abrir la pantalla.');
+      comprobarUsuarioDeMonitora_(monitora, id);
       Object.assign(existente, campos);
       actualizarFilas_(HOJAS.USUARIOS, [existente]);
     }
@@ -222,7 +293,17 @@ function guardarUsuario_(monitora, datos, nuevo) {
   });
 }
 
-// ---------- Días sin clase ----------
+// ---------- Días libres (hoja Dias especiales) ----------
+
+/**
+ * Los días de todos los grupos (grupo vacío: periodos no lectivos, en Configuración) son del admin; los de un
+ * grupo, del admin y de las monitoras del grupo.
+ */
+function comprobarDiaDeMonitora_(monitora, grupoId) {
+  if (esAdmin_(monitora)) return;
+  if (!grupoId) throw errorApp_('Los días libres de todos los grupos solo los cambia la persona administradora.');
+  comprobarAccesoGrupo_(monitora, grupoPorId_(grupoId));
+}
 
 /**
  * Apunta un día sin clase o un intervalo (vacaciones).
@@ -230,8 +311,8 @@ function guardarUsuario_(monitora, datos, nuevo) {
  * En un intervalo solo se apuntan los días en que algún grupo afectado tiene clase.
  */
 function guardarDiaEspecial_(monitora, datos) {
-  comprobarAdmin_(monitora);
   datos = datos || {};
+  comprobarDiaDeMonitora_(monitora, String(datos.grupo_id || ''));
   const desde = String(datos.desde || '');
   const hasta = String(datos.hasta || '') || desde;
   comprobarFecha_(desde, 'de inicio');
@@ -274,7 +355,7 @@ function guardarDiaEspecial_(monitora, datos) {
 }
 
 function borrarDiaEspecial_(monitora, fecha, grupoId) {
-  comprobarAdmin_(monitora);
+  comprobarDiaDeMonitora_(monitora, String(grupoId || ''));
   comprobarFecha_(fecha, 'del día');
   return conBloqueo_(function () {
     const filas = leerTabla_(HOJAS.DIAS_ESPECIALES)
@@ -324,7 +405,7 @@ function guardarEstado_(monitora, datos, nuevo) {
 
 // ---------- Curso ----------
 
-/** datos: { curso, inicio, fin, diasPendientes, faltasSeguidas } */
+/** datos: { curso, inicio, fin, trimestre2, trimestre3, diasPendientes, faltasSeguidas } */
 function guardarConfig_(monitora, datos) {
   comprobarAdmin_(monitora);
   datos = datos || {};
@@ -333,6 +414,12 @@ function guardarConfig_(monitora, datos) {
   comprobarFecha_(datos.inicio, 'de inicio de curso');
   comprobarFecha_(datos.fin, 'de fin de curso');
   if (datos.fin < datos.inicio) throw errorApp_('El fin de curso no puede ser anterior al inicio.');
+  // Inicio del 2.º y del 3.º trimestre (6-nov-2026): dentro del curso y en orden.
+  comprobarFecha_(datos.trimestre2, 'de inicio del 2.º trimestre');
+  comprobarFecha_(datos.trimestre3, 'de inicio del 3.º trimestre');
+  if (!(datos.inicio < datos.trimestre2 && datos.trimestre2 < datos.trimestre3 && datos.trimestre3 <= datos.fin)) {
+    throw errorApp_('Los trimestres tienen que empezar dentro del curso y en orden: primer día, 2.º trimestre, 3.º trimestre, último día.');
+  }
   const dias = parseInt(datos.diasPendientes, 10);
   if (!(dias >= 1 && dias <= 60)) throw errorApp_('Los días de pendientes deben estar entre 1 y 60.');
   const faltas = parseInt(datos.faltasSeguidas, 10);
@@ -342,6 +429,8 @@ function guardarConfig_(monitora, datos) {
   valores[CLAVES_CONFIG.CURSO] = curso;
   valores[CLAVES_CONFIG.INICIO] = textoAFecha_(datos.inicio);
   valores[CLAVES_CONFIG.FIN] = textoAFecha_(datos.fin);
+  valores[CLAVES_CONFIG.TRIMESTRE2] = textoAFecha_(datos.trimestre2);
+  valores[CLAVES_CONFIG.TRIMESTRE3] = textoAFecha_(datos.trimestre3);
   valores[CLAVES_CONFIG.DIAS_PENDIENTES] = String(dias);
   valores[CLAVES_CONFIG.FALTAS_SEGUIDAS] = String(faltas);
 

@@ -90,10 +90,14 @@ function api_enviarInforme(desde, hasta, taller_id, formato, correo) {
   return responder_(function (m) { return enviarInforme_(m, desde, hasta, taller_id, formato, correo); });
 }
 
-// ---------- Gestión (solo admin) ----------
+// ---------- Gestión (todas, cada una con lo suyo) y Configuración (solo admin), 6-nov-2026 ----------
 
 function api_gestion() {
   return responder_(function (m) { return datosGestion_(m); });
+}
+
+function api_configuracion() {
+  return responder_(function (m) { return datosConfiguracion_(m); });
 }
 
 function api_guardarGrupo(datos) {
@@ -153,7 +157,7 @@ function accionesPWA_() {
     altaUsuario: api_altaUsuario, baja: api_baja, cambiarGrupo: api_cambiarGrupo,
     deshacerBaja: api_deshacerBaja, deshacerAlta: api_deshacerAlta, deshacerCancelar: api_deshacerCancelar,
     historial: api_historial, informe: api_informe, exportarInforme: api_exportarInforme,
-    enviarInforme: api_enviarInforme, gestion: api_gestion, guardarGrupo: api_guardarGrupo,
+    enviarInforme: api_enviarInforme, gestion: api_gestion, configuracion: api_configuracion, guardarGrupo: api_guardarGrupo,
     usuariosGestion: api_usuariosGestion, usuario: api_usuario, guardarUsuario: api_guardarUsuario,
     guardarDiaEspecial: api_guardarDiaEspecial, borrarDiaEspecial: api_borrarDiaEspecial,
     guardarEstado: api_guardarEstado, guardarConfig: api_guardarConfig, guardarLista: api_guardarLista,

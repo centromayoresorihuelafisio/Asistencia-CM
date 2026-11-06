@@ -119,8 +119,15 @@ const CLAVES_CONFIG = {
   INICIO: 'inicio_curso',
   FIN: 'fin_curso',
   DIAS_PENDIENTES: 'dias_pendientes',
-  FALTAS_SEGUIDAS: 'faltas_seguidas'
+  FALTAS_SEGUIDAS: 'faltas_seguidas',
+  // Primer día del 2.º y del 3.º trimestre (6-nov-2026): el periodo «Este trimestre» del Informe.
+  TRIMESTRE2: 'inicio_trimestre2',
+  TRIMESTRE3: 'inicio_trimestre3'
 };
+
+// Si la hoja Config no dice otra cosa, el 2.º trimestre empieza el 1 de enero y el 3.º el 1 de abril
+// siguientes al inicio de curso (mes y día, MM-dd).
+const TRIMESTRES_POR_DEFECTO = { TRIMESTRE2: '01-01', TRIMESTRE3: '04-01' };
 
 const DIAS_PENDIENTES_POR_DEFECTO = 14;
 
@@ -182,7 +189,10 @@ const DATOS_INICIALES = {
     { clave: CLAVES_CONFIG.INICIO, valor: '2026-09-01', esFecha: true },
     { clave: CLAVES_CONFIG.FIN, valor: '2027-06-30', esFecha: true },
     { clave: CLAVES_CONFIG.DIAS_PENDIENTES, valor: String(DIAS_PENDIENTES_POR_DEFECTO) },
-    { clave: CLAVES_CONFIG.FALTAS_SEGUIDAS, valor: String(FALTAS_SEGUIDAS_POR_DEFECTO) }
+    { clave: CLAVES_CONFIG.FALTAS_SEGUIDAS, valor: String(FALTAS_SEGUIDAS_POR_DEFECTO) },
+    // En hojas ya creadas, completarDatosNuevos_ las calcula a partir del inicio de curso de la hoja.
+    { clave: CLAVES_CONFIG.TRIMESTRE2, valor: '2027-01-01', esFecha: true },
+    { clave: CLAVES_CONFIG.TRIMESTRE3, valor: '2027-04-01', esFecha: true }
   ],
   taller: { taller_id: 'YOGA', nombre: 'Yoga', activo: SI },
   grupo: { grupo_id: 'YOGA-SUELO-LX', taller_id: 'YOGA', nombre: 'Yoga suelo', dias: 'L,X', hora: '10:00', activo: SI }

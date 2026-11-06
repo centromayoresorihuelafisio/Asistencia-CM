@@ -93,8 +93,16 @@ function completarLetras_(informe) {
  */
 function completarDatosNuevos_(informe) {
   const claves = leerHoja_(HOJAS.CONFIG).map(function (c) { return c.clave; });
+  // Los trimestres (6-nov-2026) se calculan a partir del inicio de curso que ya tenga la hoja.
+  const cfg = config_();
+  const calculado = {};
+  calculado[CLAVES_CONFIG.TRIMESTRE2] = cfg.trimestre2;
+  calculado[CLAVES_CONFIG.TRIMESTRE3] = cfg.trimestre3;
   const config = DATOS_INICIALES.config.filter(function (c) { return claves.indexOf(c.clave) < 0; })
-    .map(function (c) { return { clave: c.clave, valor: c.esFecha ? textoAFecha_(c.valor) : c.valor }; });
+    .map(function (c) {
+      const valor = calculado[c.clave] || c.valor;
+      return { clave: c.clave, valor: c.esFecha ? textoAFecha_(valor) : valor };
+    });
   anadirFilas_(HOJAS.CONFIG, config);
   if (config.length) informe.push('Añadido a Config: ' + config.map(function (c) { return c.clave; }).join(', ') + '.');
 

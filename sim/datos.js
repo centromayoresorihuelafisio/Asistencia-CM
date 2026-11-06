@@ -33,6 +33,12 @@
     { grupo_id: 'MEMORIA-TARDE', taller_id: 'MEMORIA', nombre: 'Memoria tarde', monitoras: yo, dias: 'X', hora: '17:00', curso: '2026-2027', activo: 'SI' },
     { grupo_id: 'COSTURA', taller_id: 'COSTURA', nombre: 'Costura', monitoras: yo, dias: 'X,V', hora: '18:30', curso: '2026-2027', activo: 'SI' }
   ];
+  // Escenario monitora (6-nov-2026): Costura es de otra monitora, para probar que no se ve ni se toca lo ajeno.
+  const otra = 'lucia@ejemplo.test';
+  if (esc === 'monitora') {
+    monitoras.push({ email: otra, nombre: 'Lucía', rol: 'monitora', activa: 'SI' });
+    grupos[4].monitoras = otra;
+  }
   const ape = ['GARCIA', 'MARTINEZ', 'LOPEZ', 'SANCHEZ', 'PEREZ', 'GOMEZ', 'MARTIN', 'JIMENEZ', 'RUIZ', 'HERNANDEZ', 'DIAZ', 'MORENO', 'MUÑOZ', 'ALVAREZ', 'ROMERO', 'ALONSO', 'GUTIERREZ', 'NAVARRO', 'TORRES', 'DOMINGUEZ'];
   const nom = ['MARIA', 'CARMEN', 'JOSEFA', 'ISABEL', 'ANA', 'DOLORES', 'PILAR', 'TERESA', 'ROSA', 'FRANCISCA', 'ANTONIA', 'MERCEDES', 'JOSE', 'ANTONIO', 'MANUEL', 'FRANCISCO', 'ENCARNACION', 'CONCEPCION'];
   const usuarios = [];
@@ -56,6 +62,7 @@
   const nombres = { 'YOGA-SUELO': ['Yoga', 'Yoga suelo'], 'YOGA-SILLA': ['Yoga', 'Yoga silla'], 'PILATES-MANANA': ['Pilates', 'Pilates mañana lunes y miércoles esterilla'], 'MEMORIA-TARDE': ['Memoria', 'Memoria tarde'] };
   const especiales = [{ fecha: '2026-10-12', tipo: 'Festivo', descripcion: 'Fiesta Nacional', grupo_id: '' }, { fecha: '2026-12-08', tipo: 'Festivo', descripcion: 'Inmaculada', grupo_id: '' },
     { fecha: '2026-11-04', tipo: 'Asunto propio', descripcion: '', grupo_id: 'MEMORIA-TARDE' }];
+  if (esc === 'monitora') especiales.push({ fecha: '2026-11-20', tipo: 'Asunto propio', descripcion: 'De Lucía', grupo_id: 'COSTURA' });
   let semilla = 7;
   function azar() { semilla = (semilla * 9301 + 49297) % 233280; return semilla / 233280; }
   grupos.forEach(function (g) {

@@ -122,13 +122,28 @@ function compararNombres_(a, b) {
 
 // ---------- Catálogos ----------
 
+/**
+ * Primer día por defecto de un trimestre (cual: 'TRIMESTRE2' o 'TRIMESTRE3'): el primer MM-dd de
+ * TRIMESTRES_POR_DEFECTO posterior al inicio de curso. Sin inicio de curso, ''.
+ */
+function trimestrePorDefecto_(inicio, cual) {
+  if (!esFechaValida_(inicio)) return '';
+  const mesDia = TRIMESTRES_POR_DEFECTO[cual];
+  const anio = Number(inicio.substring(0, 4));
+  const mismoAnio = anio + '-' + mesDia;
+  return mismoAnio > inicio ? mismoAnio : (anio + 1) + '-' + mesDia;
+}
+
 function config_() {
   const o = {};
   leerTabla_(HOJAS.CONFIG).forEach(function (f) { o[f.clave] = f.valor; });
+  const inicio = esFechaValida_(o[CLAVES_CONFIG.INICIO]) ? o[CLAVES_CONFIG.INICIO] : '';
   return {
     curso: o[CLAVES_CONFIG.CURSO] || '',
-    inicio: esFechaValida_(o[CLAVES_CONFIG.INICIO]) ? o[CLAVES_CONFIG.INICIO] : '',
+    inicio: inicio,
     fin: esFechaValida_(o[CLAVES_CONFIG.FIN]) ? o[CLAVES_CONFIG.FIN] : '',
+    trimestre2: esFechaValida_(o[CLAVES_CONFIG.TRIMESTRE2]) ? o[CLAVES_CONFIG.TRIMESTRE2] : trimestrePorDefecto_(inicio, 'TRIMESTRE2'),
+    trimestre3: esFechaValida_(o[CLAVES_CONFIG.TRIMESTRE3]) ? o[CLAVES_CONFIG.TRIMESTRE3] : trimestrePorDefecto_(inicio, 'TRIMESTRE3'),
     diasPendientes: parseInt(o[CLAVES_CONFIG.DIAS_PENDIENTES], 10) || DIAS_PENDIENTES_POR_DEFECTO,
     faltasSeguidas: parseInt(o[CLAVES_CONFIG.FALTAS_SEGUIDAS], 10) || FALTAS_SEGUIDAS_POR_DEFECTO
   };
@@ -254,6 +269,8 @@ function datosIniciales_(monitora) {
     curso: cfg.curso,
     inicioCurso: cfg.inicio,
     finCurso: cfg.fin,
+    trimestre2: cfg.trimestre2,
+    trimestre3: cfg.trimestre3,
     estados: estados_(),
     estadoPorDefecto: ESTADO_POR_DEFECTO,
     motivosBaja: valoresLista_(LISTA_MOTIVO_BAJA).filter(function (m) { return m !== MOTIVO_CAMBIO_GRUPO; }),
