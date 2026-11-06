@@ -1,0 +1,32 @@
+  /* pwa/pwa.css — Solo en la app instalable (PWA, 6-nov-2026). pwa/build.js lo añade tras Estilos.html.
+     Usa las variables de Estilos.html; no escribe colores ni medidas sueltas. */
+
+  /* Que el navegador no haga su propio «tirar para recargar» ni rebote: Inicio tiene el suyo */
+  html, body { overscroll-behavior-y: contain; }
+
+  /* Pantalla de conexión (pwa/api.js) */
+  .pwa-conexion {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-toast);
+    overflow-y: auto;
+    background: var(--md-bg);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .pwa-conexion-caja {
+    width: 100%;
+    max-width: 480px;
+    padding: 24px 20px;
+    border-radius: var(--md-shape-xl);
+    background: var(--md-surface);
+    box-shadow: var(--md-elev-1);
+  }
+  .pwa-conexion-icono { display: block; margin: 0 auto 12px; border-radius: var(--md-shape-lg); }
+  .pwa-conexion h1 { margin: 0 0 8px; text-align: center; font-size: var(--fs-title); }
+  .pwa-conexion .ayuda { margin: 0 0 20px; text-align: center; }
+  .pwa-conexion .botones { margin-top: 8px; }
+  .pwa-conexion .botones .boton { flex: 1; }
+  body.pwa-sin-scroll { overflow: hidden; }

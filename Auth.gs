@@ -52,3 +52,14 @@ function comprobarAccesoGrupo_(monitora, grupo) {
   if (!grupo) throw errorApp_('El grupo no existe.');
   if (!puedeGrupo_(monitora, grupo)) throw errorApp_('No tienes acceso a este grupo.');
 }
+
+// ---------- App instalable (PWA, 6-nov-2026) ----------
+// La PWA no pasa por el enlace de la web app, sino por doPost, con una clave en cada petición.
+// Quien la usa entra igual que con el enlace: como la propietaria (identificarMonitora_).
+
+/** Devuelve 'ok', 'sin-clave' (la copia aún no tiene CLAVE_PWA) o 'mal'. */
+function comprobarClavePWA_(clave) {
+  const buena = String(PropertiesService.getScriptProperties().getProperty(PROP_CLAVE_PWA) || '').trim();
+  if (!buena) return 'sin-clave';
+  return String(clave || '').trim() === buena ? 'ok' : 'mal';
+}

@@ -131,3 +131,40 @@ function api_guardarConfig(datos) {
 function api_guardarLista(lista, valores) {
   return responder_(function (m) { return guardarLista_(m, lista, valores); });
 }
+
+// ---------- App instalable (PWA, 6-nov-2026) ----------
+// doPost (Main.gs) recibe { action, args, clave }: action es el nombre de la función sin «api_» y args, sus
+// argumentos en el mismo orden. Solo se puede llamar a las funciones de esta lista.
+
+function accionesPWA_() {
+  return {
+    init: api_init, inicio: api_inicio, sesion: api_sesion, guardarSesion: api_guardarSesion,
+    cancelarSesion: api_cancelarSesion, grupo: api_grupo, usuariosAlta: api_usuariosAlta,
+    altaUsuario: api_altaUsuario, baja: api_baja, cambiarGrupo: api_cambiarGrupo,
+    deshacerBaja: api_deshacerBaja, deshacerAlta: api_deshacerAlta, deshacerCancelar: api_deshacerCancelar,
+    historial: api_historial, informe: api_informe, exportarInforme: api_exportarInforme,
+    enviarInforme: api_enviarInforme, gestion: api_gestion, guardarGrupo: api_guardarGrupo,
+    usuariosGestion: api_usuariosGestion, usuario: api_usuario, guardarUsuario: api_guardarUsuario,
+    guardarDiaEspecial: api_guardarDiaEspecial, borrarDiaEspecial: api_borrarDiaEspecial,
+    guardarEstado: api_guardarEstado, guardarConfig: api_guardarConfig, guardarLista: api_guardarLista
+  };
+}
+
+/** Atiende una petición de la PWA (el cuerpo del POST, en JSON). Devuelve { ok, data } o { ok: false, error[, codigo] }. */
+function atenderPWA_(cuerpo) {
+  let peticion;
+  try { peticion = JSON.parse(cuerpo || ''); } catch (e) { peticion = null; }
+  if (!peticion || typeof peticion !== 'object') return { ok: false, error: 'Petición no válida.' };
+  const clave = comprobarClavePWA_(peticion.clave);
+  if (clave === 'sin-clave') {
+    return { ok: false, codigo: CODIGO_CLAVE_PWA, error: 'Esta copia de la aplicación todavía no tiene clave. Hay que ponerla en las propiedades del proyecto de Apps Script (' + PROP_CLAVE_PWA + ').' };
+  }
+  if (clave !== 'ok') {
+    Utilities.sleep(ESPERA_CLAVE_MAL_MS);
+    return { ok: false, codigo: CODIGO_CLAVE_PWA, error: 'La clave no es correcta.' };
+  }
+  const acciones = accionesPWA_();
+  const accion = String(peticion.action || '');
+  if (!Object.prototype.hasOwnProperty.call(acciones, accion)) return { ok: false, error: 'Acción desconocida: ' + accion + '.' };
+  return acciones[accion].apply(null, Array.isArray(peticion.args) ? peticion.args : []);
+}

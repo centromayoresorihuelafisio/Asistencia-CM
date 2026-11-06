@@ -426,20 +426,27 @@
     function llamarSinCarga(conCarga, funcion, args) {
       if (conCarga) cargando(1);
       return new Promise(function (resolver, rechazar) {
-        const runner = google.script.run
-          .withSuccessHandler(function (r) {
-            if (conCarga) cargando(-1);
-            if (r && r.ok) resolver(r.data);
-            else rechazar(new Error((r && r.error) || 'Respuesta no válida del servidor.'));
-          })
-          .withFailureHandler(function () {
-            if (conCarga) cargando(-1);
-            const e = new Error('No se ha podido conectar con el servidor. Comprueba la conexión e inténtalo de nuevo.');
-            e.conexion = true;   // fallo de conexión (no un rechazo del servidor): se puede reintentar tal cual
-            rechazar(e);
-          });
-        runner[funcion].apply(runner, args);
+        transporte(funcion, args, function (r) {
+          if (conCarga) cargando(-1);
+          if (r && r.ok) resolver(r.data);
+          else rechazar(new Error((r && r.error) || 'Respuesta no válida del servidor.'));
+        }, function () {
+          if (conCarga) cargando(-1);
+          const e = new Error('No se ha podido conectar con el servidor. Comprueba la conexión e inténtalo de nuevo.');
+          e.conexion = true;   // fallo de conexión (no un rechazo del servidor): se puede reintentar tal cual
+          rechazar(e);
+        });
       });
+    }
+
+    /**
+     * Lleva la llamada al servidor: con google.script.run dentro de Apps Script o, en la app instalable (PWA,
+     * 6-nov-2026), con el fetch de pwa/api.js (window.PWA). bien(r) recibe { ok, data | error }; mal(), un fallo de conexión.
+     */
+    function transporte(funcion, args, bien, mal) {
+      if (window.PWA) { window.PWA.llamar(funcion, args).then(bien, mal); return; }
+      const runner = google.script.run.withSuccessHandler(bien).withFailureHandler(mal);
+      runner[funcion].apply(runner, args);
     }
 
     // ---------- Memoria de datos ----------
@@ -1040,9 +1047,11 @@
     // hay algo a lo que volver: una pantalla que no es Inicio y, aparte, un panel abierto. El botón o el gesto
     // atrás quita una entrada y llama a atras(), que hace lo mismo que «Volver» (o cierra el panel, o va a Inicio).
     // Al volver con los botones de la app, la entrada que sobra se aprovecha en la siguiente pulsación de atrás.
-    // Sin google.script.history (fuera de Apps Script) no se hace nada.
+    // En la app instalable (PWA, 6-nov-2026), pwa/api.js da lo mismo con el historial normal del navegador (PWA.historia).
+    // Sin ninguno de los dos no se hace nada.
 
-    const historia = window.google && google.script && google.script.history ? google.script.history : null;
+    const historia = window.google && google.script && google.script.history ? google.script.history
+      : (window.PWA && window.PWA.historia) || null;
     let entradas = 0;   // entradas añadidas por la app por encima de la de partida
 
     function entradasNecesarias() {
@@ -3079,7 +3088,8 @@
       dias: '<path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V10h14zM7 12h5v5H7z"/>',
       estados: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-2 15-5-5 1.4-1.4 3.6 3.6 7.6-7.6L19 8z"/>',
       curso: '<path d="M5 13.2v4L12 21l7-3.8v-4L12 17zM12 3 1 9l11 6 9-4.9V17h2V9z"/>',
-      listas: '<path d="M3 13h2v-2H3zm0 4h2v-2H3zm0-8h2V7H3zm4 4h14v-2H7zm0 4h14v-2H7zM7 7v2h14V7z"/>'
+      listas: '<path d="M3 13h2v-2H3zm0 4h2v-2H3zm0-8h2V7H3zm4 4h14v-2H7zm0 4h14v-2H7zM7 7v2h14V7z"/>',
+      conexion: '<path d="M3.9 12a3.1 3.1 0 0 1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7A3.1 3.1 0 0 1 3.9 12zM8 13h8v-2H8zm9-6h-4v1.9h4a3.1 3.1 0 0 1 0 6.2h-4V17h4a5 5 0 0 0 0-10z"/>'
     };
     function iconoGestion(nombre) {
       return '<span class="icono-entrada" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">' + ICONOS_GESTION[nombre] + '</svg></span>';
@@ -3100,7 +3110,9 @@
         entrada('g-dias', 'dias', 'Días libres', proximos + ' próximos · festivos, vacaciones, asuntos propios…') +
         entrada('g-estados', 'estados', 'Estados de asistencia', g.estados.map(function (e) { return e.etiqueta; }).join(', ')) +
         entrada('g-curso', 'curso', 'Curso', g.config.curso + ' · ' + fechaNumerica(g.config.inicio) + ' a ' + fechaNumerica(g.config.fin)) +
-        entrada('g-listas', 'listas', 'Listas', 'Motivos de baja, tipos de día libre y observaciones rápidas') + '</div>'
+        entrada('g-listas', 'listas', 'Listas', 'Motivos de baja, tipos de día libre y observaciones rápidas') +
+        // Solo en la app instalable (PWA, 6-nov-2026): cambiar la dirección de la copia o la clave
+        (window.PWA ? entrada('g-conexion', 'conexion', 'Conexión de la app', window.PWA.descripcion()) : '') + '</div>'
       );
     }
 
@@ -3927,6 +3939,7 @@
         case 'g-curso': irCurso(); break;
         case 'g-guardar-curso': guardarCurso(); break;
         case 'g-listas': irListas(); break;
+        case 'g-conexion': if (window.PWA) window.PWA.abrirConexion(true); break;
         case 'g-guardar-lista': guardarLista(dato('lista'), dato('campo')); break;
       }
     }

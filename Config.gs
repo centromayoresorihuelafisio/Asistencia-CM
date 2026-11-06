@@ -186,3 +186,12 @@ const DATOS_INICIALES = {
   taller: { taller_id: 'YOGA', nombre: 'Yoga', activo: SI },
   grupo: { grupo_id: 'YOGA-SUELO-LX', taller_id: 'YOGA', nombre: 'Yoga suelo', dias: 'L,X', hora: '10:00', activo: SI }
 };
+
+// App instalable (PWA, 6-nov-2026): la PWA llama a doPost con una clave secreta. La clave se guarda en las
+// propiedades del proyecto (Configuración del proyecto › Propiedades de secuencia de comandos) con este nombre,
+// nunca en el código. Sin esa propiedad, doPost no atiende a nadie.
+const PROP_CLAVE_PWA = 'CLAVE_PWA';
+// Código que acompaña al error de clave (o de falta de clave) para que la PWA abra su pantalla de conexión.
+const CODIGO_CLAVE_PWA = 'clave';
+// Espera tras una clave incorrecta, para que probar claves a ciegas sea muy lento.
+const ESPERA_CLAVE_MAL_MS = 1500;

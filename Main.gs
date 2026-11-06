@@ -30,6 +30,22 @@ function doGet() {
   return salida;
 }
 
+/**
+ * Entrada de la app instalable (PWA, 6-nov-2026). La PWA envía un POST con Content-Type text/plain (así el
+ * navegador no hace la consulta previa de CORS) y el cuerpo { action, args, clave } en JSON. Responde en JSON lo
+ * mismo que las funciones api_* (Api.gs, atenderPWA_). doGet sigue sirviendo la app de siempre.
+ */
+function doPost(e) {
+  let respuesta;
+  try {
+    respuesta = atenderPWA_(e && e.postData ? e.postData.contents : '');
+  } catch (err) {
+    console.error(err && err.stack ? err.stack : String(err));
+    respuesta = { ok: false, error: 'Ha ocurrido un error inesperado. Inténtalo de nuevo y, si se repite, avisa a la persona administradora.' };
+  }
+  return ContentService.createTextOutput(JSON.stringify(respuesta)).setMimeType(ContentService.MimeType.JSON);
+}
+
 function include(nombre) {
   return HtmlService.createHtmlOutputFromFile(nombre).getContent();
 }

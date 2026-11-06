@@ -16,7 +16,7 @@ Este documento es la especificación completa del proyecto. Léelo entero antes 
 
 | Tema | Decisión |
 |---|---|
-| Arquitectura | Opción A: **Apps Script como app completa** (`HtmlService`), sin hosting externo |
+| Arquitectura | Opción A: **Apps Script como app completa** (`HtmlService`). Desde el 6-nov-2026, además, una **app instalable (PWA)** alojada aparte con el mismo cliente y Apps Script como API (sección 17); sin modo sin conexión |
 | Datos | Google Sheets, proyecto de Apps Script **vinculado a la hoja** (container-bound) |
 | Modo sin conexión | **No** en esta versión (limitación asumida de Apps Script) |
 | Identificación | **Una copia de la hoja y de la app por monitora**: quien la despliega es admin de su copia (decidido el 2-nov-2026, sección 13). Desde el 5-nov-2026 se abre con **cualquier cuenta de Google o sin ninguna**, como la app de fisio, pero **sin login**: basta el enlace, y quien entra lo hace como la propietaria (admin) (sección 11) |
@@ -318,9 +318,16 @@ sim/                  ← simulación para probar en el navegador (no se sube a 
   build.js            ←   monta sim/index.html con el código real (node sim/build.js); index.html no se sube a git
   mock.js             ←   sustituto de google.script.run, google.script.history, SpreadsheetApp y compañía, con hojas en memoria
   datos.js            ←   datos de prueba (?e=normal, ?e=monitora, ?e=vacio)
+  pwa-mock.js         ←   para probar la PWA: fetch a script.google.com llama a doPost en el navegador (sección 17)
+pwa/                  ← app instalable (PWA, sección 17; no se sube a Apps Script: .claspignore)
+  build.js            ←   monta pwa/dist/ (node pwa/build.js) o sim/pwa/ (--sim) con Index, Estilos y Cliente tal cual; las dos salidas no se suben a git
+  api.js              ←   fetch a doPost en vez de google.script.run, pantalla de conexión e historial (window.PWA)
+  pwa.css             ←   estilos solo de la PWA (pantalla de conexión)
+  manifest.json, sw.js, iconos.js ← manifiesto, service worker (solo los archivos de la app) e iconos PNG dibujados con Node
+.github/workflows/pwa.yml ← publica pwa/dist/ en GitHub Pages al cambiar el cliente en main
 appsscript.json       ← zona horaria Europe/Madrid, webapp (ver sección 11) y servicio avanzado de Drive v3 (para borrar la hoja de paso del informe)
 Config.gs             ← constantes: nombres de hojas, columnas, valores
-Main.gs               ← doGet (con el icono de la app, `setFaviconUrl`), include(), onOpen (menú de la hoja)
+Main.gs               ← doGet (con el icono de la app, `setFaviconUrl`), doPost (la PWA), include(), onOpen (menú de la hoja)
 Setup.gs              ← setup(): crea hojas, cabeceras, formatos, validaciones y datos de ejemplo
 Auth.gs               ← identificarMonitora(), permisos por grupo
 Repo.gs               ← acceso a hojas, conversión de fechas, bloqueos, caché
@@ -406,7 +413,7 @@ Se considera completa cuando:
 - Aviso de usuarios con faltas seguidas.
 - Deslizamiento como atajo para cambiar de estado (hecho el 5-nov-2026).
 - Sustitución puntual de una monitora.
-- Migrar a PWA real con modo sin conexión (frontend externo + Apps Script como API).
+- Migrar a PWA real con modo sin conexión (frontend externo + Apps Script como API). La PWA sin modo sin conexión está hecha (6-nov-2026, sección 17).
 
 ## 13. Decisiones abiertas
 
@@ -430,7 +437,7 @@ Implementado en `Informes.gs` (pestaña Informe de la app y exportación en PDF 
 ## 15. Convenciones de trabajo
 
 - No hacer commit, push ni `clasp push` salvo que el dueño lo pida. Todos los archivos en LF.
-- Las funciones internas acaban en `_` (así Apps Script no deja llamarlas desde el navegador). Las únicas públicas son las `api_*`, `doGet`, `include`, `onOpen`, las del menú (`menu*`), `setup`, `validarDatos`, `importarUsuariosDesdeHoja` e `importarUsuariosDelCentro`; las cuatro últimas comprueban `soloAdmin_()`.
+- Las funciones internas acaban en `_` (así Apps Script no deja llamarlas desde el navegador). Las únicas públicas son las `api_*`, `doGet`, `doPost`, `include`, `onOpen`, las del menú (`menu*`), `setup`, `validarDatos`, `importarUsuariosDesdeHoja` e `importarUsuariosDelCentro`; las cuatro últimas comprueban `soloAdmin_()`.
 
 - Código y comentarios en español, con identificadores consistentes entre archivos. Antes de renombrar algo, buscar todos sus usos (servidor, cliente, hojas y `Config.gs`).
 - Sin dependencias externas ni librerías.
@@ -475,4 +482,25 @@ Implementado en `Informes.gs` (pestaña Informe de la app y exportación en PDF 
 - **5-nov-2026 — Hoja «Asistencia por grupo» en el Excel del informe** (`Informes.gs`, `sim/mock.js`; sección 7.5): segunda hoja del `.xlsx`, con un bloque por grupo y una fila por usuario (estados, total, % y situación). No va en el PDF. Probado en Node con la simulación de hojas: bloques de los 4 grupos con registros, columnas de estado en orden (Asistido, Falta, Justificada, Evento), totales que cuadran con «Por grupo» y una baja con su fecha y motivo. **Falta probarlo en Google**: `clasp push`, versión nueva y exportar en hoja de cálculo para ver el formato.
 - **5-nov-2026 — Días de las faltas y hoja «Historial» en el Excel del informe** (`Informes.gs`, `sim/mock.js`; sección 7.5): columna «Días que faltó» en «Asistencia por grupo» y hoja nueva «Historial» con la cuadrícula de cada grupo en todo el periodo. Probado en Node con la simulación de hojas: fechas de las faltas que coinciden con la cuadrícula, columna sin clase con «–», un usuario dado de baja con «·» desde el día siguiente a su baja y días sin lista en blanco. **Falta probarlo en Google**: `clasp push`, versión nueva y exportar en hoja de cálculo (sobre todo, colores y columnas fijas al abrir el `.xlsx` en Excel).
 - **5-nov-2026 — Once detalles de app nativa** (`Cliente.html`, `Estilos.html`, `Index.html`, `Main.gs`; secciones 7.0, 7.1, 7.2, 7.4, 7.5 y 9): número de pendientes en la pestaña Inicio; «Todo al día» y anillo «N de M listas hechas» en Inicio; cifras que suben en el Informe y el Historial; deslizar la fila del pase (Falta / Asistido); deslizar entre días en Inicio y entre meses en el Historial; tirar hacia abajo para actualizar Inicio; barra grande que se encoge en las pantallas principales; paneles largos con dos alturas; transición de la tarjeta al pase con la View Transitions API; e icono propio en `doGet` (`setFaviconUrl`, una lista con una marca). **El icono**: la documentación de Apps Script no dice si `setFaviconUrl` acepta una dirección `data:`; se prueba con el dibujo en SVG como `data:` dentro de un `try` (si Google lo rechaza, la app se abre igual, sin icono, y queda anotado en el registro de ejecuciones). Si no sale, haría falta alojar un PNG de 192 × 192 en una dirección `https` (por ejemplo, en la web del centro) y ponerla en `ICONO_APP_URL`; aun así, Chrome puede usar su propio icono con la inicial al añadir el acceso directo, porque la página de Google que envuelve la app no tiene manifiesto. Probado en la simulación a 360 y 375 px (admin, monitora y primer uso, con `?delay=300` y `?delay=600`; la vista del navegador estaba oculta y se comprobó midiendo con JavaScript y con eventos de puntero y táctiles simulados): número 6 en Inicio que baja al guardar y desaparece con todo hecho; siete pases seguidos con «Guardar y seguir» hasta «Todo al día» con el anillo «1 de 1»; deslizar una fila a la izquierda (fondo «Falta» y aplicado), a la derecha (vuelve a Asistido), menos de 80 px (vuelve a su sitio sin cambiar), movimiento vertical (no cuenta) y toque y pulsación larga como antes; panel de estados a media pantalla, subido a pantalla completa, bajado a media y cerrado; periodo y grupo del Historial a media pantalla y taller (corto) normal; Escape los cierra; deslizar a ayer y de vuelta a hoy, y el aviso al intentar pasar de hoy (ratón y dedo); tirar hacia abajo (círculo, una sola llamada y «Inicio actualizado»); Historial de noviembre a octubre deslizando fuera de la cuadrícula y sin cambiar de mes deslizando dentro; cifras del Informe y del Historial que suben y acaban en su valor, sin repetirse al volver; View Transition al abrir un pase desde Hoy; barra grande en las cuatro secciones y pequeña en las secundarias. Regresión: atrás del móvil cierra el panel y vuelve a Inicio con el scroll recuperado, cabecera del Historial fija, Informe sin scroll lateral, flechas de día y de mes. No se pudo probar en la simulación el modo de reducir el movimiento (se revisó en el código). **Falta probarlo en Google**: `clasp push`, versión nueva y, en el móvil, deslizar filas y días y tirar hacia abajo dentro del marco de la web app (que Chrome no se lleve el gesto), la View Transition y si sale el icono.
+- **6-nov-2026 — App instalable (PWA)** (`Config.gs`, `Auth.gs`, `Api.gs`, `Main.gs`, `Cliente.html`, `pwa/`, `sim/pwa-mock.js`, `.github/workflows/pwa.yml`, `.claspignore`, `.gitignore`; secciones 2, 9 y 17): la misma app, instalable en Android con icono propio y pantalla completa, y con el atrás y los gestos fuera del marco de Apps Script. Sin modo sin conexión. Probado en la simulación (`node pwa/build.js --sim`) a 375 px: pantalla de conexión (dirección mal escrita, clave incorrecta, clave buena y recarga), todas las llamadas por `fetch` y ninguna por `google.script.run`, pase de lista con «Guardar y seguir», atrás del navegador, Gestión › Conexión de la app (cancelar), exportar, acción no permitida (`setup`, `constructor`), lista sin conexión que se envía sola al volver la red, clave cambiada en el servidor (sale la pantalla de conexión), manifiesto, iconos y service worker; y la versión HtmlService (`sim/index.html`) sigue igual, sin la entrada de conexión. **Falta en Google y GitHub**: poner `CLAVE_PWA` en cada copia, `clasp push`, versión nueva de la implementación, activar GitHub Pages con «GitHub Actions» (el repositorio tiene que ser público o tener plan de pago) e instalarla en el móvil.
 - Pendiente: renovar grupos de un trimestre o curso a otro (Fase 3). Fase 3 «Aviso de usuarios con faltas seguidas»: hecho en el pase de lista (3-nov-2026).
+
+## 17. App instalable (PWA, 6-nov-2026)
+
+La misma app, instalable en Android (icono propio, pantalla completa, atrás y gestos sin el marco de Apps Script). **Sin modo sin conexión**: como la web app, necesita red; sin ella muestra «Sin conexión · Reintentar», y las listas sin enviar se reintentan como siempre (7.2). La web app de `HtmlService` (`/exec` en el navegador) sigue funcionando igual.
+
+```
+PWA (GitHub Pages)  ──fetch POST text/plain { action, args, clave }──▶  doPost (Main.gs) → atenderPWA_ (Api.gs) → api_* de siempre
+Navegador (/exec)   ──google.script.run──────────────────────────────▶  api_* de siempre
+```
+
+- **Un solo cliente**: `pwa/build.js` monta la PWA con `Index.html`, `Estilos.html` y `Cliente.html` tal cual, más `pwa/api.js` y `pwa/pwa.css`. `Cliente.html` solo distingue en tres sitios, siempre por `window.PWA`: `transporte` (fetch o `google.script.run`), el historial (`PWA.historia` si no hay `google.script.history`) y la entrada **Gestión › Conexión de la app**.
+- **Servidor**: `doPost` responde JSON con `ContentService`. `atenderPWA_` comprueba la clave (`comprobarClavePWA_` en `Auth.gs`, propiedad `CLAVE_PWA` de las propiedades del proyecto; sin ella, la PWA no entra; con una clave mala espera 1,5 s) y solo llama a las funciones de `accionesPWA_()`: `action` es el nombre de la `api_*` sin el prefijo y `args`, sus argumentos en el mismo orden. Responde lo mismo que la `api_*` y, si la clave falla, `codigo: 'clave'`. Quien entra es la propietaria (admin), como con el enlace. Una función `api_*` nueva hay que añadirla también a `accionesPWA_()`.
+- **POST en `text/plain`**: así el navegador no hace la consulta previa de CORS, que Apps Script no contesta. Google responde con una redirección a `googleusercontent.com`, que sí admite CORS.
+- **Conexión**: una sola PWA para todas las copias. La primera vez (o si el servidor rechaza la clave) sale una pantalla para escribir la dirección `/exec` de la copia y su clave; se prueban con `api_init`, se guardan en `localStorage` (`asistencia|conexionPWA`) y la app se recarga. Ni la dirección ni la clave están en el código.
+- **Service worker** (`pwa/sw.js`): guarda solo la página, el manifiesto y los iconos (la página, primero de la red, para que llegue la versión nueva); nunca datos ni llamadas. Su caché lleva una huella que pone `build.js`.
+- **Iconos**: `pwa/iconos.js` dibuja en PNG (192, 512 y *maskable*) el mismo dibujo que `ICONO_APP_SVG` de `Main.gs`, y el SVG se copia de allí. Si cambia el dibujo, hay que cambiar los dos.
+- **Datos separados**: la PWA y la web app son orígenes distintos y no comparten `localStorage` (borradores, listas por enviar, preferencias).
+- **Seguridad**: la clave protege la PWA, pero el enlace `/exec` sigue abriendo la web app sin clave (sección 11).
+- **Probar**: `node pwa/build.js --sim`, servir `sim/` y abrir `/pwa/index.html` (clave de prueba «prueba»; `?clave=` para otra).
+- **Pasos manuales**: (1) en cada copia, *Configuración del proyecto › Propiedades de secuencia de comandos*: `CLAVE_PWA` = un texto largo al azar; (2) `clasp push`, recargar el editor y *Gestionar implementaciones › lápiz › Versión nueva* (la URL `/exec` no cambia); (3) GitHub: *Settings › Pages › Source: GitHub Actions* (hace falta repositorio público o plan de pago; si no, publicar `pwa/dist/` en Netlify o Cloudflare Pages); (4) en el móvil, abrir la dirección de Pages en Chrome, «Instalar app» y escribir la dirección `/exec` y la clave.
