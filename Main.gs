@@ -17,7 +17,13 @@ const ICONO_APP_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 9
   '<path d="M44 30h28M44 48h28M44 66h18"/><path d="M20 30l5 5 9-10"/></g>' +
   '<circle cx="26" cy="48" r="4.5" fill="#fff"/><circle cx="26" cy="66" r="4.5" fill="#fff"/></svg>';
 
+/**
+ * Enlace de la web app (/exec o /dev). Desde el 6-nov-2026 solo abre la app a quien Google identifique con su
+ * correo (la propietaria o una monitora activa de la hoja Monitoras, Auth.gs). A cualquier otra persona le
+ * enseña una página que la manda a la app instalable, que va con clave.
+ */
 function doGet() {
+  if (!identificarMonitora_()) return paginaUsarApp_();
   const salida = HtmlService.createTemplateFromFile('Index').evaluate()
     .setTitle('Asistencia talleres')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
@@ -30,10 +36,24 @@ function doGet() {
   return salida;
 }
 
+/** Página del enlace /exec para quien no tiene acceso por su cuenta de Google: lleva a la app instalable. */
+function paginaUsarApp_() {
+  const html = '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Asistencia talleres</title>' +
+    '<style>body{margin:0;font-family:system-ui,Roboto,Arial,sans-serif;background:#f3f6fb;color:#1f2a3a}' +
+    'main{max-width:440px;margin:48px auto;padding:28px 24px;background:#fff;border-radius:28px;text-align:center;' +
+    'box-shadow:0 1px 2px rgba(60,64,67,.3),0 1px 3px 1px rgba(60,64,67,.15)}h1{font-size:22px;margin:0 0 12px}' +
+    'p{font-size:17px;line-height:1.45;color:#5f6368;margin:0 0 20px}a{display:inline-block;padding:14px 24px;border-radius:999px;' +
+    'background:#34507a;color:#fff;text-decoration:none;font-weight:600;font-size:17px}</style></head><body><main>' +
+    '<h1>Asistencia talleres</h1><p>Esta aplicación se usa desde la app instalada, con la clave que te ha dado la ' +
+    'administración.</p><a href="' + URL_PWA + '" target="_top">Abrir la app</a></main></body></html>';
+  return HtmlService.createHtmlOutput(html).setTitle('Asistencia talleres')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
 /**
  * Entrada de la app instalable (PWA, 6-nov-2026). La PWA envía un POST con Content-Type text/plain (así el
  * navegador no hace la consulta previa de CORS) y el cuerpo { action, args, clave } en JSON. Responde en JSON lo
- * mismo que las funciones api_* (Api.gs, atenderPWA_). doGet sigue sirviendo la app de siempre.
+ * mismo que las funciones api_* (Api.gs, atenderPWA_). Quién entra lo dice la clave (Auth.gs, comprobarClavePWA_).
  */
 function doPost(e) {
   let respuesta;

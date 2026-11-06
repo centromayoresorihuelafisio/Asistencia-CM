@@ -345,6 +345,7 @@
     const ICONO_ANTERIOR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4-4.6-4.6z"/></svg>';
     const ICONO_SIGUIENTE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.6 7.4 10 6l6 6-6 6-1.4-1.4 4.6-4.6z"/></svg>';
     const ICONO_DESCARGAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5zm14-11h-4V3H9v6H5l7 7z"/></svg>';
+    const ICONO_COMPARTIR = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M18 16.1c-.8 0-1.4.3-2 .8l-7.1-4.2c.1-.2.1-.5.1-.7s0-.5-.1-.7L16 7.2c.5.5 1.2.8 2 .8a3 3 0 1 0-3-3c0 .2 0 .5.1.7L8 9.8A3 3 0 1 0 8 14.2l7.1 4.2c-.1.2-.1.4-.1.6a2.9 2.9 0 1 0 3-2.9z"/></svg>';
     const ICONO_GUARDAR ='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
 
     function enlaceLlamar(telefono) {
@@ -2809,7 +2810,7 @@
           kpi(cifraQueSube(t.usuarios), 'usuarios distintos atendidos') + kpi(cifraQueSube(t.realizadas), 'clases hechas') +
           kpi(cifraQueSube(t.canceladas), 'sin clase') + kpi(cifraQueSube(altas) + ' / ' + cifraQueSube(bajas), 'altas / bajas') + '</div>';
 
-        if (esAdmin()) {
+        {   // también las monitoras, con sus grupos (6-nov-2026)
           html += '<div class="bloque exportar"><div class="exportar-texto"><h3>Exportar datos</h3>' +
             '<p>Descargar en PDF y hoja de cálculo</p></div>' +
             '<button type="button" class="boton primario" data-accion="abrir-exportar">' + ICONO_DESCARGAR + 'Exportar</button></div>';
@@ -3089,6 +3090,7 @@
       estados: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-2 15-5-5 1.4-1.4 3.6 3.6 7.6-7.6L19 8z"/>',
       curso: '<path d="M5 13.2v4L12 21l7-3.8v-4L12 17zM12 3 1 9l11 6 9-4.9V17h2V9z"/>',
       listas: '<path d="M3 13h2v-2H3zm0 4h2v-2H3zm0-8h2V7H3zm4 4h14v-2H7zm0 4h14v-2H7zM7 7v2h14V7z"/>',
+      monitoras: '<path d="M20 6h-4V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zM10 4h4v2h-4zm2 6a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm4 8H8v-1c0-1.3 2.7-2 4-2s4 .7 4 2z"/>',
       conexion: '<path d="M3.9 12a3.1 3.1 0 0 1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7A3.1 3.1 0 0 1 3.9 12zM8 13h8v-2H8zm9-6h-4v1.9h4a3.1 3.1 0 0 1 0 6.2h-4V17h4a5 5 0 0 0 0-10z"/>'
     };
     function iconoGestion(nombre) {
@@ -3107,6 +3109,7 @@
       pintar('<div class="lista">' +
         entrada('g-grupos', 'grupos', 'Grupos y talleres', activos + ' grupos activos') +
         entrada('g-usuarios', 'usuarios', 'Usuarios', g.totalUsuarios + ' en la base de datos') +
+        entrada('g-monitoras', 'monitoras', 'Monitoras', g.monitoras.filter(function (m) { return m.activa; }).length + ' activas · claves de la app') +
         entrada('g-dias', 'dias', 'Días libres', proximos + ' próximos · festivos, vacaciones, asuntos propios…') +
         entrada('g-estados', 'estados', 'Estados de asistencia', g.estados.map(function (e) { return e.etiqueta; }).join(', ')) +
         entrada('g-curso', 'curso', 'Curso', g.config.curso + ' · ' + fechaNumerica(g.config.inicio) + ' a ' + fechaNumerica(g.config.fin)) +
@@ -3160,8 +3163,7 @@
             '><span>' + d[1] + '</span></label>';
         }).join('') + '</div></div>' +
         '<div class="campo"><label for="gHora">Hora</label><input type="time" id="gHora" value="' + esc(g.hora) + '"></div>' +
-        '<div class="campo"><label for="gMonitoras">Correo de la monitora</label><input type="email" id="gMonitoras" multiple inputmode="email" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" value="' + esc(g.monitoras) + '">' +
-        '<p class="ayuda">Si hay varias (por ejemplo, una sustituta), sepáralas con comas.</p></div>' +
+        casillasMonitoras(g.monitoras) +
         (nuevo ? '' : '<label class="check"><input type="checkbox" id="gActivo"' + (g.activo ? ' checked' : '') + '> Grupo activo (si lo desactivas, deja de aparecer para pasar lista; su historial se conserva)</label>') +
         '<button type="button" class="boton primario ancho" data-accion="g-guardar-grupo" data-grupo="' + esc(g.grupo_id) + '">' +
         (nuevo ? 'Crear grupo' : 'Guardar cambios') + '</button></div>';
@@ -3169,6 +3171,27 @@
         html += '<button type="button" class="boton ancho" data-accion="g-inscritos" data-grupo="' + esc(g.grupo_id) + '">Ver inscritos, altas y bajas</button>';
       }
       pintar(html);
+    }
+
+    /**
+     * Monitoras del grupo como casillas (6-nov-2026; antes, correos escritos a mano): las activas de Gestión ›
+     * Monitoras y, si el grupo tiene alguna que ya no está o está desactivada, también, marcada.
+     */
+    function casillasMonitoras(actuales) {
+      const marcadas = String(actuales || '').toLowerCase().split(/[,;\s]+/).filter(Boolean);
+      const lista = app.gest.monitoras.filter(function (m) { return m.activa || marcadas.indexOf(m.email) >= 0; })
+        .map(function (m) { return { email: m.email, texto: m.nombre || m.email, sub: m.email + (m.activa ? '' : ' · desactivada') }; });
+      marcadas.forEach(function (c) {
+        if (!lista.some(function (m) { return m.email === c; })) lista.push({ email: c, texto: c, sub: 'No está en Gestión › Monitoras' });
+      });
+      return '<div class="campo"><span class="etiqueta-campo" id="et-gMonitoras">Monitoras</span>' +
+        '<div class="opciones-radio" id="gMonitoras" role="group" aria-labelledby="et-gMonitoras">' +
+        lista.map(function (m) {
+          return '<label class="opcion-radio"><input type="checkbox" name="gMonitora" value="' + esc(m.email) + '"' +
+            (marcadas.indexOf(m.email) >= 0 ? ' checked' : '') + '><span class="opcion-texto">' + esc(m.texto) +
+            '<small>' + esc(m.sub) + '</small></span></label>';
+        }).join('') + '</div>' +
+        '<p class="ayuda">Si hay varias (por ejemplo, una sustituta), marca todas. Se dan de alta en Gestión › Monitoras.</p></div>';
     }
 
     function guardarGrupo(grupoId) {
@@ -3180,17 +3203,14 @@
         nombre: valor('gNombre'),
         dias: Array.prototype.map.call(document.querySelectorAll('input[name="gDia"]:checked'), function (c) { return c.value; }),
         hora: valor('gHora'),
-        monitoras: valor('gMonitoras'),
+        monitoras: Array.prototype.map.call(document.querySelectorAll('input[name="gMonitora"]:checked'), function (c) { return c.value; }).join(','),
         activo: grupoId ? marcado('gActivo') : true
       };
       if (!taller) return errorCampo('gTaller', 'Elige el taller del grupo.');
       if (taller === '__nuevo__' && !datos.taller_nuevo) return errorCampo('gTallerNuevo', 'Escribe el nombre del taller nuevo.');
       if (!datos.nombre) return errorCampo('gNombre', 'Escribe el nombre del grupo.');
       if (!datos.dias.length) return errorCampo('gDias', 'Elige al menos un día de clase.');
-      const correos = datos.monitoras.split(',').map(function (c) { return c.trim(); }).filter(Boolean);
-      if (correos.some(function (c) { return !/^[^@\s]+@[^@\s]+$/.test(c); })) {
-        return errorCampo('gMonitoras', 'Revisa el correo: debe ser como nombre@gmail.com (si hay varios, separados por comas).');
-      }
+      if (!datos.monitoras) return errorCampo('gMonitoras', 'Elige al menos una monitora.');
       llamar('api_guardarGrupo', datos).then(function () {
         aviso(grupoId ? 'Grupo guardado.' : 'Grupo creado.');
         return recargarDatos('gestion');
@@ -3465,6 +3485,154 @@
         aviso(nuevo ? 'Estado creado.' : 'Estado guardado.');
         return recargarDatos('gestion');
       }).then(siSigue(irEstados)).catch(avisoError);
+    }
+
+    // --- Monitoras y sus claves de la app (6-nov-2026) ---
+    // Cada monitora entra en la app instalable con su clave y ve solo sus grupos. La clave se crea aquí, se enseña
+    // una sola vez y se le envía con un enlace que conecta la app solo (pwa/api.js lo lee).
+
+    function textoMonitora(m) {
+      return [m.rol === 'admin' ? 'Administración' : 'Monitora',
+        m.grupos === 1 ? '1 grupo' : m.grupos + ' grupos',
+        m.tieneClave ? 'con clave' : 'sin clave'].join(' · ');
+    }
+
+    function irMonitoras() {
+      const lista = app.gest.monitoras;
+      pantallaSecundaria('g-monitoras', 'Monitoras', lista.filter(function (m) { return m.activa; }).length + ' activas', volverGestion);
+      pintar('<p class="ayuda">Cada monitora entra en la app con su clave y solo ve sus grupos (los que la tienen en Gestión › Grupos). ' +
+        'Toca una para darle o cambiarle la clave.</p>' +
+        (lista.length ? '<div class="lista">' + lista.map(function (m) {
+          return filaPersona({
+            boton: true, clase: m.activa ? '' : 'inactiva', nombre: m.nombre || m.email,
+            atributos: ' data-accion="g-monitora" data-email="' + esc(m.email) + '"',
+            detalle: esc(textoMonitora(m)) + (m.activa ? '' : ' · <b>desactivada</b>'),
+            derecha: FLECHA
+          });
+        }).join('') + '</div>' : '<p class="vacio">Todavía no hay monitoras.</p>') +
+        fab('g-monitora-nueva', 'Nueva monitora'));
+    }
+
+    /** Panel de una monitora (email vacío = nueva). */
+    function abrirPanelMonitora(email) {
+      const m = email ? app.gest.monitoras.find(function (x) { return x.email === email; })
+        : { email: '', nombre: '', rol: 'monitora', activa: true, tieneClave: false, grupos: 0 };
+      if (!m) return;
+      const nueva = !m.email;
+      abrirPanel('<div><h3>' + (nueva ? 'Nueva monitora' : esc(m.nombre || m.email)) + '</h3>' +
+        (nueva ? '' : '<p class="ayuda">' + esc(m.email) + ' · ' + esc(textoMonitora(m)) + '</p>') +
+        '<div class="campo"><label for="mNombre">Nombre</label><input type="text" id="mNombre" autocomplete="off" enterkeyhint="next" value="' + esc(m.nombre) + '" placeholder="Ej.: Carmen"></div>' +
+        (nueva ? '<div class="campo"><label for="mEmail">Correo</label><input type="email" id="mEmail" inputmode="email" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="nombre@gmail.com">' +
+          '<p class="ayuda">Sirve para reconocerla y asignarle grupos; no hace falta que use Google. No se puede cambiar después.</p></div>' : '') +
+        opcionesRadio('mRol', 'Qué puede hacer', [
+          { valor: 'monitora', texto: 'Monitora', sub: 'Pasa lista, altas y bajas, historial e informe de sus grupos' },
+          { valor: 'admin', texto: 'Administración', sub: 'Todo, con todos los grupos y la pestaña Gestión' }
+        ], m.rol) +
+        (nueva ? '' : '<label class="check"><input type="checkbox" id="mActiva"' + (m.activa ? ' checked' : '') + '> Activa (si la desactivas, su clave deja de funcionar al momento)</label>') +
+        '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Cancelar</button>' +
+        '<button type="button" class="boton primario" data-accion="g-guardar-monitora" data-email="' + esc(m.email) + '">' + (nueva ? 'Crear' : 'Guardar') + '</button></div>' +
+        (nueva || !m.activa ? '' : '<button type="button" class="boton ancho separado" data-accion="g-clave-monitora" data-email="' + esc(m.email) + '" data-en-curso="Creando la clave…">' +
+          (m.tieneClave ? 'Cambiar la clave…' : 'Crear clave y enviar enlace') + '</button>') +
+        '</div>');
+    }
+
+    function guardarMonitora(email) {
+      const nueva = !email;
+      const datos = {
+        email: nueva ? valor('mEmail').toLowerCase() : email,
+        nombre: valor('mNombre'),
+        rol: elegido('mRol'),
+        activa: nueva ? true : marcado('mActiva')
+      };
+      if (!datos.nombre) return errorCampo('mNombre', 'Escribe el nombre de la monitora.');
+      if (nueva && !/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(datos.email)) return errorCampo('mEmail', 'Escribe un correo como nombre@gmail.com.');
+      llamar('api_guardarMonitora', datos, nueva).then(function () {
+        cerrarPanel();
+        aviso(nueva ? 'Monitora creada · ahora créale la clave' : 'Monitora guardada');
+        return recargarDatos('gestion');
+      }).then(siSigue(function () {
+        irMonitoras();
+        if (nueva) abrirPanelMonitora(datos.email);
+      })).catch(avisoError);
+    }
+
+    /** Crea la clave (si ya tenía una, pregunta antes: la anterior deja de valer). */
+    function pedirClaveMonitora(email) {
+      const m = app.gest.monitoras.find(function (x) { return x.email === email; });
+      if (!m) return;
+      const crear = function () {
+        llamar('api_nuevaClaveMonitora', email).then(function (r) {
+          app.claveCreada = { email: email, nombre: m.nombre || email, clave: r.clave, url: r.url, urlApp: r.urlApp };
+          // La lista se pinta ya con «con clave» y después se abre el panel con la clave (volver a pintar la
+          // pantalla cerraría el panel). Los datos de Gestión se vuelven a pedir en segundo plano.
+          m.tieneClave = true;
+          if (app.vista === 'g-monitoras') irMonitoras();
+          mostrarClaveMonitora();
+          anticuar('gestion');
+          pedir('api_gestion').then(function (d) { app.gest = d; }).catch(function () { /* se verá al volver */ });
+        }).catch(avisoError);
+      };
+      if (m.tieneClave) {
+        confirmar('¿Cambiar la clave de ' + (m.nombre || email) + '?', 'La que tiene ahora dejará de funcionar: tendrá que conectar la app otra vez con el enlace nuevo.',
+          'Cambiar la clave', true, crear, 'Creando la clave…');
+      } else {
+        crear();
+      }
+    }
+
+    /** Enlace que conecta la app solo: la dirección de la app instalable con la del servidor y la clave tras «#». */
+    function enlaceConexion(c) {
+      const servidor = window.PWA ? window.PWA.urlServidor() : c.url;
+      const base = window.PWA ? window.location.origin + window.location.pathname : c.urlApp;
+      return base + '#conectar=' + encodeURIComponent(servidor || '') + '&clave=' + encodeURIComponent(c.clave);
+    }
+    function textoEnlace(c) {
+      return 'Hola, ' + c.nombre + ': abre este enlace en tu móvil con Chrome para usar la app de asistencia. ' +
+        'Cuando se abra, en el menú ⋮ elige «Instalar app».\n' + enlaceConexion(c);
+    }
+
+    function mostrarClaveMonitora() {
+      const c = app.claveCreada;
+      if (!c) return;
+      abrirPanel('<div><h3>Clave de ' + esc(c.nombre) + '</h3>' +
+        '<p class="ayuda">Envíale el enlace: al abrirlo en su móvil, la app se conecta sola con esta clave. ' +
+        'La clave solo se enseña ahora; si se pierde, crea otra.</p>' +
+        '<p class="clave-grande" aria-label="Clave">' + esc(c.clave) + '</p>' +
+        '<button type="button" class="boton lleno ancho" data-accion="clave-enviar">' + ICONO_COMPARTIR + 'Enviar enlace</button>' +
+        '<div class="botones separado"><button type="button" class="boton" data-accion="clave-copiar">Copiar enlace</button>' +
+        '<button type="button" class="boton" data-accion="cerrar-panel">Hecho</button></div></div>');
+    }
+
+    function enviarEnlaceClave() {
+      const c = app.claveCreada;
+      if (!c) return;
+      if (navigator.share) {
+        navigator.share({ title: 'App de asistencia', text: textoEnlace(c) }).catch(function (e) {
+          if (e && e.name === 'AbortError') return;   // se cerró el menú de compartir
+          copiarEnlaceClave();
+        });
+      } else {
+        copiarEnlaceClave();
+      }
+    }
+
+    function copiarEnlaceClave() {
+      const c = app.claveCreada;
+      if (!c) return;
+      const texto = textoEnlace(c);
+      const aMano = function () {
+        // Sin portapapeles (marco de Apps Script o navegador antiguo): el texto, seleccionado, para copiarlo a mano.
+        abrirPanel('<div><h3>Copia el enlace</h3><p class="ayuda">Mantén pulsado el texto para copiarlo.</p>' +
+          '<textarea id="claveTexto" rows="6" readonly>' + esc(texto) + '</textarea>' +
+          '<div class="botones separado"><button type="button" class="boton" data-accion="clave-volver">Volver</button></div></div>');
+        const t = $('claveTexto');
+        if (t) { t.focus(); t.select(); }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto).then(function () { aviso('Enlace copiado'); }, aMano);
+      } else {
+        aMano();
+      }
     }
 
     // --- Curso ---
@@ -3939,6 +4107,14 @@
         case 'g-curso': irCurso(); break;
         case 'g-guardar-curso': guardarCurso(); break;
         case 'g-listas': irListas(); break;
+        case 'g-monitoras': irMonitoras(); break;
+        case 'g-monitora': abrirPanelMonitora(dato('email')); break;
+        case 'g-monitora-nueva': abrirPanelMonitora(''); break;
+        case 'g-guardar-monitora': guardarMonitora(dato('email')); break;
+        case 'g-clave-monitora': pedirClaveMonitora(dato('email')); break;
+        case 'clave-enviar': enviarEnlaceClave(); break;
+        case 'clave-copiar': copiarEnlaceClave(); break;
+        case 'clave-volver': mostrarClaveMonitora(); break;
         case 'g-conexion': if (window.PWA) window.PWA.abrirConexion(true); break;
         case 'g-guardar-lista': guardarLista(dato('lista'), dato('campo')); break;
       }

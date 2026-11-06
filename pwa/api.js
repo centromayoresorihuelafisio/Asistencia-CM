@@ -48,6 +48,7 @@
   const sinFin = new Promise(function () {});
 
   function llamar(funcion, args) {
+    if (enlace) { abrirConexionConEnlace(); return sinFin; }   // la pantalla de conexión recarga la app al terminar
     const c = leerConexion();
     if (!c) { abrirConexion(false); return sinFin; }   // la pantalla de conexión recarga la app al terminar
     return enviar(c, funcion, args).then(function (r) {
@@ -119,6 +120,16 @@
     else pantalla.querySelector(c.url ? '#pwaClave' : '#pwaUrl').focus();
   }
 
+  /** Abre la pantalla de conexión con lo que trae el enlace y la pone a conectar. */
+  function abrirConexionConEnlace() {
+    if (pantalla) return;
+    const e = enlace;
+    abrirConexion(false);
+    pantalla.querySelector('#pwaUrl').value = e.url;
+    pantalla.querySelector('#pwaClave').value = e.clave;
+    conectar();
+  }
+
   function cerrarConexion() {
     if (!pantalla) return;
     pantalla.remove();
@@ -179,11 +190,31 @@
     });
   }
 
+  /** Dirección /exec a la que está conectada esta app (para el enlace de las claves de Gestión › Monitoras). */
+  function urlServidor() {
+    const c = leerConexion();
+    return c ? c.url : '';
+  }
+
+  // ---------- Enlace de conexión (6-nov-2026) ----------
+  // Gestión › Monitoras envía a cada monitora un enlace …/#conectar=<dirección /exec>&clave=<clave>. Lo que va
+  // detrás de «#» no llega a ningún servidor. Al abrirlo, la app lo lee, lo quita de la dirección y se conecta
+  // sola (la pantalla de conexión, rellena, comprueba la clave y recarga).
+  let enlace = null;
+  (function leerEnlace() {
+    const h = String(window.location.hash || '').replace(/^#/, '');
+    if (h.indexOf('conectar=') < 0) return;
+    const p = new URLSearchParams(h);
+    enlace = { url: (p.get('conectar') || '').trim(), clave: (p.get('clave') || '').trim() };
+    try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (e) { /* se ignora */ }
+  })();
+
   window.PWA = {
     llamar: llamar,
     historia: historia,
     descripcion: descripcion,
-    abrirConexion: abrirConexion
+    abrirConexion: abrirConexion,
+    urlServidor: urlServidor
   };
 
   // ---------- Service worker ----------

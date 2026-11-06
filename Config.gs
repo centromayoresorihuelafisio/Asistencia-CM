@@ -28,8 +28,9 @@ const HOJAS = {
  */
 const ESQUEMA = {
   [HOJAS.MONITORAS]: {
-    columnas: ['email', 'nombre', 'rol', 'activa'],
-    texto: ['email']
+    // clave_hash (6-nov-2026): huella SHA-256 de la clave de la app de cada monitora (nunca la clave)
+    columnas: ['email', 'nombre', 'rol', 'activa', 'clave_hash'],
+    texto: ['email', 'clave_hash']
   },
   [HOJAS.TALLERES]: {
     columnas: ['taller_id', 'nombre', 'activo'],
@@ -187,10 +188,13 @@ const DATOS_INICIALES = {
   grupo: { grupo_id: 'YOGA-SUELO-LX', taller_id: 'YOGA', nombre: 'Yoga suelo', dias: 'L,X', hora: '10:00', activo: SI }
 };
 
-// App instalable (PWA, 6-nov-2026): la PWA llama a doPost con una clave secreta. La clave se guarda en las
-// propiedades del proyecto (Configuración del proyecto › Propiedades de secuencia de comandos) con este nombre,
-// nunca en el código. Sin esa propiedad, doPost no atiende a nadie.
+// App instalable (PWA, 6-nov-2026): la PWA llama a doPost con una clave secreta en cada petición.
+// - La clave de la propietaria (admin) está en las propiedades del proyecto (Configuración del proyecto ›
+//   Propiedades de secuencia de comandos) con este nombre, nunca en el código.
+// - Cada monitora tiene la suya (Gestión › Monitoras); en la hoja Monitoras solo se guarda su huella (clave_hash).
 const PROP_CLAVE_PWA = 'CLAVE_PWA';
+// Dirección pública de la PWA (GitHub Pages): sale en la página del enlace /exec, que ya no abre la app.
+const URL_PWA = 'https://centromayoresorihuelafisio.github.io/Asistencia-CM/';
 // Código que acompaña al error de clave (o de falta de clave) para que la PWA abra su pantalla de conexión.
 const CODIGO_CLAVE_PWA = 'clave';
 // Espera tras una clave incorrecta, para que probar claves a ciegas sea muy lento.

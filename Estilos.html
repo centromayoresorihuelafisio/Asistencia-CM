@@ -1722,6 +1722,20 @@
   .opcion-radio input:focus-visible { outline: none; }
   .opcion-radio small { font-weight: 400; }
 
+  /* Clave de la app de una monitora (Gestión › Monitoras, 6-nov-2026): se lee y se dicta bien */
+  .clave-grande {
+    margin: 0 0 16px;
+    padding: 14px 16px;
+    border-radius: var(--md-shape-md);
+    background: var(--md-surface-container);
+    font-family: ui-monospace, "Roboto Mono", Menlo, Consolas, monospace;
+    font-size: var(--fs-lg);
+    letter-spacing: .04em;
+    text-align: center;
+    word-break: break-all;
+    user-select: all;
+  }
+
   /* Fecha con atajos: Hoy, Ayer y Otra… (pastillas como los días de la semana) */
   .atajos-fecha { display: flex; gap: 8px; }
   .atajo-fecha {

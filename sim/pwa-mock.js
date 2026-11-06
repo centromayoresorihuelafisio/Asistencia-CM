@@ -16,6 +16,7 @@
     }
   };
   window.Utilities.sleep = function () {};
+  window.SIM.correoActivo = '';   // la PWA llega sin cuenta de Google: quién es lo dice la clave
 
   const fetchReal = window.fetch.bind(window);
   window.fetch = function (url, op) {

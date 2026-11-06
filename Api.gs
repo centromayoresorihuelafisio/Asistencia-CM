@@ -8,7 +8,7 @@ function responder_(fn) {
   try {
     const monitora = identificarMonitora_();
     if (!monitora) {
-      return { ok: false, error: 'No tienes acceso a esta aplicación. Pide a la persona administradora que te dé de alta.' };
+      return { ok: false, error: 'No tienes acceso a esta aplicación. Úsala desde la app instalada con tu clave o pide acceso a la persona administradora.' };
     }
     return { ok: true, data: fn(monitora) };
   } catch (e) {
@@ -132,6 +132,16 @@ function api_guardarLista(lista, valores) {
   return responder_(function (m) { return guardarLista_(m, lista, valores); });
 }
 
+// Monitoras y sus claves de la app (6-nov-2026)
+
+function api_guardarMonitora(datos, nuevo) {
+  return responder_(function (m) { return guardarMonitora_(m, datos, !!nuevo); });
+}
+
+function api_nuevaClaveMonitora(email) {
+  return responder_(function (m) { return nuevaClaveMonitora_(m, email); });
+}
+
 // ---------- App instalable (PWA, 6-nov-2026) ----------
 // doPost (Main.gs) recibe { action, args, clave }: action es el nombre de la función sin «api_» y args, sus
 // argumentos en el mismo orden. Solo se puede llamar a las funciones de esta lista.
@@ -146,7 +156,8 @@ function accionesPWA_() {
     enviarInforme: api_enviarInforme, gestion: api_gestion, guardarGrupo: api_guardarGrupo,
     usuariosGestion: api_usuariosGestion, usuario: api_usuario, guardarUsuario: api_guardarUsuario,
     guardarDiaEspecial: api_guardarDiaEspecial, borrarDiaEspecial: api_borrarDiaEspecial,
-    guardarEstado: api_guardarEstado, guardarConfig: api_guardarConfig, guardarLista: api_guardarLista
+    guardarEstado: api_guardarEstado, guardarConfig: api_guardarConfig, guardarLista: api_guardarLista,
+    guardarMonitora: api_guardarMonitora, nuevaClaveMonitora: api_nuevaClaveMonitora
   };
 }
 
@@ -157,7 +168,7 @@ function atenderPWA_(cuerpo) {
   if (!peticion || typeof peticion !== 'object') return { ok: false, error: 'Petición no válida.' };
   const clave = comprobarClavePWA_(peticion.clave);
   if (clave === 'sin-clave') {
-    return { ok: false, codigo: CODIGO_CLAVE_PWA, error: 'Esta copia de la aplicación todavía no tiene clave. Hay que ponerla en las propiedades del proyecto de Apps Script (' + PROP_CLAVE_PWA + ').' };
+    return { ok: false, codigo: CODIGO_CLAVE_PWA, error: 'La aplicación todavía no tiene ninguna clave. Hay que poner la de la administración en las propiedades del proyecto de Apps Script (' + PROP_CLAVE_PWA + ').' };
   }
   if (clave !== 'ok') {
     Utilities.sleep(ESPERA_CLAVE_MAL_MS);

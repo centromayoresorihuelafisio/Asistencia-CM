@@ -52,7 +52,8 @@ function datosGestion_(monitora) {
       .map(function (d) { return { fecha: d.fecha, tipo: d.tipo, descripcion: d.descripcion, grupo_id: d.grupo_id }; })
       .sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0; }),
     totalUsuarios: leerTabla_(HOJAS.USUARIOS).length,
-    correo: monitora.email
+    correo: monitora.email,
+    monitoras: monitorasParaCliente_()
   };
 }
 
@@ -73,6 +74,10 @@ function guardarGrupo_(monitora, datos) {
   if (hora && !/^\d{1,2}:\d{2}$/.test(hora)) throw errorApp_('La hora debe tener el formato 10:00.');
   const correos = String(datos.monitoras || '').toLowerCase().split(/[,;\s]+/).filter(Boolean);
   if (correos.some(function (c) { return c.indexOf('@') < 0; })) throw errorApp_('Revisa los correos de las monitoras: alguno no es válido.');
+  // Cada monitora del grupo tiene que estar en la hoja Monitoras (6-nov-2026): si no, no podría entrar a verlo.
+  const conocidas = leerTabla_(HOJAS.MONITORAS).map(function (m) { return String(m.email).toLowerCase(); });
+  const desconocida = correos.find(function (c) { return conocidas.indexOf(c) < 0; });
+  if (desconocida) throw errorApp_(desconocida + ' no está en Gestión › Monitoras. Dala de alta primero.');
   if (!correos.length) correos.push(monitora.email);
   const tallerNuevo = String(datos.taller_nuevo || '').replace(/\s+/g, ' ').trim();
 
@@ -374,5 +379,73 @@ function guardarLista_(monitora, lista, valores) {
     anadirFilas_(HOJAS.LISTAS, limpios.map(function (v) { return { lista: lista, valor: v }; }));
     aplicarValidacionesListas_(libro_());
     return { valores: limpios };
+  });
+}
+
+// ---------- Monitoras y sus claves de la app (6-nov-2026) ----------
+// La monitora se identifica por su correo (solo como identificador: no hace falta que use Google) y entra en la
+// app instalable con su clave. En la hoja solo se guarda la huella de la clave; la clave se enseña una vez.
+
+/** Monitoras para Gestión, sin la huella de la clave: { email, nombre, rol, activa, tieneClave, grupos }. */
+function monitorasParaCliente_() {
+  const grupos = leerTabla_(HOJAS.GRUPOS).filter(function (g) { return g.grupo_id && g.activo !== NO; });
+  return leerTabla_(HOJAS.MONITORAS).filter(function (m) { return m.email; }).map(function (m) {
+    const email = String(m.email).toLowerCase();
+    return {
+      email: email, nombre: m.nombre || '', rol: m.rol === ROL.ADMIN ? ROL.ADMIN : ROL.MONITORA,
+      activa: m.activa === SI, tieneClave: !!m.clave_hash,
+      grupos: grupos.filter(function (g) { return correosDeGrupo_(g).indexOf(email) >= 0; }).length
+    };
+  }).sort(function (a, b) { return (a.nombre || a.email).localeCompare(b.nombre || b.email, 'es'); });
+}
+
+/**
+ * Crea o modifica una monitora. datos: { email, nombre, rol, activa }.
+ * El correo es su identificador (está en Grupos.monitoras): no se cambia después.
+ */
+function guardarMonitora_(monitora, datos, nuevo) {
+  comprobarAdmin_(monitora);
+  datos = datos || {};
+  const email = String(datos.email || '').trim().toLowerCase();
+  const nombre = String(datos.nombre || '').replace(/\s+/g, ' ').trim();
+  if (!/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(email)) throw errorApp_('Escribe un correo como nombre@gmail.com.');
+  if (!nombre) throw errorApp_('Escribe el nombre de la monitora.');
+  const rol = datos.rol === ROL.ADMIN ? ROL.ADMIN : ROL.MONITORA;
+  const activa = datos.activa === false ? NO : SI;
+  if (email === correoPropietario_() && (rol !== ROL.ADMIN || activa === NO)) {
+    throw errorApp_('Es la cuenta propietaria de la aplicación: siempre es administración y está activa.');
+  }
+  return conBloqueo_(function () {
+    completarCabeceras_(hoja_(HOJAS.MONITORAS), HOJAS.MONITORAS);
+    const existente = leerTabla_(HOJAS.MONITORAS).find(function (m) { return String(m.email).toLowerCase() === email; });
+    if (nuevo) {
+      if (existente) throw errorApp_('Ya hay una monitora con el correo ' + email + '.');
+      anadirFilas_(HOJAS.MONITORAS, [{ email: email, nombre: nombre, rol: rol, activa: activa, clave_hash: '' }]);
+    } else {
+      if (!existente) throw errorApp_('No se encuentra la monitora. Vuelve a abrir la pantalla.');
+      Object.assign(existente, { nombre: nombre, rol: rol, activa: activa });
+      actualizarFilas_(HOJAS.MONITORAS, [existente]);
+    }
+    return { email: email };
+  });
+}
+
+/** Crea una clave nueva para una monitora (la anterior deja de valer). Devuelve { email, clave }: es la única vez que se ve. */
+function nuevaClaveMonitora_(monitora, email) {
+  comprobarAdmin_(monitora);
+  const correo = String(email || '').trim().toLowerCase();
+  return conBloqueo_(function () {
+    completarCabeceras_(hoja_(HOJAS.MONITORAS), HOJAS.MONITORAS);
+    const fila = leerTabla_(HOJAS.MONITORAS).find(function (m) { return String(m.email).toLowerCase() === correo; });
+    if (!fila) throw errorApp_('No se encuentra la monitora. Vuelve a abrir la pantalla.');
+    if (fila.activa !== SI) throw errorApp_('La monitora está desactivada. Actívala antes de darle una clave.');
+    const clave = claveNueva_();
+    fila.clave_hash = huellaClave_(clave);
+    actualizarFilas_(HOJAS.MONITORAS, [fila]);
+    // Para el enlace que conecta la app solo (Cliente.html, enlaceConexion): la PWA usa su propia dirección del
+    // servidor; desde la web app, esta (la de la implementación con la que se ha abierto) y la de la PWA.
+    let url = '';
+    try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
+    return { email: correo, clave: clave, url: url, urlApp: URL_PWA };
   });
 }

@@ -689,8 +689,8 @@ function hojaHistorial_(r, desde, hasta, usuarios, tipos) {
  * El archivo del informe: { titulo, nombre, tipo, blob }. formato: 'pdf' o 'xlsx'.
  * Nombre del archivo sin barras: «Asistencia talleres 2026-09-01 a 2026-11-05 - Pilates.pdf».
  */
+// Desde el 6-nov-2026 también exportan las monitoras: informe_ solo lleva sus grupos (gruposVisibles_).
 function archivoInforme_(monitora, desde, hasta, tallerId, formato) {
-  comprobarAdmin_(monitora);
   const f = FORMATOS_EXPORTAR_[formato];
   if (!f) throw errorApp_('Elige el formato: PDF u hoja de cálculo.');
   const r = informe_(monitora, desde, hasta, tallerId);
@@ -711,7 +711,6 @@ function exportarInforme_(monitora, desde, hasta, tallerId, formato) {
 
 /** Envía el informe como adjunto, desde la cuenta de quien despliega. Devuelve { correo }. */
 function enviarInforme_(monitora, desde, hasta, tallerId, formato, correo) {
-  comprobarAdmin_(monitora);
   const para = String(correo || '').trim().toLowerCase();
   if (!/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(para)) throw errorApp_('Escribe un correo como nombre@gmail.com.');
   if (MailApp.getRemainingDailyQuota() < 1) throw errorApp_('Hoy ya no se pueden enviar más correos. Descárgalo o inténtalo mañana.');
