@@ -17,7 +17,8 @@ const HOJAS = {
   ESTADOS: 'Estados',
   LISTAS: 'Listas',
   CONFIG: 'Config',
-  DIAS_ESPECIALES: 'Dias especiales'
+  DIAS_ESPECIALES: 'Dias especiales',
+  ACCESOS: 'Accesos'
 };
 
 /**
@@ -28,9 +29,19 @@ const HOJAS = {
  */
 const ESQUEMA = {
   [HOJAS.MONITORAS]: {
-    // clave_hash (6-nov-2026): huella SHA-256 de la clave de la app de cada monitora (nunca la clave)
-    columnas: ['email', 'nombre', 'rol', 'activa', 'clave_hash'],
-    texto: ['email', 'clave_hash']
+    // Cuentas de la app (9-nov-2026, Auth.gs): usuario y contraseña. clave_hash = «iteraciones$resumen» de la
+    // contraseña con su sal (nunca la contraseña); debe_cambiar = SI tras una contraseña temporal; intentos y
+    // bloqueada_hasta (milisegundos) para frenar a quien pruebe contraseñas; ultimo_acceso, solo informativo.
+    columnas: ['email', 'nombre', 'rol', 'activa', 'clave_hash', 'usuario', 'sal', 'debe_cambiar', 'intentos',
+      'bloqueada_hasta', 'ultimo_acceso'],
+    texto: ['email', 'clave_hash', 'usuario', 'sal', 'bloqueada_hasta', 'ultimo_acceso']
+  },
+  // Sesiones abiertas de la app instalable (9-nov-2026, Auth.gs): una fila por aparato. Solo la huella del token
+  // (nunca el token). Duran hasta que se cierran: «Cerrar sesión», cambio de contraseña, monitora desactivada o
+  // «Cerrar sus sesiones» en Ajustes › Monitoras. Es la única hoja (con Deshacer) en la que se borran filas.
+  [HOJAS.ACCESOS]: {
+    columnas: ['token_hash', 'email', 'aparato', 'creada', 'ultimo_uso', 'ver_como'],
+    texto: ['token_hash', 'email', 'aparato', 'creada', 'ultimo_uso', 'ver_como']
   },
   [HOJAS.TALLERES]: {
     columnas: ['taller_id', 'nombre', 'activo'],
@@ -198,14 +209,21 @@ const DATOS_INICIALES = {
   grupo: { grupo_id: 'YOGA-SUELO-LX', taller_id: 'YOGA', nombre: 'Yoga suelo', dias: 'L,X', hora: '10:00', activo: SI }
 };
 
-// App instalable (PWA, 6-nov-2026): la PWA llama a doPost con una clave secreta en cada petición.
-// - La clave de la propietaria (admin) está en las propiedades del proyecto (Configuración del proyecto ›
-//   Propiedades de secuencia de comandos) con este nombre, nunca en el código.
-// - Cada monitora tiene la suya (Gestión › Monitoras); en la hoja Monitoras solo se guarda su huella (clave_hash).
-const PROP_CLAVE_PWA = 'CLAVE_PWA';
-// Dirección pública de la PWA (GitHub Pages): sale en la página del enlace /exec, que ya no abre la app.
+// App instalable (PWA): cada monitora entra con su usuario y contraseña (9-nov-2026; antes, una clave por enlace).
+// Dirección pública de la PWA (GitHub Pages): sale en la página del enlace /exec, que no abre la app.
 const URL_PWA = 'https://centromayoresorihuelafisio.github.io/Asistencia-CM/';
-// Código que acompaña al error de clave (o de falta de clave) para que la PWA abra su pantalla de conexión.
-const CODIGO_CLAVE_PWA = 'clave';
-// Espera tras una clave incorrecta, para que probar claves a ciegas sea muy lento.
+// Códigos que acompañan a ciertos errores de la PWA (pwa/api.js usa los mismos valores):
+// 'sesion' = sin sesión o cerrada (sale la pantalla de entrada); 'cambiar' = tiene que cambiar la contraseña temporal.
+const CODIGO_SESION_PWA = 'sesion';
+const CODIGO_CAMBIAR_PWA = 'cambiar';
+// Espera tras un usuario o contraseña incorrectos, para que probar contraseñas a ciegas sea lento.
 const ESPERA_CLAVE_MAL_MS = 1500;
+// Contraseñas (como en la app de fisio): mínimo 4 caracteres (vale un PIN), sal por cuenta e iteraciones de SHA-256.
+const CONTRASENA_MIN = 4;
+const CONTRASENA_MAX = 200;
+const CONTRASENA_ITERACIONES = 1000;
+// Tras MAX_FALLOS intentos fallidos seguidos, la cuenta se bloquea BLOQUEO_MIN minutos y se avisa por correo.
+const MAX_FALLOS = 5;
+const BLOQUEO_MIN = 15;
+// Nombre de usuario: minúsculas, números, punto, guion y guion bajo.
+const PATRON_USUARIO = /^[a-z0-9._-]{3,30}$/;

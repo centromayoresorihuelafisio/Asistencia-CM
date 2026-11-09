@@ -18,7 +18,7 @@
     { clave: 'dias_pendientes', valor: '14' }, { clave: 'faltas_seguidas', valor: '3' }];
 
   if (esc === 'vacio') {
-    ['Monitoras', 'Talleres', 'Grupos', 'Usuarios', 'Inscripciones', 'Sesiones', 'Asistencia', 'Dias especiales'].forEach(function (n) { hoja(n, []); });
+    ['Monitoras', 'Talleres', 'Grupos', 'Usuarios', 'Inscripciones', 'Sesiones', 'Asistencia', 'Dias especiales', 'Accesos'].forEach(function (n) { hoja(n, []); });
     hoja('Estados', estados); hoja('Listas', listas); hoja('Config', config);
     return;
   }
@@ -35,10 +35,9 @@
   ];
   // Escenario monitora (6-nov-2026): Costura es de otra monitora, para probar que no se ve ni se toca lo ajeno.
   const otra = 'lucia@ejemplo.test';
-  if (esc === 'monitora') {
-    monitoras.push({ email: otra, nombre: 'Lucía', rol: 'monitora', activa: 'SI' });
-    grupos[4].monitoras = otra;
-  }
+  // En los demás (9-nov-2026), Lucía comparte Costura con Carmen, para probar «ver como» desde el admin.
+  monitoras.push({ email: otra, nombre: 'Lucía', rol: 'monitora', activa: 'SI' });
+  grupos[4].monitoras = esc === 'monitora' ? otra : yo + ',' + otra;
   const ape = ['GARCIA', 'MARTINEZ', 'LOPEZ', 'SANCHEZ', 'PEREZ', 'GOMEZ', 'MARTIN', 'JIMENEZ', 'RUIZ', 'HERNANDEZ', 'DIAZ', 'MORENO', 'MUÑOZ', 'ALVAREZ', 'ROMERO', 'ALONSO', 'GUTIERREZ', 'NAVARRO', 'TORRES', 'DOMINGUEZ'];
   const nom = ['MARIA', 'CARMEN', 'JOSEFA', 'ISABEL', 'ANA', 'DOLORES', 'PILAR', 'TERESA', 'ROSA', 'FRANCISCA', 'ANTONIA', 'MERCEDES', 'JOSE', 'ANTONIO', 'MANUEL', 'FRANCISCO', 'ENCARNACION', 'CONCEPCION'];
   const usuarios = [];
@@ -80,4 +79,5 @@
   });
   hoja('Monitoras', monitoras); hoja('Talleres', talleres); hoja('Grupos', grupos); hoja('Usuarios', usuarios); hoja('Inscripciones', insc);
   hoja('Sesiones', sesiones); hoja('Asistencia', asis); hoja('Estados', estados); hoja('Listas', listas); hoja('Config', config); hoja('Dias especiales', especiales);
+  hoja('Accesos', []);
 })();

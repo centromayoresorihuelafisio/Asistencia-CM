@@ -1725,7 +1725,43 @@
   .opcion-radio input:focus-visible { outline: none; }
   .opcion-radio small { font-weight: 400; }
 
-  /* Clave de la app de una monitora (Gestión › Monitoras, 6-nov-2026): se lee y se dicta bien */
+  /* «Ver como» (9-nov-2026, Cliente.html pintarBandaVerComo): banda fija arriba mientras el admin ve la app como
+     otra monitora; la barra de arriba queda debajo de ella */
+  .ver-como {
+    position: sticky;
+    top: 0;
+    z-index: calc(var(--z-sticky) + 1);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 4px 8px 4px 16px;
+    background: var(--md-warning-bg);
+    color: var(--md-warning-text);
+    font-size: var(--fs-sm);
+  }
+  .ver-como-texto { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ver-como-boton {
+    flex: none;
+    min-height: 40px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: var(--md-shape-full);
+    background: var(--md-surface);
+    color: var(--md-on-surface);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  body.viendo-como .barra { top: 48px; }
+
+  /* Filas sin acción dentro de una lista (aparatos con la sesión abierta, Ajustes › Monitoras) */
+  .fila-simple { padding: 12px 16px; background: var(--md-surface-container-low); }
+  .fila-simple .ayuda { margin: 2px 0 0; }
+  .lista.separado { margin-top: 16px; }
+  .cifra-texto { margin: 4px 0; font-size: var(--fs-lg); }
+
+  /* Contraseña temporal de una monitora (Ajustes › Monitoras): se lee y se dicta bien */
   .clave-grande {
     margin: 0 0 16px;
     padding: 14px 16px;

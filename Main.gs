@@ -20,7 +20,7 @@ const ICONO_APP_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 9
 /**
  * Enlace de la web app (/exec o /dev). Desde el 6-nov-2026 solo abre la app a quien Google identifique con su
  * correo (la propietaria o una monitora activa de la hoja Monitoras, Auth.gs). A cualquier otra persona le
- * enseña una página que la manda a la app instalable, que va con clave.
+ * enseña una página que la manda a la app instalable, que va con usuario y contraseña.
  */
 function doGet() {
   if (!identificarMonitora_()) return paginaUsarApp_();
@@ -44,16 +44,16 @@ function paginaUsarApp_() {
     'box-shadow:0 1px 2px rgba(60,64,67,.3),0 1px 3px 1px rgba(60,64,67,.15)}h1{font-size:22px;margin:0 0 12px}' +
     'p{font-size:17px;line-height:1.45;color:#5f6368;margin:0 0 20px}a{display:inline-block;padding:14px 24px;border-radius:999px;' +
     'background:#34507a;color:#fff;text-decoration:none;font-weight:600;font-size:17px}</style></head><body><main>' +
-    '<h1>Asistencia talleres</h1><p>Esta aplicación se usa desde la app instalada, con la clave que te ha dado la ' +
-    'administración.</p><a href="' + URL_PWA + '" target="_top">Abrir la app</a></main></body></html>';
+    '<h1>Asistencia talleres</h1><p>Esta aplicación se usa desde la app instalada, con el usuario y la contraseña ' +
+    'que te ha dado la administración.</p><a href="' + URL_PWA + '" target="_top">Abrir la app</a></main></body></html>';
   return HtmlService.createHtmlOutput(html).setTitle('Asistencia talleres')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 /**
  * Entrada de la app instalable (PWA, 6-nov-2026). La PWA envía un POST con Content-Type text/plain (así el
- * navegador no hace la consulta previa de CORS) y el cuerpo { action, args, clave } en JSON. Responde en JSON lo
- * mismo que las funciones api_* (Api.gs, atenderPWA_). Quién entra lo dice la clave (Auth.gs, comprobarClavePWA_).
+ * navegador no hace la consulta previa de CORS) y el cuerpo { action, args, token } en JSON. Responde en JSON lo
+ * mismo que las funciones api_* (Api.gs, atenderPWA_). Quién entra lo dice la sesión del token (Auth.gs, comprobarSesionPWA_).
  */
 function doPost(e) {
   let respuesta;
@@ -76,6 +76,8 @@ function onOpen() {
     .addItem('Importar usuarios desde hoja…', 'menuImportar')
     .addItem('Importar usuarios del documento del centro…', 'menuImportarCentro')
     .addItem('Validar datos', 'menuValidar')
+    .addSeparator()
+    .addItem('Crear o recuperar el acceso de administración', 'menuAccesoAdmin')
     .addToUi();
 }
 
@@ -105,5 +107,18 @@ function menuValidar() {
       ? avisos.slice(0, 40).join('\n') + (avisos.length > 40 ? '\n… y ' + (avisos.length - 40) + ' avisos más.' : '')
       : 'Todo correcto: no se ha encontrado ningún problema.';
     ui.alert('Validar datos', texto, ui.ButtonSet.OK);
+  });
+}
+
+/**
+ * Primera cuenta de la app instalable o recuperar el acceso (9-nov-2026): a quien ejecuta el menú (admin) le pone
+ * usuario y una contraseña temporal, que tendrá que cambiar al entrar (Auth.gs, recuperarAccesoAdmin_).
+ */
+function menuAccesoAdmin() {
+  ejecutarMenu_(function (ui) {
+    const r = recuperarAccesoAdmin_(soloAdmin_());
+    ui.alert('Acceso de administración',
+      'Entra en la app instalada (' + URL_PWA + ') con:\n\nUsuario: ' + r.usuario + '\nContraseña temporal: ' + r.contrasena +
+      '\n\nAl entrar te pedirá una contraseña tuya.', ui.ButtonSet.OK);
   });
 }

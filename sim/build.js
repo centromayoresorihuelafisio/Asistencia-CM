@@ -8,7 +8,8 @@ const S = __dirname, R = p.join(S, '..');
 let idx = fs.readFileSync(p.join(R, 'Index.html'), 'utf8');
 const gs = ['Config', 'Repo', 'Auth', 'Servicio', 'Api', 'Admin', 'Informes', 'Importar', 'Setup', 'Main']
   .map(n => '<script>\n' + fs.readFileSync(p.join(R, n + '.gs'), 'utf8') + '\n</script>').join('\n');
-idx = idx.replace("<?!= include('Estilos'); ?>", '<meta name="viewport" content="width=device-width, initial-scale=1">' + fs.readFileSync(p.join(R, 'Estilos.html'), 'utf8'));
-idx = idx.replace("<?!= include('Cliente'); ?>", '<script src="mock.js"></script>\n' + gs + '\n<script src="datos.js"></script>\n' + fs.readFileSync(p.join(R, 'Cliente.html'), 'utf8'));
+// Con función (no con texto) para que un «$'» o «$&» del código no se tome como patrón de reemplazo
+idx = idx.replace("<?!= include('Estilos'); ?>", () => '<meta name="viewport" content="width=device-width, initial-scale=1">' + fs.readFileSync(p.join(R, 'Estilos.html'), 'utf8'));
+idx = idx.replace("<?!= include('Cliente'); ?>", () => '<script src="mock.js"></script>\n' + gs + '\n<script src="datos.js"></script>\n' + fs.readFileSync(p.join(R, 'Cliente.html'), 'utf8'));
 fs.writeFileSync(p.join(S, 'index.html'), idx);
 console.log('sim/index.html listo,', idx.length, 'caracteres');

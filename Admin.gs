@@ -471,34 +471,47 @@ function guardarLista_(monitora, lista, valores) {
   });
 }
 
-// ---------- Monitoras y sus claves de la app (6-nov-2026) ----------
-// La monitora se identifica por su correo (solo como identificador: no hace falta que use Google) y entra en la
-// app instalable con su clave. En la hoja solo se guarda la huella de la clave; la clave se enseña una vez.
+// ---------- Monitoras y sus cuentas de la app (6-nov-2026; usuario y contraseña desde el 9-nov-2026) ----------
+// La monitora se identifica por su correo (solo como identificador: no hace falta que use Google; está en
+// Grupos.monitoras) y entra en la app instalable con su usuario y contraseña (Auth.gs). La contraseña nunca sale
+// del servidor salvo la temporal, que se enseña una vez.
 
-/** Monitoras para Gestión, sin la huella de la clave: { email, nombre, rol, activa, tieneClave, grupos }. */
+/**
+ * Monitoras para Gestión y Configuración, sin la contraseña: { email, nombre, usuario, rol, activa, tieneContrasena,
+ * debeCambiar, bloqueada, ultimoAcceso, grupos, sesiones: [{ aparato, creada, ultimo_uso, actual }] }.
+ */
 function monitorasParaCliente_() {
   const grupos = leerTabla_(HOJAS.GRUPOS).filter(function (g) { return g.grupo_id && g.activo !== NO; });
+  const accesos = existeHoja_(HOJAS.ACCESOS) ? leerTabla_(HOJAS.ACCESOS) : [];
   return leerTabla_(HOJAS.MONITORAS).filter(function (m) { return m.email; }).map(function (m) {
     const email = String(m.email).toLowerCase();
     return {
-      email: email, nombre: m.nombre || '', rol: m.rol === ROL.ADMIN ? ROL.ADMIN : ROL.MONITORA,
-      activa: m.activa === SI, tieneClave: !!m.clave_hash,
-      grupos: grupos.filter(function (g) { return correosDeGrupo_(g).indexOf(email) >= 0; }).length
+      email: email, nombre: m.nombre || '', usuario: m.usuario || '', rol: m.rol === ROL.ADMIN ? ROL.ADMIN : ROL.MONITORA,
+      activa: m.activa === SI, tieneContrasena: tieneContrasena_(m), debeCambiar: m.debe_cambiar === SI,
+      bloqueada: Number(m.bloqueada_hasta) > Date.now(), ultimoAcceso: m.ultimo_acceso || '',
+      propietaria: email === correoPropietario_(),
+      grupos: grupos.filter(function (g) { return correosDeGrupo_(g).indexOf(email) >= 0; }).length,
+      sesiones: sesionesDe_(email, accesos)
     };
   }).sort(function (a, b) { return (a.nombre || a.email).localeCompare(b.nombre || b.email, 'es'); });
 }
 
 /**
- * Crea o modifica una monitora. datos: { email, nombre, rol, activa }.
- * El correo es su identificador (está en Grupos.monitoras): no se cambia después.
+ * Crea o modifica una monitora. datos: { email, nombre, usuario, rol, activa }.
+ * El correo es su identificador (está en Grupos.monitoras): no se cambia después. El usuario es único.
+ * Desactivarla cierra sus sesiones en todos los aparatos.
  */
 function guardarMonitora_(monitora, datos, nuevo) {
   comprobarAdmin_(monitora);
   datos = datos || {};
   const email = String(datos.email || '').trim().toLowerCase();
   const nombre = String(datos.nombre || '').replace(/\s+/g, ' ').trim();
+  const usuario = usuarioNormal_(datos.usuario);
   if (!/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(email)) throw errorApp_('Escribe un correo como nombre@gmail.com.');
   if (!nombre) throw errorApp_('Escribe el nombre de la monitora.');
+  if (!PATRON_USUARIO.test(usuario)) {
+    throw errorApp_('El usuario tiene que tener de 3 a 30 letras sin tildes, números, puntos o guiones, sin espacios (ej.: lucia).');
+  }
   const rol = datos.rol === ROL.ADMIN ? ROL.ADMIN : ROL.MONITORA;
   const activa = datos.activa === false ? NO : SI;
   if (email === correoPropietario_() && (rol !== ROL.ADMIN || activa === NO)) {
@@ -506,35 +519,56 @@ function guardarMonitora_(monitora, datos, nuevo) {
   }
   return conBloqueo_(function () {
     completarCabeceras_(hoja_(HOJAS.MONITORAS), HOJAS.MONITORAS);
-    const existente = leerTabla_(HOJAS.MONITORAS).find(function (m) { return String(m.email).toLowerCase() === email; });
+    const filas = leerTabla_(HOJAS.MONITORAS);
+    const existente = filas.find(function (m) { return String(m.email).toLowerCase() === email; });
+    const otraConUsuario = filaPorUsuario_(filas, usuario);
+    if (otraConUsuario && otraConUsuario !== existente) throw errorApp_('El usuario «' + usuario + '» ya lo tiene ' + (otraConUsuario.nombre || otraConUsuario.email) + '.');
+    let cerradas = 0;
     if (nuevo) {
       if (existente) throw errorApp_('Ya hay una monitora con el correo ' + email + '.');
-      anadirFilas_(HOJAS.MONITORAS, [{ email: email, nombre: nombre, rol: rol, activa: activa, clave_hash: '' }]);
+      anadirFilas_(HOJAS.MONITORAS, [{ email: email, nombre: nombre, usuario: usuario, rol: rol, activa: activa, clave_hash: '' }]);
     } else {
       if (!existente) throw errorApp_('No se encuentra la monitora. Vuelve a abrir la pantalla.');
-      Object.assign(existente, { nombre: nombre, rol: rol, activa: activa });
+      Object.assign(existente, { nombre: nombre, usuario: usuario, rol: rol, activa: activa });
       actualizarFilas_(HOJAS.MONITORAS, [existente]);
+      if (activa === NO) cerradas = cerrarSesiones_(email, '');
     }
-    return { email: email };
+    return { email: email, sesionesCerradas: cerradas };
   });
 }
 
-/** Crea una clave nueva para una monitora (la anterior deja de valer). Devuelve { email, clave }: es la única vez que se ve. */
-function nuevaClaveMonitora_(monitora, email) {
+/**
+ * Contraseña temporal nueva para una monitora (la anterior deja de valer y se cierran sus sesiones; la de quien
+ * lo hace, si es para sí misma, sigue abierta). Al entrar con ella tendrá que poner una suya.
+ * Devuelve { email, usuario, contrasena, url, urlApp }: es la única vez que se ve la contraseña.
+ */
+function nuevaContrasenaMonitora_(monitora, email) {
   comprobarAdmin_(monitora);
   const correo = String(email || '').trim().toLowerCase();
   return conBloqueo_(function () {
     completarCabeceras_(hoja_(HOJAS.MONITORAS), HOJAS.MONITORAS);
     const fila = leerTabla_(HOJAS.MONITORAS).find(function (m) { return String(m.email).toLowerCase() === correo; });
     if (!fila) throw errorApp_('No se encuentra la monitora. Vuelve a abrir la pantalla.');
-    if (fila.activa !== SI) throw errorApp_('La monitora está desactivada. Actívala antes de darle una clave.');
-    const clave = claveNueva_();
-    fila.clave_hash = huellaClave_(clave);
+    if (fila.activa !== SI) throw errorApp_('La monitora está desactivada. Actívala antes de darle una contraseña.');
+    if (!fila.usuario) throw errorApp_('Ponle antes un nombre de usuario y guarda.');
+    const contrasena = contrasenaTemporal_();
+    ponerContrasena_(fila, contrasena);
+    fila.debe_cambiar = SI;
     actualizarFilas_(HOJAS.MONITORAS, [fila]);
-    // Para el enlace que conecta la app solo (Cliente.html, enlaceConexion): la PWA usa su propia dirección del
-    // servidor; desde la web app, esta (la de la implementación con la que se ha abierto) y la de la PWA.
+    cerrarSesiones_(correo, sesionEnCurso_ ? sesionEnCurso_.huella : '');
+    // Para el enlace de la app (Cliente.html, enlaceApp): la PWA usa su propia dirección del servidor; desde la web
+    // app, esta (la de la implementación con la que se ha abierto) y la de la PWA.
     let url = '';
     try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
-    return { email: correo, clave: clave, url: url, urlApp: URL_PWA };
+    return { email: correo, usuario: fila.usuario, contrasena: contrasena, url: url, urlApp: URL_PWA };
+  });
+}
+
+/** Cierra las sesiones de una monitora en todos sus aparatos (salvo la de quien lo hace). Devuelve { cerradas }. */
+function cerrarSesionesMonitora_(monitora, email) {
+  comprobarAdmin_(monitora);
+  const correo = String(email || '').trim().toLowerCase();
+  return conBloqueo_(function () {
+    return { cerradas: cerrarSesiones_(correo, sesionEnCurso_ ? sesionEnCurso_.huella : '') };
   });
 }

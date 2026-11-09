@@ -451,7 +451,7 @@ function guardarSesion_(monitora, payload) {
         grupo: nombreGrupo,
         mes: fecha.substring(0, 7),
         observaciones: recibidos[id].observaciones,
-        registrada_por: monitora.email,
+        registrada_por: emailRegistro_(monitora),
         timestamp: ahora
       };
       if (existentes[id]) { fila._fila = existentes[id]._fila; actualizar.push(fila); } else nuevas.push(fila);
@@ -461,7 +461,7 @@ function guardarSesion_(monitora, payload) {
     // Se borra al final: las filas sobrantes están por encima de las añadidas y no se descolocan.
     borrarFilas_(HOJAS.ASISTENCIA, sobrantes);
 
-    guardarFilaSesion_(grupoId, fecha, ESTADO_SESION.REALIZADA, String(payload.nota || '').trim(), monitora.email, ahora);
+    guardarFilaSesion_(grupoId, fecha, ESTADO_SESION.REALIZADA, String(payload.nota || '').trim(), emailRegistro_(monitora), ahora);
     return { guardados: Object.keys(recibidos).length };
   });
 }
@@ -486,7 +486,7 @@ function cancelarSesion_(monitora, grupoId, fecha, nota) {
   return conBloqueo_(function () {
     const grupo = grupoPorId_(grupoId);
     comprobarAccesoGrupo_(monitora, grupo);
-    guardarFilaSesion_(grupoId, fecha, ESTADO_SESION.CANCELADA, String(nota || '').trim(), monitora.email, marcaDeTiempo_());
+    guardarFilaSesion_(grupoId, fecha, ESTADO_SESION.CANCELADA, String(nota || '').trim(), emailRegistro_(monitora), marcaDeTiempo_());
     return { cancelada: true };
   });
 }
@@ -671,7 +671,7 @@ function deshacerCancelar_(monitora, grupoId, fecha) {
     if (!sesion || sesion.estado !== ESTADO_SESION.CANCELADA) throw errorApp_('Esta clase ya no está marcada sin clase.');
     const conMarcas = leerTabla_(HOJAS.ASISTENCIA).some(function (a) { return a.fecha === fecha && a.grupo_id === grupoId; });
     if (conMarcas) {
-      guardarFilaSesion_(grupoId, fecha, ESTADO_SESION.REALIZADA, '', monitora.email, marcaDeTiempo_());
+      guardarFilaSesion_(grupoId, fecha, ESTADO_SESION.REALIZADA, '', emailRegistro_(monitora), marcaDeTiempo_());
     } else {
       borrarFilas_(HOJAS.SESIONES, [sesion._fila]);
     }

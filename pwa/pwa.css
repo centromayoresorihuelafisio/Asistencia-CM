@@ -4,7 +4,7 @@
   /* Que el navegador no haga su propio «tirar para recargar» ni rebote: Inicio tiene el suyo */
   html, body { overscroll-behavior-y: contain; }
 
-  /* Pantalla de conexión (pwa/api.js) */
+  /* Pantallas de entrada y de cambio de contraseña (pwa/api.js) */
   .pwa-conexion {
     position: fixed;
     inset: 0;
@@ -30,3 +30,18 @@
   .pwa-conexion .botones { margin-top: 8px; }
   .pwa-conexion .botones .boton { flex: 1; }
   body.pwa-sin-scroll { overflow: hidden; }
+  .pwa-conexion .check { margin: -4px 0 16px; }
+  /* «Cambiar la dirección de la aplicación»: enlace discreto bajo «Entrar» */
+  .pwa-conexion .boton-texto {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    margin-top: 8px;
+    border: 0;
+    background: none;
+    color: var(--md-on-surface-med);
+    font: inherit;
+    font-size: var(--fs-sm);
+    text-decoration: underline;
+    cursor: pointer;
+  }

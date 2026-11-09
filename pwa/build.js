@@ -6,8 +6,8 @@
 //   node pwa/build.js         → pwa/dist/  (lo que se publica; lo hace solo .github/workflows/pwa.yml)
 //   node pwa/build.js --sim   → sim/pwa/   (para probar en el ordenador con la simulación de hojas, sin Google)
 // Servir la prueba: python -m http.server 8932 --bind 127.0.0.1 --directory sim/pwa
-// Abrir: http://127.0.0.1:8932/index.html (parámetros de sim/build.js y ?clave=… para la clave del «servidor»;
-// la clave de prueba es «prueba»).
+// Abrir: http://127.0.0.1:8932/index.html (parámetros de sim/build.js; cuentas de prueba en sim/pwa-mock.js).
+// Con la variable de entorno URL_SERVIDOR, la dirección /exec queda puesta en la PWA (la usa .github/workflows/pwa.yml).
 'use strict';
 const fs = require('fs'), p = require('path'), crypto = require('crypto');
 const iconos = require('./iconos');
@@ -49,8 +49,17 @@ if (conSim) {
 let pagina = leer(p.join(RAIZ, 'Index.html'));
 pagina = reemplazarUnaVez(pagina, "<?!= include('Estilos'); ?>",
   cabeza + '\n' + leer(p.join(RAIZ, 'Estilos.html')) + '\n<style>\n' + leer(p.join(PWA, 'pwa.css')) + '</style>');
+// Dirección /exec del servidor (9-nov-2026): la variable URL_SERVIDOR de GitHub Actions (Settings › Secrets and
+// variables › Actions › Variables). No está en el repositorio. Sin ella, la PWA la pide en la pantalla de entrada.
+// En la simulación, una dirección de prueba que atiende sim/pwa-mock.js.
+const urlServidor = conSim ? 'https://script.google.com/macros/s/SIMULACION/exec' : String(process.env.URL_SERVIDOR || '').trim();
+if (urlServidor && !/^https:\/\/script\.google\.com\/(a\/[^/]+\/)?macros\/s\/[\w-]+\/exec$/.test(urlServidor)) {
+  throw new Error('URL_SERVIDOR no es una dirección de Apps Script terminada en /exec.');
+}
+const apiJs = leer(p.join(PWA, 'api.js'));
+if (apiJs.split("'__URL_SERVIDOR__'").length !== 2) throw new Error("Falta '__URL_SERVIDOR__' en pwa/api.js.");
 pagina = reemplazarUnaVez(pagina, "<?!= include('Cliente'); ?>",
-  codigoAntes + script(leer(p.join(PWA, 'api.js'))) + '\n' + leer(p.join(RAIZ, 'Cliente.html')));
+  codigoAntes + script(apiJs.replace("'__URL_SERVIDOR__'", () => JSON.stringify(urlServidor))) + '\n' + leer(p.join(RAIZ, 'Cliente.html')));
 if (pagina.indexOf('<?') >= 0) throw new Error('Queda alguna etiqueta de plantilla de Apps Script (<? … ?>) en la página.');
 
 // ---------- Iconos ----------

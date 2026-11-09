@@ -1,6 +1,7 @@
 # Publica la app instalable (PWA) en GitHub Pages cada vez que cambia su código en main (6-nov-2026).
 # Monta pwa/dist/ con node pwa/build.js (sin dependencias) y lo sube a Pages.
-# Hace falta, una vez: Settings › Pages › Build and deployment › Source: «GitHub Actions».
+# Hace falta, una vez: Settings › Pages › Build and deployment › Source: «GitHub Actions», y la variable URL_SERVIDOR
+# (Settings › Secrets and variables › Actions › Variables) con la dirección /exec de la implementación.
 name: Publicar PWA
 
 on:
@@ -30,6 +31,10 @@ jobs:
         with:
           node-version: 20
       - run: node pwa/build.js
+        env:
+          # Dirección /exec de la implementación (Settings › Secrets and variables › Actions › Variables).
+          # Sin ella, la app pide la dirección en la pantalla de entrada.
+          URL_SERVIDOR: ${{ vars.URL_SERVIDOR }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

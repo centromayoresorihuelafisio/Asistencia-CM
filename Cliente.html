@@ -443,7 +443,8 @@
 
     /**
      * Lleva la llamada al servidor: con google.script.run dentro de Apps Script o, en la app instalable (PWA,
-     * 6-nov-2026), con el fetch de pwa/api.js (window.PWA). bien(r) recibe { ok, data | error }; mal(), un fallo de conexión.
+     * 6-nov-2026), con el fetch de pwa/api.js (window.PWA), que añade el token de la sesión y, sin sesión, enseña la
+     * pantalla de entrada. bien(r) recibe { ok, data | error }; mal(), un fallo de conexión.
      */
     function transporte(funcion, args, bien, mal) {
       if (window.PWA) { window.PWA.llamar(funcion, args).then(bien, mal); return; }
@@ -3101,7 +3102,7 @@
       curso: '<path d="M5 13.2v4L12 21l7-3.8v-4L12 17zM12 3 1 9l11 6 9-4.9V17h2V9z"/>',
       listas: '<path d="M3 13h2v-2H3zm0 4h2v-2H3zm0-8h2V7H3zm4 4h14v-2H7zm0 4h14v-2H7zM7 7v2h14V7z"/>',
       monitoras: '<path d="M20 6h-4V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zM10 4h4v2h-4zm2 6a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm4 8H8v-1c0-1.3 2.7-2 4-2s4 .7 4 2z"/>',
-      conexion: '<path d="M3.9 12a3.1 3.1 0 0 1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7A3.1 3.1 0 0 1 3.9 12zM8 13h8v-2H8zm9-6h-4v1.9h4a3.1 3.1 0 0 1 0 6.2h-4V17h4a5 5 0 0 0 0-10z"/>'
+      cuenta: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 4a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7zm0 14a8 8 0 0 1-6.2-3c.9-1.8 3.9-2.8 6.2-2.8s5.3 1 6.2 2.8A8 8 0 0 1 12 20z"/>'
     };
     function iconoGestion(nombre) {
       return '<span class="icono-entrada" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">' + ICONOS_GESTION[nombre] + '</svg></span>';
@@ -3122,7 +3123,10 @@
       pintar('<div class="lista">' +
         entradaGestion('g-grupos', 'grupos', 'Grupos y talleres', (esAdmin() ? '' : 'Tuyos · ') + activos + (activos === 1 ? ' grupo activo' : ' grupos activos')) +
         entradaGestion('g-usuarios', 'usuarios', 'Usuarios', g.totalUsuarios + ' en la base de datos') +
-        entradaGestion('g-dias', 'dias', 'Días libres', textoProximos(proximos) + ' · asuntos propios y otros días sin clase de un grupo') + '</div>'
+        entradaGestion('g-dias', 'dias', 'Días libres', textoProximos(proximos) + ' · asuntos propios y otros días sin clase de un grupo') + '</div>' +
+        // Solo en la app instalable (9-nov-2026), y no mientras el admin ve la app como otra monitora
+        (window.PWA && !app.init.monitora.real ? '<div class="lista separado">' +
+          entradaGestion('g-cuenta', 'cuenta', 'Tu cuenta', 'Usuario ' + (app.init.monitora.usuario || (window.PWA.cuenta() || {}).usuario || '') + ' · cambiar la contraseña o cerrar la sesión') + '</div>' : '')
       );
     }
 
@@ -3148,9 +3152,7 @@
         entradaGestion('g-periodos', 'dias', 'Periodos no lectivos', textoProximos(proximos) + ' · festivos y vacaciones de todos los grupos') +
         entradaGestion('g-estados', 'estados', 'Estados de asistencia', c.estados.map(function (e) { return e.etiqueta; }).join(', ')) +
         entradaGestion('g-listas', 'listas', 'Listas', 'Motivos de baja, tipos de día libre y observaciones rápidas') +
-        entradaGestion('g-monitoras', 'monitoras', 'Monitoras', c.monitoras.filter(function (m) { return m.activa; }).length + ' activas · claves de la app') +
-        // Solo en la app instalable (PWA, 6-nov-2026): cambiar la dirección de la copia o la clave
-        (window.PWA ? entradaGestion('g-conexion', 'conexion', 'Conexión de la app', window.PWA.descripcion()) : '') + '</div>'
+        entradaGestion('g-monitoras', 'monitoras', 'Monitoras', c.monitoras.filter(function (m) { return m.activa; }).length + ' activas · usuarios, contraseñas y ver como') + '</div>'
       );
     }
 
@@ -3605,21 +3607,30 @@
       }).then(siSigue(irEstados)).catch(avisoError);
     }
 
-    // --- Monitoras y sus claves de la app (6-nov-2026) ---
-    // Cada monitora entra en la app instalable con su clave y ve solo sus grupos. La clave se crea aquí, se enseña
-    // una sola vez y se le envía con un enlace que conecta la app solo (pwa/api.js lo lee).
+    // --- Monitoras y sus cuentas de la app (6-nov-2026; usuario y contraseña desde el 9-nov-2026) ---
+    // Cada monitora entra en la app instalable con su usuario y contraseña y ve solo sus grupos. Aquí se le da una
+    // contraseña temporal (se enseña una sola vez y se le envía con el enlace de la app; al entrar pondrá una suya),
+    // se ven los aparatos con la sesión abierta y se cierran, y el admin puede ver la app como ella («ver como»).
 
     function textoMonitora(m) {
       return [m.rol === 'admin' ? 'Administración' : 'Monitora',
         m.grupos === 1 ? '1 grupo' : m.grupos + ' grupos',
-        m.tieneClave ? 'con clave' : 'sin clave'].join(' · ');
+        m.usuario ? 'usuario ' + m.usuario : 'sin usuario',
+        !m.tieneContrasena ? 'sin contraseña' : m.debeCambiar ? 'contraseña temporal' : '',
+        m.bloqueada ? 'bloqueada unos minutos' : '',
+        m.sesiones.length ? (m.sesiones.length === 1 ? '1 aparato' : m.sesiones.length + ' aparatos') : ''
+      ].filter(Boolean).join(' · ');
+    }
+
+    function monitoraConf(email) {
+      return app.conf.monitoras.find(function (x) { return x.email === email; }) || null;
     }
 
     function irMonitoras() {
       const lista = app.conf.monitoras;
       pantallaSecundaria('g-monitoras', 'Monitoras', lista.filter(function (m) { return m.activa; }).length + ' activas', volverConfiguracion);
-      pintar('<p class="ayuda">Cada monitora entra en la app con su clave y solo ve sus grupos (los que la tienen en Gestión › Grupos). ' +
-        'Toca una para darle o cambiarle la clave.</p>' +
+      pintar('<p class="ayuda">Cada monitora entra en la app con su usuario y su contraseña y solo ve sus grupos (los que la tienen en Gestión › Grupos). ' +
+        'La sesión se queda abierta en su móvil hasta que la cierre. Toca una para darle una contraseña, ver sus aparatos o ver la app como ella.</p>' +
         (lista.length ? '<div class="lista">' + lista.map(function (m) {
           return filaPersona({
             boton: true, clase: m.activa ? '' : 'inactiva', nombre: m.nombre || m.email,
@@ -3631,42 +3642,86 @@
         fab('g-monitora-nueva', 'Nueva monitora'));
     }
 
+    /** Usuario propuesto a partir del nombre: la primera palabra, en minúsculas y sin tildes («Lucía Pérez» → «lucia»). */
+    function usuarioDesdeNombre(nombre) {
+      const base = String(nombre || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+        .replace(/ñ/g, 'n').split(/\s+/)[0].replace(/[^a-z0-9._-]/g, '');
+      let u = base.length >= 3 ? base : '';
+      if (!u) return '';
+      const usados = app.conf.monitoras.map(function (m) { return m.usuario; });
+      for (let n = 2; usados.indexOf(u) >= 0; n++) u = base + n;
+      return u;
+    }
+
+    /** Fecha y hora de la hoja («2026-11-09 10:30») para leer: «9/11 10:30». */
+    function fechaHoraCorta(t) {
+      const m = String(t || '').match(/^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}:\d{2}))?/);
+      return m ? Number(m[3]) + '/' + Number(m[2]) + (m[4] ? ' ' + m[4] : '') : '';
+    }
+
     /** Panel de una monitora (email vacío = nueva). */
     function abrirPanelMonitora(email) {
-      const m = email ? app.conf.monitoras.find(function (x) { return x.email === email; })
-        : { email: '', nombre: '', rol: 'monitora', activa: true, tieneClave: false, grupos: 0 };
+      const m = email ? monitoraConf(email)
+        : { email: '', nombre: '', usuario: '', rol: 'monitora', activa: true, tieneContrasena: false, grupos: 0, sesiones: [] };
       if (!m) return;
       const nueva = !m.email;
+      const yo = m.email === (app.init.monitora.real || app.init.monitora).email;
+      const otrosAparatos = m.sesiones.filter(function (s) { return !s.actual; }).length;
       abrirPanel('<div><h3>' + (nueva ? 'Nueva monitora' : esc(m.nombre || m.email)) + '</h3>' +
         (nueva ? '' : '<p class="ayuda">' + esc(m.email) + ' · ' + esc(textoMonitora(m)) + '</p>') +
         '<div class="campo"><label for="mNombre">Nombre</label><input type="text" id="mNombre" autocomplete="off" enterkeyhint="next" value="' + esc(m.nombre) + '" placeholder="Ej.: Carmen"></div>' +
-        (nueva ? '<div class="campo"><label for="mEmail">Correo</label><input type="email" id="mEmail" inputmode="email" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="nombre@gmail.com">' +
+        (nueva ? '<div class="campo"><label for="mEmail">Correo</label><input type="email" id="mEmail" inputmode="email" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" placeholder="nombre@gmail.com">' +
           '<p class="ayuda">Sirve para reconocerla y asignarle grupos; no hace falta que use Google. No se puede cambiar después.</p></div>' : '') +
+        '<div class="campo"><label for="mUsuario">Usuario</label><input type="text" id="mUsuario" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="done" value="' + esc(m.usuario) + '" placeholder="Ej.: lucia">' +
+          '<p class="ayuda">Con el que entra en la app: minúsculas sin tildes, sin espacios.</p></div>' +
         opcionesRadio('mRol', 'Qué puede hacer', [
           { valor: 'monitora', texto: 'Monitora', sub: 'Pasa lista, altas y bajas, historial e informe de sus grupos' },
           { valor: 'admin', texto: 'Administración', sub: 'Todo, con todos los grupos y la pestaña Ajustes' }
         ], m.rol) +
-        (nueva ? '' : '<label class="check"><input type="checkbox" id="mActiva"' + (m.activa ? ' checked' : '') + '> Activa (si la desactivas, su clave deja de funcionar al momento)</label>') +
+        (nueva || m.propietaria ? '' : '<label class="check"><input type="checkbox" id="mActiva"' + (m.activa ? ' checked' : '') + '> Activa (si la desactivas, se cierra su sesión en todos sus aparatos)</label>') +
         '<div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Cancelar</button>' +
         '<button type="button" class="boton primario" data-accion="g-guardar-monitora" data-email="' + esc(m.email) + '">' + (nueva ? 'Crear' : 'Guardar') + '</button></div>' +
-        (nueva || !m.activa ? '' : '<button type="button" class="boton ancho separado" data-accion="g-clave-monitora" data-email="' + esc(m.email) + '" data-en-curso="Creando la clave…">' +
-          (m.tieneClave ? 'Cambiar la clave…' : 'Crear clave y enviar enlace') + '</button>') +
+        (nueva || !m.activa ? '' :
+          '<button type="button" class="boton ancho separado" data-accion="g-contrasena-monitora" data-email="' + esc(m.email) + '" data-en-curso="Creando la contraseña…">' +
+            (m.tieneContrasena ? 'Darle una contraseña nueva…' : 'Crear contraseña y enviar enlace') + '</button>' +
+          (window.PWA && !yo && !m.propietaria ? '<button type="button" class="boton ancho separado" data-accion="g-ver-como" data-email="' + esc(m.email) + '" data-en-curso="Cambiando…">' +
+            'Ver la app como ' + esc(m.nombre || m.email) + '</button>' : '') +
+          (m.sesiones.length ? '<h4 class="subtitulo-panel">Sesión abierta en</h4><div class="lista">' + m.sesiones.map(function (s) {
+            return '<div class="fila-simple"><div><div>' + esc(s.aparato) + (s.actual ? ' · <b>este aparato</b>' : '') + '</div>' +
+              '<div class="ayuda">Desde el ' + esc(fechaHoraCorta(s.creada)) + ' · último uso ' + esc(fechaHoraCorta(s.ultimo_uso)) + '</div></div></div>';
+          }).join('') + '</div>' +
+          (otrosAparatos ? '<button type="button" class="boton peligro ancho separado" data-accion="g-cerrar-sesiones" data-email="' + esc(m.email) + '" data-en-curso="Cerrando…">' +
+            (yo ? 'Cerrar mi sesión en los demás aparatos' : 'Cerrar su sesión en ' + (otrosAparatos === 1 ? 'su aparato' : 'sus ' + otrosAparatos + ' aparatos')) + '</button>' : '') : '')) +
         '</div>');
+      if (nueva) {
+        // Mientras se escribe el nombre se propone el usuario, si no se ha tocado a mano
+        const u = $('mUsuario');
+        $('mNombre').addEventListener('input', function () {
+          if (u.dataset.aMano) return;
+          u.value = usuarioDesdeNombre(this.value);
+        });
+        u.addEventListener('input', function () { u.dataset.aMano = '1'; });
+      }
     }
 
     function guardarMonitora(email) {
       const nueva = !email;
+      const m = nueva ? null : monitoraConf(email);
       const datos = {
         email: nueva ? valor('mEmail').toLowerCase() : email,
         nombre: valor('mNombre'),
+        usuario: valor('mUsuario').toLowerCase(),
         rol: elegido('mRol'),
-        activa: nueva ? true : marcado('mActiva')
+        activa: nueva || (m && m.propietaria) ? true : marcado('mActiva')
       };
       if (!datos.nombre) return errorCampo('mNombre', 'Escribe el nombre de la monitora.');
       if (nueva && !/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(datos.email)) return errorCampo('mEmail', 'Escribe un correo como nombre@gmail.com.');
-      llamar('api_guardarMonitora', datos, nueva).then(function () {
+      if (!/^[a-z0-9._-]{3,30}$/.test(datos.usuario)) return errorCampo('mUsuario', 'De 3 a 30 letras sin tildes, números, puntos o guiones, sin espacios.');
+      const otra = app.conf.monitoras.find(function (x) { return x.usuario === datos.usuario && x.email !== datos.email; });
+      if (otra) return errorCampo('mUsuario', 'Ese usuario ya lo tiene ' + (otra.nombre || otra.email) + '.');
+      llamar('api_guardarMonitora', datos, nueva).then(function (r) {
         cerrarPanel();
-        aviso(nueva ? 'Monitora creada · ahora créale la clave' : 'Monitora guardada');
+        aviso(nueva ? 'Monitora creada · ahora créale la contraseña' : r.sesionesCerradas ? 'Monitora guardada · sesión cerrada en sus aparatos' : 'Monitora guardada');
         return recargarDatos('gestion');
       }).then(siSigue(function () {
         irMonitoras();
@@ -3674,56 +3729,59 @@
       })).catch(avisoError);
     }
 
-    /** Crea la clave (si ya tenía una, pregunta antes: la anterior deja de valer). */
-    function pedirClaveMonitora(email) {
-      const m = app.conf.monitoras.find(function (x) { return x.email === email; });
+    /** Contraseña temporal (si ya tenía una, pregunta antes: la anterior deja de valer y se cierran sus sesiones). */
+    function pedirContrasenaMonitora(email) {
+      const m = monitoraConf(email);
       if (!m) return;
       const crear = function () {
-        llamar('api_nuevaClaveMonitora', email).then(function (r) {
-          app.claveCreada = { email: email, nombre: m.nombre || email, clave: r.clave, url: r.url, urlApp: r.urlApp };
-          // La lista se pinta ya con «con clave» y después se abre el panel con la clave (volver a pintar la
-          // pantalla cerraría el panel). Los datos de Configuración y Gestión se vuelven a pedir en segundo plano.
-          m.tieneClave = true;
+        llamar('api_nuevaContrasenaMonitora', email).then(function (r) {
+          app.contrasenaCreada = { email: email, nombre: m.nombre || email, usuario: r.usuario, contrasena: r.contrasena, url: r.url, urlApp: r.urlApp };
+          // La lista se pinta ya con los datos nuevos y después se abre el panel con la contraseña (volver a pintar
+          // la pantalla cerraría el panel). Los datos de Configuración y Gestión se vuelven a pedir en segundo plano.
+          m.tieneContrasena = true;
+          m.debeCambiar = true;
+          m.sesiones = m.sesiones.filter(function (s) { return s.actual; });
           if (app.vista === 'g-monitoras') irMonitoras();
-          mostrarClaveMonitora();
+          mostrarContrasenaMonitora();
           anticuar('gestion');
           pedir('api_configuracion').then(function (d) { app.conf = d; }).catch(function () { /* se verá al volver */ });
           pedir('api_gestion').then(function (d) { app.gest = d; }).catch(function () { /* se verá al volver */ });
         }).catch(avisoError);
       };
-      if (m.tieneClave) {
-        confirmar('¿Cambiar la clave de ' + (m.nombre || email) + '?', 'La que tiene ahora dejará de funcionar: tendrá que conectar la app otra vez con el enlace nuevo.',
-          'Cambiar la clave', true, crear, 'Creando la clave…');
+      if (m.tieneContrasena) {
+        confirmar('¿Darle una contraseña nueva a ' + (m.nombre || email) + '?', 'La que tiene ahora dejará de funcionar y se cerrará su sesión en sus aparatos: tendrá que entrar con la nueva.',
+          'Crear contraseña nueva', true, crear, 'Creando la contraseña…');
       } else {
         crear();
       }
     }
 
-    /** Enlace que conecta la app solo: la dirección de la app instalable con la del servidor y la clave tras «#». */
-    function enlaceConexion(c) {
+    /** Enlace a la app instalable, con la dirección del servidor y el usuario tras «#» (pwa/api.js lo lee). */
+    function enlaceApp(c) {
       const servidor = window.PWA ? window.PWA.urlServidor() : c.url;
       const base = window.PWA ? window.location.origin + window.location.pathname : c.urlApp;
-      return base + '#conectar=' + encodeURIComponent(servidor || '') + '&clave=' + encodeURIComponent(c.clave);
+      return base + '#conectar=' + encodeURIComponent(servidor || '') + '&usuario=' + encodeURIComponent(c.usuario);
     }
     function textoEnlace(c) {
       return 'Hola, ' + c.nombre + ': abre este enlace en tu móvil con Chrome para usar la app de asistencia. ' +
-        'Cuando se abra, en el menú ⋮ elige «Instalar app».\n' + enlaceConexion(c);
+        'Cuando se abra, en el menú ⋮ elige «Instalar app».\n' + enlaceApp(c) +
+        '\nUsuario: ' + c.usuario + '\nContraseña temporal: ' + c.contrasena + ' (al entrar te pedirá una tuya)';
     }
 
-    function mostrarClaveMonitora() {
-      const c = app.claveCreada;
+    function mostrarContrasenaMonitora() {
+      const c = app.contrasenaCreada;
       if (!c) return;
-      abrirPanel('<div><h3>Clave de ' + esc(c.nombre) + '</h3>' +
-        '<p class="ayuda">Envíale el enlace: al abrirlo en su móvil, la app se conecta sola con esta clave. ' +
-        'La clave solo se enseña ahora; si se pierde, crea otra.</p>' +
-        '<p class="clave-grande" aria-label="Clave">' + esc(c.clave) + '</p>' +
-        '<button type="button" class="boton lleno ancho" data-accion="clave-enviar">' + ICONO_COMPARTIR + 'Enviar enlace</button>' +
-        '<div class="botones separado"><button type="button" class="boton" data-accion="clave-copiar">Copiar enlace</button>' +
+      abrirPanel('<div><h3>Contraseña de ' + esc(c.nombre) + '</h3>' +
+        '<p class="ayuda">Envíale el enlace con su usuario y esta contraseña temporal. Al entrar tendrá que poner una suya. ' +
+        'La contraseña solo se enseña ahora; si se pierde, crea otra.</p>' +
+        '<p class="clave-grande" aria-label="Usuario y contraseña temporal">' + esc(c.usuario) + '<br>' + esc(c.contrasena) + '</p>' +
+        '<button type="button" class="boton lleno ancho" data-accion="clave-enviar">' + ICONO_COMPARTIR + 'Enviar enlace y contraseña</button>' +
+        '<div class="botones separado"><button type="button" class="boton" data-accion="clave-copiar">Copiar el texto</button>' +
         '<button type="button" class="boton" data-accion="cerrar-panel">Hecho</button></div></div>');
     }
 
     function enviarEnlaceClave() {
-      const c = app.claveCreada;
+      const c = app.contrasenaCreada;
       if (!c) return;
       if (navigator.share) {
         navigator.share({ title: 'App de asistencia', text: textoEnlace(c) }).catch(function (e) {
@@ -3736,22 +3794,88 @@
     }
 
     function copiarEnlaceClave() {
-      const c = app.claveCreada;
+      const c = app.contrasenaCreada;
       if (!c) return;
       const texto = textoEnlace(c);
       const aMano = function () {
         // Sin portapapeles (marco de Apps Script o navegador antiguo): el texto, seleccionado, para copiarlo a mano.
-        abrirPanel('<div><h3>Copia el enlace</h3><p class="ayuda">Mantén pulsado el texto para copiarlo.</p>' +
-          '<textarea id="claveTexto" rows="6" readonly>' + esc(texto) + '</textarea>' +
+        abrirPanel('<div><h3>Copia el texto</h3><p class="ayuda">Mantén pulsado el texto para copiarlo.</p>' +
+          '<textarea id="claveTexto" rows="7" readonly>' + esc(texto) + '</textarea>' +
           '<div class="botones separado"><button type="button" class="boton" data-accion="clave-volver">Volver</button></div></div>');
         const t = $('claveTexto');
         if (t) { t.focus(); t.select(); }
       };
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(texto).then(function () { aviso('Enlace copiado'); }, aMano);
+        navigator.clipboard.writeText(texto).then(function () { aviso('Texto copiado'); }, aMano);
       } else {
         aMano();
       }
+    }
+
+    function cerrarSesionesMonitora(email) {
+      const m = monitoraConf(email);
+      if (!m) return;
+      llamar('api_cerrarSesionesMonitora', email).then(function (r) {
+        cerrarPanel();
+        aviso(r.cerradas === 1 ? 'Sesión cerrada en 1 aparato' : 'Sesión cerrada en ' + r.cerradas + ' aparatos');
+        return recargarDatos('gestion');
+      }).then(siSigue(irMonitoras)).catch(avisoError);
+    }
+
+    // --- «Ver como» y la cuenta propia (solo en la app instalable, 9-nov-2026) ---
+
+    /** Algo sin enviar se perdería al recargar la app: se avisa en vez de seguir. */
+    function hayListasSinEnviar() {
+      if (!Object.keys(app.porGuardar).length) return false;
+      aviso('Antes, espera a que se envíen las listas pendientes.', true);
+      return true;
+    }
+
+    /** Ver la app como otra monitora (email) o volver a la cuenta propia (vacío). La app se recarga como esa persona. */
+    function verComo(email) {
+      if (!window.PWA || hayListasSinEnviar()) return;
+      ocuparBoton();
+      window.PWA.verComo(email).catch(avisoError);
+    }
+
+    /** Banda fija arriba mientras el admin ve la app como otra monitora. */
+    function pintarBandaVerComo() {
+      const m = app.init.monitora;
+      let banda = $('bandaVerComo');
+      if (!m.real) { if (banda) banda.remove(); document.body.classList.remove('viendo-como'); return; }
+      if (!banda) {
+        banda = document.createElement('div');
+        banda.id = 'bandaVerComo';
+        banda.className = 'ver-como';
+        banda.setAttribute('role', 'status');
+        document.body.insertBefore(banda, document.body.firstChild);
+      }
+      banda.innerHTML = '<span class="ver-como-texto">Viendo como <b>' + esc(m.nombre || m.email) + '</b></span>' +
+        '<button type="button" class="ver-como-boton" data-accion="ver-como-volver" data-en-curso="Volviendo…">Volver a mi cuenta</button>';
+      document.body.classList.add('viendo-como');
+    }
+
+    /** Gestión › Tu cuenta: quién tiene la sesión en este aparato, cambiar la contraseña y cerrar la sesión. */
+    function irCuenta() {
+      const m = app.init.monitora;
+      pantallaSecundaria('g-cuenta', 'Tu cuenta', m.nombre || m.email, volverGestion);
+      pintar('<div class="bloque"><p class="ayuda">Has entrado como</p><p class="cifra-texto"><b>' + esc(m.nombre || m.email) + '</b></p>' +
+        '<p class="ayuda">Usuario ' + esc(m.usuario || (window.PWA.cuenta() || {}).usuario || '') + ' · ' + (m.rol === 'admin' ? 'Administración' : 'Monitora') + '</p></div>' +
+        '<p class="ayuda">La sesión se queda abierta en este móvil hasta que la cierres. Ciérrala si vas a dejar de usarlo o si es de otra persona.</p>' +
+        '<button type="button" class="boton ancho separado" data-accion="cuenta-contrasena">Cambiar mi contraseña</button>' +
+        '<button type="button" class="boton peligro ancho separado" data-accion="cuenta-salir">Cerrar sesión en este móvil</button>');
+    }
+
+    function cambiarMiContrasena() {
+      window.PWA.cambiarContrasena().then(function (d) {
+        aviso(d && d.otrasCerradas ? 'Contraseña cambiada · sesión cerrada en tus otros aparatos' : 'Contraseña cambiada');
+      }, function () { /* cancelado */ });
+    }
+
+    function pedirSalir() {
+      if (hayListasSinEnviar()) return;
+      confirmar('¿Cerrar sesión en este móvil?', 'Para volver a usar la app tendrás que escribir tu usuario y tu contraseña.',
+        'Cerrar sesión', true, function () { window.PWA.salir(); }, 'Cerrando…');
     }
 
     // --- Curso ---
@@ -4241,11 +4365,16 @@
         case 'g-monitora': abrirPanelMonitora(dato('email')); break;
         case 'g-monitora-nueva': abrirPanelMonitora(''); break;
         case 'g-guardar-monitora': guardarMonitora(dato('email')); break;
-        case 'g-clave-monitora': pedirClaveMonitora(dato('email')); break;
+        case 'g-contrasena-monitora': pedirContrasenaMonitora(dato('email')); break;
+        case 'g-cerrar-sesiones': cerrarSesionesMonitora(dato('email')); break;
+        case 'g-ver-como': verComo(dato('email')); break;
+        case 'ver-como-volver': verComo(''); break;
         case 'clave-enviar': enviarEnlaceClave(); break;
         case 'clave-copiar': copiarEnlaceClave(); break;
-        case 'clave-volver': mostrarClaveMonitora(); break;
-        case 'g-conexion': if (window.PWA) window.PWA.abrirConexion(true); break;
+        case 'clave-volver': mostrarContrasenaMonitora(); break;
+        case 'g-cuenta': irCuenta(); break;
+        case 'cuenta-contrasena': cambiarMiContrasena(); break;
+        case 'cuenta-salir': pedirSalir(); break;
         case 'g-guardar-lista': guardarLista(dato('lista'), dato('campo')); break;
       }
     }
@@ -4410,6 +4539,7 @@
         app.init = d;
         app.fecha = d.hoy;
         memoriaDesde = Date.now();
+        pintarBandaVerComo();
         recuperarPorGuardar();
         irInicio();
         precargar();

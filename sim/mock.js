@@ -63,14 +63,25 @@
   window.LockService = { getScriptLock: function () { return { tryLock: function () { return true; }, releaseLock: function () {} }; } };
   window.Utilities = {
     formatDate: function (d, z, p) { return fmt(d, p); },
-    getUuid: function () { return 'id-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); },
+    // UUID v4 de verdad (9-nov-2026): los tokens de sesión salen de dos UUID y tienen que ser hexadecimales
+    getUuid: function () {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+      });
+    },
     // Exportar el informe (5-nov-2026): el «PDF» y el «Excel» simulados son texto (el HTML o una línea), para ver que se descargan.
     base64Encode: function (bytes) { return btoa(String.fromCharCode.apply(null, bytes)); },
     newBlob: function (texto, tipo) { return new Blob_(texto, tipo); },
     // Claves de la app (6-nov-2026): huella SHA-256 como la de Apps Script (bytes; base64Encode los acepta)
     Charset: { UTF_8: 'UTF-8' },
     DigestAlgorithm: { SHA_256: 'SHA-256' },
-    computeDigest: function (algoritmo, texto) { return sha256_(Array.from(new TextEncoder().encode(String(texto)))); },
+    // Con texto o con bytes (las contraseñas, 9-nov-2026, resumen de sal + resumen anterior)
+    computeDigest: function (algoritmo, texto) {
+      if (Array.isArray(texto)) return sha256_(texto.map(function (b) { return b & 0xff; }));
+      return sha256_(Array.from(new TextEncoder().encode(String(texto))));
+    },
     sleep: function () {}
   };
   // SHA-256 síncrono (Apps Script lo da hecho; en el navegador, crypto.subtle es asíncrono)
