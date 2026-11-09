@@ -2790,9 +2790,12 @@
       const c = d.columnas[i];
       if (!f || !c || !celdaEditable(d, f.celdas[i], c)) return;
       app.hist.celda = { nf: nf, i: i };
+      // «Sin marcar», un botón más de la cuadrícula de estados (con su mismo tamaño e icono).
+      const sinMarcar = '<button type="button" class="opcion-estado" data-accion="celda-estado" data-estado="" style="' + estiloEstado(SIN_MARCAR) + '">' +
+        iconoEstado(estadoInfo(SIN_MARCAR)) + 'Sin marcar</button>';
+      const botones = botonesEstados('celda-estado').replace(/<\/div>$/, sinMarcar + '</div>');
       abrirPanel('<div><h3>' + esc(nombreVisible(f.nombre)) + '</h3><p>' + esc(mayuscula(fechaLarga(c.fecha))) + '</p>' +
-        botonesEstados('celda-estado').replace('data-estado="' + esc(f.celdas[i]) + '"', 'data-estado="' + esc(f.celdas[i]) + '" data-elegido="1"') +
-        '<button type="button" class="boton ancho" data-accion="celda-estado" data-estado="">' + iconoEstado(estadoInfo(SIN_MARCAR)) + ' Sin marcar</button></div>');
+        botones.replace('data-estado="' + esc(f.celdas[i]) + '"', 'data-estado="' + esc(f.celdas[i]) + '" data-elegido="1"') + '</div>');
       const elegido = $('panel').querySelector('[data-elegido]');
       if (elegido) elegido.classList.add('elegido');
     }
