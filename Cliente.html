@@ -4351,6 +4351,13 @@
           html += '<div class="banda especial">Ojo: en el Excel las clases son los ' + esc(diasLegibles(b.dias.join(',')).toLowerCase()) +
             ' y este grupo tiene clase los ' + esc(diasLegibles(g.dias).toLowerCase() || 'días sin indicar') + '. Comprueba que es el grupo correcto.</div>';
         }
+        // Días del Excel que ya tienen lista en la app: no se tocan, salvo que se pida sustituirlos (rehacer una importación).
+        const ya = (app.imp.analisis.yaEnApp[d.grupo_id] || []).filter(function (f) { return b.conDatos.indexOf(f) >= 0; }).sort();
+        if (ya.length) {
+          html += '<label class="casilla-linea"><input type="checkbox" data-imp="sustituir" data-bloque="' + esc(b.id) + '"' + (d.sustituir ? ' checked' : '') + '>' +
+            '<span>Sustituir ' + esc(textoCuantos(ya.length, 'día que ya tiene', 'días que ya tienen')) + ' lista en la app por lo que dice el Excel <small>' +
+            esc(ya.map(fechaCorta).join(', ')) + '. Si no lo marcas, esos días no se tocan.</small></span></label>';
+        }
       }
 
       if (b.conFechas) {
@@ -4440,6 +4447,7 @@
       const campo = el.getAttribute('data-imp');
       if (campo === 'incluir') { d.incluir = el.checked; repintarBloqueImportar(d.id); pintarPieImportar(); }
       else if (campo === 'sinMarcas') d.sinMarcas = el.checked ? 'cancelar' : 'dejar';
+      else if (campo === 'sustituir') d.sustituir = el.checked;
       else if (campo === 'nota') d.notas[el.getAttribute('data-fecha')] = el.value;
       else if (campo === 'nombre') d.nuevo.nombre = el.value;
       else if (campo === 'taller') {
@@ -4506,6 +4514,7 @@
         const d = app.imp.dec[b.id];
         const n = d.nuevo;
         return { id: d.id, incluir: true, grupo_id: d.grupo_id, sinMarcas: d.sinMarcas, notas: d.notas, fecha_alta: d.fecha_alta,
+          sustituir: !!(d.grupo_id && d.sustituir),
           nuevo: d.grupo_id ? null : { nombre: n.nombre, taller_id: n.taller_id === '__nuevo__' ? '' : n.taller_id,
             taller_nuevo: n.taller_id === '__nuevo__' ? n.taller_nuevo : '', dias: n.dias, hora: n.hora, monitoras: n.monitoras } };
       }) };
@@ -4533,6 +4542,7 @@
           '<div class="tarjeta-titulo">' + esc(g.nombre) + (g.creado ? ' <span class="etiqueta realizada">Nuevo</span>' : '') + '</div>' +
           '<div class="tarjeta-detalle">' + esc([textoCuantos(g.clases, 'clase', 'clases'), textoCuantos(g.registros, 'marca', 'marcas'),
             g.sinMarcar ? g.sinMarcar + ' sin marcar' : '', g.sinClase ? g.sinClase + ' sin clase' : '',
+            g.sustituidos ? textoCuantos(g.sustituidos, 'día sustituido', 'días sustituidos') : '',
             g.yaEnApp ? textoCuantos(g.yaEnApp, 'día ya estaba', 'días ya estaban') + ' en la app' : ''].filter(Boolean).join(' · ')) + '</div></div>' + FLECHA + '</button>';
       }).join('') + '</div>';
       html += '<div class="bloque"><ul class="lista-puntos">' +
