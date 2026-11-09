@@ -553,10 +553,12 @@ function guardarCeldas_(monitora, grupoId, cambios) {
     const actualizar = [];
     const borrar = [];
     const vistos = {};
+    const quedan = {};   // fecha → filas de Asistencia que le quedan tras los cambios
     leerTabla_(HOJAS.ASISTENCIA).forEach(function (a) {
       if (a.grupo_id !== grupoId || !fechas[a.fecha]) return;
       const k = a.fecha + '|' + normalizarId_(a.usuario_id);
       const c = porClave[k];
+      if (!c || (!vistos[k] && c.estado !== ESTADO_SIN_MARCAR)) quedan[a.fecha] = (quedan[a.fecha] || 0) + 1;
       if (!c) return;
       if (vistos[k] || c.estado === ESTADO_SIN_MARCAR) { borrar.push(a._fila); return; }   // sobrante o «sin marcar»
       vistos[k] = true;
@@ -569,17 +571,24 @@ function guardarCeldas_(monitora, grupoId, cambios) {
       const c = porClave[k];
       if (vistos[k] || c.estado === ESTADO_SIN_MARCAR) return;
       nuevas.push(filaAsistencia_(grupo, taller, c.fecha, c.usuario_id, c.estado, '', email, ahora));
+      quedan[c.fecha] = (quedan[c.fecha] || 0) + 1;
     });
     actualizarFilas_(HOJAS.ASISTENCIA, actualizar);
     anadirFilas_(HOJAS.ASISTENCIA, nuevas);
     borrarFilas_(HOJAS.ASISTENCIA, borrar);   // al final: están por encima de las añadidas
 
-    // Un día que no tenía sesión pasa a ser una sesión hecha.
-    const sesionesNuevas = Object.keys(fechas).filter(function (f) { return !sesiones[f + '|' + grupoId]; }).map(function (f) {
+    // Un día que no tenía sesión y queda con alguna marca pasa a ser una sesión hecha. Un día hecho que se queda sin
+    // ninguna marca (y sin nota) vuelve a estar sin pasar lista: se quita su fila de Sesiones (9-nov-2026; si no,
+    // contaría como clase hecha sin asistencia). Los días sin clase no llegan aquí.
+    const sesionesNuevas = Object.keys(fechas).filter(function (f) { return !sesiones[f + '|' + grupoId] && quedan[f]; }).map(function (f) {
       return { fecha: f, grupo_id: grupoId, estado: ESTADO_SESION.REALIZADA, nota: '', registrada_por: email, timestamp: ahora };
     });
+    const sesionesVacias = Object.keys(fechas).map(function (f) { return sesiones[f + '|' + grupoId]; }).filter(function (s) {
+      return s && s.estado === ESTADO_SESION.REALIZADA && !quedan[s.fecha] && !String(s.nota || '').trim();
+    }).map(function (s) { return s._fila; });
+    borrarFilas_(HOJAS.SESIONES, sesionesVacias);
     anadirFilas_(HOJAS.SESIONES, sesionesNuevas);
-    return { guardados: Object.keys(porClave).length, sesionesNuevas: sesionesNuevas.length };
+    return { guardados: Object.keys(porClave).length, sesionesNuevas: sesionesNuevas.length, sesionesQuitadas: sesionesVacias.length };
   });
 }
 
