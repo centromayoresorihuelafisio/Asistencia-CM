@@ -164,6 +164,8 @@ const IMPORTAR_CABECERA_NOMBRE = ['USUARIO', 'NOMBRE', 'APELLIDOS NOMBRE', 'APEL
 const IMPORTAR_CABECERA_TELEFONO = ['TELEFONO', 'TFNO', 'TLF'];
 
 // Importar desde la app (9-nov-2026, Gestión › Importar desde Excel): los Excel de asistencia de las monitoras.
+// Qué se importa: usuarios y asistencia (el primero, por defecto), solo usuarios o solo asistencia.
+const IMPORTAR_MODOS = ['ambos', 'usuarios', 'asistencia'];
 // Una casilla de día en la cabecera: letra del día y número («L.7», «M 23», «V7»).
 const IMPORTAR_PATRON_DIA = /^([LMXJVSD])\s*[.\-]?\s*(\d{1,2})$/;
 // Una fila de la cabecera es la de los días si tiene al menos tantas casillas de día.

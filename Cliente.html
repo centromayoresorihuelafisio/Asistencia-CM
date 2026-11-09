@@ -3304,7 +3304,7 @@
         entradaGestion('g-grupos', 'grupos', 'Grupos y talleres', (esAdmin() ? '' : 'Tuyos · ') + activos + (activos === 1 ? ' grupo activo' : ' grupos activos')) +
         entradaGestion('g-usuarios', 'usuarios', 'Usuarios', g.totalUsuarios + ' en la base de datos') +
         entradaGestion('g-dias', 'dias', 'Días libres', textoProximos(proximos) + ' · asuntos propios y otros días sin clase de un grupo') +
-        entradaGestion('g-importar', 'importar', 'Importar desde Excel', 'Grupos, usuarios y asistencias de las hojas de asistencia') + '</div>' +
+        entradaGestion('g-importar', 'importar', 'Importar asistencia y usuarios', 'Desde el Excel de una monitora') + '</div>' +
         // Solo en la app instalable (9-nov-2026), y no mientras el admin ve la app como otra monitora
         (window.PWA && !app.init.monitora.real ? '<div class="lista separado">' +
           entradaGestion('g-cuenta', 'cuenta', 'Tu cuenta', 'Usuario ' + (app.init.monitora.usuario || (window.PWA.cuenta() || {}).usuario || '') + ' · cambiar la contraseña o cerrar la sesión') + '</div>' : '')
@@ -4256,25 +4256,26 @@
     }
 
     function irImportar() {
-      pantallaSecundaria('g-importar', 'Importar desde Excel', 'Grupos, usuarios y asistencias', volverGestion);
+      pantallaSecundaria('g-importar', 'Importar asistencia y usuarios', 'Desde el Excel de una monitora', volverGestion);
       if (app.imp && app.imp.resultado) pintarResultadoImportar();
       else if (app.imp && app.imp.analisis) pintarVistaPrevia();
       else pintarElegirArchivo();
     }
 
+    // Qué se importa (9-nov-2026): el modo se elige antes de subir el archivo y vale para toda la importación.
+    const MODOS_IMPORTAR = [
+      { valor: 'ambos', texto: 'Usuarios y asistencia' },
+      { valor: 'usuarios', texto: 'Solo usuarios', sub: 'Se crean los que faltan y se inscriben en el grupo' },
+      { valor: 'asistencia', texto: 'Solo asistencia', sub: 'De quien ya está en el grupo' }
+    ];
+    function modoImportar() { return app.impModo || 'ambos'; }
+
     function pintarElegirArchivo(error) {
       app.imp = null;
       pintar((error ? '<div class="banda error" role="alert">' + esc(error) + '</div>' : '') +
-        '<div class="bloque"><h2>Hojas de asistencia</h2>' +
-        '<p>Elige el Excel (.xlsx) de una monitora tal cual, sin cambiarlo. La app busca en cada pestaña los grupos ' +
-        '(la fila de los días «L.7», «X.9»… y debajo un usuario por fila con su ID) y te enseña lo que va a importar antes de hacer nada.</p>' +
-        '<ul class="lista-puntos"><li>Cada «X» es Asistido, «J» Justificada, «F» Falta y «E» Evento.</li>' +
-        '<li>Una casilla vacía queda <strong>sin marcar</strong>: se marca después en el Historial o en el pase.</li>' +
-        '<li>Una palabra escrita en vertical («VACACIONES») es un día sin clase, con la palabra como nota.</li>' +
-        '<li>Los días que ya tengan lista en la app no se tocan.</li></ul>' +
-        '<label class="boton primario ancho boton-archivo">' + iconoGestion('importar') + 'Elegir archivo Excel' +
-        '<input type="file" id="archivoImportar" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="solo-lector"></label>' +
-        '<p class="ayuda">También sirve una lista de usuarios con las columnas ID y USUARIO (sin días): se inscriben desde la fecha que elijas.</p></div>');
+        '<div class="bloque">' + opcionesRadio('impModo', '¿Qué quieres importar?', MODOS_IMPORTAR, modoImportar()) +
+        '<label class="boton primario ancho boton-archivo">' + iconoGestion('importar') + 'Subir archivo Excel' +
+        '<input type="file" id="archivoImportar" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="solo-lector"></label></div>');
     }
 
     function leerArchivoImportar(archivo) {
@@ -4286,7 +4287,7 @@
       leerExcel(archivo).then(function (libro) {
         return llamarSinCarga(true, 'api_analizarImportacion', [libro]).then(function (analisis) {
           sigue(function () {
-            app.imp = { libro: libro, analisis: analisis, dec: {} };
+            app.imp = { libro: libro, analisis: analisis, dec: {}, modo: modoImportar() };
             analisis.bloques.forEach(function (b) {
               const grupo = b.grupoSugerido;
               app.imp.dec[b.id] = {
@@ -4306,10 +4307,14 @@
     /** Vista previa: una tarjeta por grupo encontrado, con su grupo de destino y lo que se va a importar. */
     function pintarVistaPrevia() {
       const a = app.imp.analisis;
-      let html = '<div class="resumen-importar"><strong>' + esc(a.archivo) + '</strong><span>' +
-        esc(textoCuantos(a.bloques.length, 'grupo encontrado', 'grupos encontrados')) + (a.curso ? ' · curso ' + esc(a.curso) : '') + '</span></div>';
+      const modo = MODOS_IMPORTAR.find(function (m) { return m.valor === app.imp.modo; });
+      let html = '<div class="resumen-importar"><strong>' + esc(a.archivo) + '</strong><span>' + esc(modo.texto + ' · ' +
+        textoCuantos(a.bloques.length, 'grupo encontrado', 'grupos encontrados')) + (a.curso ? ' · curso ' + esc(a.curso) : '') + '</span></div>';
       a.avisos.forEach(function (t) { html += '<div class="banda especial">' + esc(t) + '</div>'; });
-      if ((a.letras || []).length) {
+      if (app.imp.modo === 'asistencia') {
+        html += '<p class="ayuda">Solo se importan las marcas de quien ya está en el grupo ese día; al terminar verás a quién se ha saltado.</p>';
+      }
+      if ((a.letras || []).length && app.imp.modo !== 'usuarios') {
         html += '<p class="ayuda">Letras de las casillas: ' + esc(a.letras.map(function (x) { return x.letra + ' = ' + estadoInfo(x.codigo).etiqueta; }).join(' · ')) + '. Vacía = sin marcar.</p>';
       }
       if (a.hojasIgnoradas.length) html += '<p class="ayuda">Pestañas sin grupos reconocibles: ' + esc(a.hojasIgnoradas.join(', ')) + '.</p>';
@@ -4328,7 +4333,7 @@
     }
 
     function textoGrupoDestino(b, d) {
-      if (!d.grupo_id) return 'Grupo nuevo';
+      if (!d.grupo_id) return app.imp.modo === 'asistencia' ? 'Elige el grupo' : 'Grupo nuevo';
       const g = app.imp.analisis.grupos.find(function (x) { return x.grupo_id === d.grupo_id; });
       return g ? tallerYGrupo(g.taller, g.nombre) : d.grupo_id;
     }
@@ -4338,18 +4343,20 @@
       const id = b.id;
       const titulo = b.hoja + (b.horario ? ' · ' + b.horario.replace(/^[LMXJVSD]-[LMXJVSD]\s*/i, '') : '');
       const nuevos = b.usuarios.filter(function (u) { return u.situacion === 'nuevo'; }).length;
+      const conUsuarios = app.imp.modo !== 'asistencia';
+      const conAsistencia = app.imp.modo !== 'usuarios' && b.conFechas;
       let html = '<section class="bloque bloque-importar' + (d.incluir ? '' : ' apagado') + '" id="bloque-' + esc(id) + '">' +
         '<label class="casilla-titulo"><input type="checkbox" data-imp="incluir" data-bloque="' + esc(id) + '"' + (d.incluir ? ' checked' : '') + '>' +
         '<span><strong>' + esc(titulo) + '</strong><small>' + esc(textoCuantos(b.usuarios.length, 'usuario', 'usuarios') +
-          (nuevos ? ' (' + nuevos + (nuevos === 1 ? ' nuevo' : ' nuevos') + ')' : '') +
-          (b.conFechas ? ' · ' + textoCuantos(b.clases, 'clase', 'clases') + (b.desde ? ' · ' + textoPeriodo(b.desde, b.hasta) : '') : ' · sin días')) + '</small></span></label>';
+          (nuevos && conUsuarios ? ' (' + nuevos + (nuevos === 1 ? ' nuevo' : ' nuevos') + ')' : '') +
+          (conAsistencia ? ' · ' + textoCuantos(b.clases, 'clase', 'clases') + (b.desde ? ' · ' + textoPeriodo(b.desde, b.hasta) : '') : '')) + '</small></span></label>';
       if (!d.incluir) return html + '</section>';
 
-      // Grupo de destino: uno existente o uno nuevo (con sus datos).
+      // Grupo de destino: uno existente o uno nuevo (con sus datos). Solo asistencia: uno existente.
       html += '<div class="campo"><span class="etiqueta-campo">Importar en</span>' +
-        '<button type="button" class="boton boton-periodo" data-accion="imp-grupo" data-bloque="' + esc(id) + '">' + ICONO_TALLER +
+        '<button type="button" class="boton boton-periodo" id="imp-grupo-' + esc(id) + '" data-accion="imp-grupo" data-bloque="' + esc(id) + '">' + ICONO_TALLER +
         '<span class="texto-filtro">' + esc(textoGrupoDestino(b, d)) + '</span><span class="flecha-abajo" aria-hidden="true"></span></button></div>';
-      if (!d.grupo_id) html += htmlGrupoNuevoImportar(b, d);
+      if (!d.grupo_id) { if (conUsuarios) html += htmlGrupoNuevoImportar(b, d); }
       else {
         // Aviso si el grupo elegido tiene otros días de clase que el Excel (puede ser el grupo equivocado).
         const g = app.imp.analisis.grupos.find(function (x) { return x.grupo_id === d.grupo_id; });
@@ -4359,14 +4366,14 @@
         }
         // Días del Excel que ya tienen lista en la app: no se tocan, salvo que se pida sustituirlos (rehacer una importación).
         const ya = (app.imp.analisis.yaEnApp[d.grupo_id] || []).filter(function (f) { return b.conDatos.indexOf(f) >= 0; }).sort();
-        if (ya.length) {
+        if (ya.length && conAsistencia) {
           html += '<label class="casilla-linea"><input type="checkbox" data-imp="sustituir" data-bloque="' + esc(b.id) + '"' + (d.sustituir ? ' checked' : '') + '>' +
             '<span>Sustituir ' + esc(textoCuantos(ya.length, 'día que ya tiene', 'días que ya tienen')) + ' lista en la app por lo que dice el Excel <small>' +
             esc(ya.map(fechaCorta).join(', ')) + '. Si no lo marcas, esos días no se tocan.</small></span></label>';
         }
       }
 
-      if (b.conFechas) {
+      if (conAsistencia) {
         const partes = Object.keys(b.marcas).map(function (c) { return estadoInfo(c).etiqueta + ' ' + b.marcas[c]; });
         if (b.sinMarcar) partes.push('sin marcar ' + b.sinMarcar);
         if (partes.length) html += '<p class="detalle-importar">' + esc(partes.join(' · ')) + '</p>';
@@ -4382,7 +4389,7 @@
               '" data-fecha="' + esc(p.fecha) + '" value="' + esc(nota) + '" aria-label="Nota del ' + esc(fechaCorta(p.fecha)) + '"></div>';
           }).join('') + '</div>';
         }
-      } else {
+      } else if (conUsuarios) {
         html += campoFecha('imp-alta-' + id, 'Inscribir desde', d.fecha_alta);
       }
 
@@ -4393,8 +4400,8 @@
         b.usuarios.map(function (u) {
           const etiqueta = u.situacion === 'nuevo' ? '<span class="etiqueta pendiente">Nuevo</span>'
             : u.situacion === 'distinto' ? '<span class="etiqueta especial">En la app: ' + esc(nombreVisible(u.nombreApp)) + '</span>' : '';
-          return filaPersona({ nombre: u.nombre, detalle: 'ID ' + esc(u.usuario_id) + (u.alta ? ' · desde ' + esc(fechaCorta(u.alta)) : '') +
-            (b.conFechas ? ' · ' + esc(textoCuantos(u.marcas, 'marca', 'marcas')) : '') + (u.parecidos ? '<br>¿Duplicado? Se parece a ' + esc(u.parecidos) : ''),
+          return filaPersona({ nombre: u.nombre, detalle: 'ID ' + esc(u.usuario_id) + (u.alta && conUsuarios && conAsistencia ? ' · desde ' + esc(fechaCorta(u.alta)) : '') +
+            (conAsistencia ? ' · ' + esc(textoCuantos(u.marcas, 'marca', 'marcas')) : '') + (u.parecidos && conUsuarios ? '<br>¿Duplicado? Se parece a ' + esc(u.parecidos) : ''),
             derecha: etiqueta });
         }).join('') + '</div></details>';
       const avisos = b.sinId.map(function (t) { return t + ' no tiene ID: no se importa.'; }).concat(b.avisos);
@@ -4488,7 +4495,9 @@
         return '<button type="button" class="opcion-menu' + (elegido ? ' elegida' : '') + '" data-accion="imp-elegir-grupo" data-bloque="' + esc(id) + '" data-grupo="' + esc(valor) + '">' +
           (valor ? ICONO_TALLER : ICONO_MAS) + '<span class="opcion-texto">' + esc(texto) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span>' + (elegido ? ICONO_ELEGIDO : '') + '</button>';
       };
-      abrirPanel('<div><h3>Importar en</h3><div class="menu-opciones">' + opcion('', 'Grupo nuevo', 'Se crea con los días y la hora del Excel') +
+      // Solo asistencia: un grupo que ya existe (en uno nuevo no habría nadie inscrito).
+      abrirPanel('<div><h3>Importar en</h3><div class="menu-opciones">' +
+        (app.imp.modo === 'asistencia' ? '' : opcion('', 'Grupo nuevo', 'Se crea con los días y la hora del Excel')) +
         app.imp.analisis.grupos.map(function (g) { return opcion(g.grupo_id, tallerYGrupo(g.taller, g.nombre), horario(g)); }).join('') + '</div></div>', true);
     }
 
@@ -4505,18 +4514,19 @@
       for (let k = 0; k < elegidos.length; k++) {
         const b = elegidos[k];
         const d = app.imp.dec[b.id];
-        if (!b.conFechas) {
+        if ($('imp-alta-' + b.id)) {
           d.fecha_alta = valor('imp-alta-' + b.id);
           if (!d.fecha_alta) return errorCampo('imp-alta-' + b.id, 'Indica desde qué día se inscriben.');
         }
         if (d.grupo_id) continue;
+        if (app.imp.modo === 'asistencia') return errorCampo('imp-grupo-' + b.id, 'Elige el grupo en el que importar la asistencia.');
         const n = d.nuevo;
         if (!String(n.nombre || '').trim()) return errorCampo('imp-nombre-' + b.id, 'Escribe el nombre del grupo nuevo.');
         if (!n.taller_id) return errorCampo('imp-taller-' + b.id, 'Elige el taller del grupo.');
         if (n.taller_id === '__nuevo__' && !String(n.taller_nuevo || '').trim()) return errorCampo('imp-tallernuevo-' + b.id, 'Escribe el nombre del taller nuevo.');
         if (!n.dias.length) return errorCampo('imp-dias-' + b.id, 'Elige al menos un día de clase.');
       }
-      const decisiones = { bloques: elegidos.map(function (b) {
+      const decisiones = { modo: app.imp.modo, bloques: elegidos.map(function (b) {
         const d = app.imp.dec[b.id];
         const n = d.nuevo;
         return { id: d.id, incluir: true, grupo_id: d.grupo_id, sinMarcas: d.sinMarcas, notas: d.notas, fecha_alta: d.fecha_alta,
@@ -4538,24 +4548,32 @@
 
     function pintarResultadoImportar() {
       const r = app.imp.resultado;
+      const conAsistencia = r.modo !== 'usuarios';
+      const conUsuarios = r.modo !== 'asistencia';
       pie('');
       let html = '<div class="estado-vacio hecho-importar">' + ICONO_GUARDAR + '<h2>Importación hecha</h2><p>' +
-        esc([textoCuantos(r.clases, 'clase con lista', 'clases con lista'), textoCuantos(r.registros, 'marca', 'marcas'),
+        esc((conAsistencia ? [textoCuantos(r.clases, 'clase con lista', 'clases con lista'), textoCuantos(r.registros, 'marca', 'marcas'),
           r.sinClase ? textoCuantos(r.sinClase, 'día sin clase', 'días sin clase') : '',
-          r.sinMarcar ? textoCuantos(r.sinMarcar, 'casilla sin marcar', 'casillas sin marcar') : ''].filter(Boolean).join(' · ')) + '</p></div>';
+          r.sinMarcar ? textoCuantos(r.sinMarcar, 'casilla sin marcar', 'casillas sin marcar') : '']
+          : [textoCuantos(r.usuariosCreados, 'usuario nuevo', 'usuarios nuevos'), textoCuantos(r.inscripciones, 'inscripción', 'inscripciones')]).filter(Boolean).join(' · ')) + '</p></div>';
       html += '<div class="lista">' + r.grupos.map(function (g) {
         return '<button type="button" class="tarjeta" data-accion="imp-historial" data-grupo="' + esc(g.grupo_id) + '"><div class="tarjeta-cuerpo">' +
           '<div class="tarjeta-titulo">' + esc(g.nombre) + (g.creado ? ' <span class="etiqueta realizada">Nuevo</span>' : '') + '</div>' +
-          '<div class="tarjeta-detalle">' + esc([textoCuantos(g.clases, 'clase', 'clases'), textoCuantos(g.registros, 'marca', 'marcas'),
+          '<div class="tarjeta-detalle">' + esc((conAsistencia ? [textoCuantos(g.clases, 'clase', 'clases'), textoCuantos(g.registros, 'marca', 'marcas')] : ['Ver en el Historial']).concat([
             g.sinMarcar ? g.sinMarcar + ' sin marcar' : '', g.sinClase ? g.sinClase + ' sin clase' : '',
             g.sustituidos ? textoCuantos(g.sustituidos, 'día sustituido', 'días sustituidos') : '',
-            g.yaEnApp ? textoCuantos(g.yaEnApp, 'día ya estaba', 'días ya estaban') + ' en la app' : ''].filter(Boolean).join(' · ')) + '</div></div>' + FLECHA + '</button>';
+            g.yaEnApp ? textoCuantos(g.yaEnApp, 'día ya estaba', 'días ya estaban') + ' en la app' : '']).filter(Boolean).join(' · ')) + '</div></div>' + FLECHA + '</button>';
       }).join('') + '</div>';
+      const saltados = r.saltados || [];
       html += '<div class="bloque"><ul class="lista-puntos">' +
-        '<li>' + esc(textoCuantos(r.usuariosCreados, 'usuario nuevo', 'usuarios nuevos')) + (r.telefonosAnadidos ? ' · ' + esc(textoCuantos(r.telefonosAnadidos, 'teléfono añadido', 'teléfonos añadidos')) : '') + '</li>' +
-        '<li>' + esc(textoCuantos(r.inscripciones, 'inscripción nueva', 'inscripciones nuevas')) + (r.altasAdelantadas ? ' · ' + esc(textoCuantos(r.altasAdelantadas, 'alta adelantada', 'altas adelantadas')) : '') + '</li>' +
+        (conUsuarios ? '<li>' + esc(textoCuantos(r.usuariosCreados, 'usuario nuevo', 'usuarios nuevos')) + (r.telefonosAnadidos ? ' · ' + esc(textoCuantos(r.telefonosAnadidos, 'teléfono añadido', 'teléfonos añadidos')) : '') + '</li>' +
+          '<li>' + esc(textoCuantos(r.inscripciones, 'inscripción nueva', 'inscripciones nuevas')) + (r.altasAdelantadas ? ' · ' + esc(textoCuantos(r.altasAdelantadas, 'alta adelantada', 'altas adelantadas')) : '') + '</li>' : '') +
         r.avisos.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' +
-        '<p class="ayuda">Toca un grupo para verlo en el Historial y marcar ahí las casillas que quedaron sin marcar.</p></div>' +
+        // Solo asistencia: quien tenía marcas pero no estaba en el grupo ese día (no está en la app o no estaba inscrito).
+        (saltados.length ? '<details class="plegable avisos-importar" open><summary>' + esc(textoCuantos(saltados.length, 'persona saltada', 'personas saltadas')) +
+          ': no estaba en el grupo</summary><ul>' + saltados.map(function (s) { return '<li>' + esc(nombreVisible(s.nombre)) + ' · ID ' + esc(s.usuario_id) + '</li>'; }).join('') +
+          '</ul><p class="ayuda">Inscríbelas desde Altas y bajas (con la fecha en que empezaron) y vuelve a importar la asistencia.</p></details>' : '') +
+        (conAsistencia ? '<p class="ayuda">Toca un grupo para verlo en el Historial y marcar ahí las casillas que quedaron sin marcar.</p>' : '') + '</div>' +
         '<button type="button" class="boton ancho" data-accion="imp-otro">Importar otro archivo</button>';
       pintar(html);
     }
@@ -5046,7 +5064,8 @@
       if (ev.target.id === 'gTaller') {
         $('campoTallerNuevo').classList.toggle('oculto', ev.target.value !== '__nuevo__');
       }
-      if (ev.target.id === 'archivoImportar') leerArchivoImportar(ev.target.files && ev.target.files[0]);
+      if (ev.target.name === 'impModo') app.impModo = ev.target.value;
+      if (ev.target.id === 'archivoImportar') { app.impModo = elegido('impModo') || app.impModo; leerArchivoImportar(ev.target.files && ev.target.files[0]); }
       if (ev.target.getAttribute && ev.target.getAttribute('data-imp') && (ev.target.type === 'checkbox' || ev.target.tagName === 'SELECT')) cambioImportar(ev.target);
     });
 

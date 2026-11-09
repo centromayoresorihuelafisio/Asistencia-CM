@@ -871,8 +871,11 @@ function analizarImportacion_(monitora, libro) {
 
 /**
  * Importa un libro según lo elegido en la vista previa.
- * decisiones: { bloques: [{ id, incluir, grupo_id, nuevo: { nombre, taller_id, taller_nuevo, dias, hora, monitoras },
- *   sinMarcas: 'cancelar' | 'dejar', notas: { fecha: texto }, fecha_alta, sustituir }] }
+ * decisiones: { modo: 'ambos' | 'usuarios' | 'asistencia', bloques: [{ id, incluir, grupo_id,
+ *   nuevo: { nombre, taller_id, taller_nuevo, dias, hora, monitoras }, sinMarcas: 'cancelar' | 'dejar',
+ *   notas: { fecha: texto }, fecha_alta, sustituir }] }
+ * - modo (9-nov-2026): «usuarios» crea e inscribe desde fecha_alta, sin tocar la asistencia; «asistencia» solo escribe
+ *   las marcas de quien ya está en el grupo (que tiene que existir) ese día, y devuelve en saltados a los demás.
  * - sustituir (9-nov-2026): los días con algo en el Excel que ya tienen lista en la app se reescriben con lo del Excel
  *   (para rehacer una importación); sin él, no se tocan.
  * - Grupo: uno de la monitora o uno nuevo (a su nombre; el admin elige la monitora).
@@ -889,6 +892,10 @@ function importarExcel_(monitora, libro, decisiones) {
   const lectura = leerBloquesLibro_(libro, ctx);
   const porId = {};
   lectura.bloques.forEach(function (b) { porId[b.id] = b; });
+  // Qué se importa (9-nov-2026): usuarios y asistencia (ambos), solo usuarios o solo asistencia.
+  const modo = IMPORTAR_MODOS.indexOf(decisiones && decisiones.modo) >= 0 ? decisiones.modo : IMPORTAR_MODOS[0];
+  const conUsuarios = modo !== 'asistencia';
+  const conAsistencia = modo !== 'usuarios';
   const elegidos = ((decisiones && decisiones.bloques) || []).filter(function (d) { return d && d.incluir; });
   if (!elegidos.length) throw errorApp_('No has elegido ningún grupo para importar.');
   // Todo se comprueba antes de escribir nada.
@@ -898,22 +905,28 @@ function importarExcel_(monitora, libro, decisiones) {
     const t = { b: b, grupoId: String(d.grupo_id || ''), sinMarcas: d.sinMarcas === 'dejar' ? 'dejar' : 'cancelar', notas: d.notas || {},
       sustituir: d.sustituir === true };
     if (!t.grupoId) {
+      // Solo asistencia: las marcas van a un grupo que ya existe (en uno nuevo no habría nadie inscrito).
+      if (!conUsuarios) throw errorApp_('Elige en qué grupo importar la asistencia de «' + b.hoja + '».');
       t.nuevo = d.nuevo || {};
       t.validado = validarGrupo_(monitora, t.nuevo);
     }
-    if (!b.conFechas) {
+    if (conUsuarios && (!b.conFechas || !conAsistencia)) {
+      // Solo usuarios, o una lista sin días: se inscriben desde la fecha elegida.
       t.fechaAlta = String(d.fecha_alta || '');
       comprobarFecha_(t.fechaAlta, 'de alta');
     }
     return t;
   });
+  if (!conUsuarios && !trabajos.some(function (t) { return t.b.conFechas; })) {
+    throw errorApp_('Este archivo no tiene días: no hay asistencia que importar. Elige «Solo usuarios».');
+  }
 
   return conBloqueo_(function () {
     const hoy = hoy_();
     const email = emailRegistro_(monitora);
     const ahora = marcaDeTiempo_();
-    const res = { grupos: [], usuariosCreados: 0, telefonosAnadidos: 0, inscripciones: 0, altasAdelantadas: 0,
-      clases: 0, sinClase: 0, registros: 0, sinMarcar: 0, yaEnApp: 0, avisos: [] };
+    const res = { modo: modo, grupos: [], usuariosCreados: 0, telefonosAnadidos: 0, inscripciones: 0, altasAdelantadas: 0,
+      clases: 0, sinClase: 0, registros: 0, sinMarcar: 0, yaEnApp: 0, avisos: [], saltados: [] };
 
     // 1. Grupos: los nuevos se crean ahora (escribirGrupo_ comprueba el taller y el nombre repetido).
     trabajos.forEach(function (t) {
@@ -926,11 +939,12 @@ function importarExcel_(monitora, libro, decisiones) {
     });
     const talleres = talleresPorId_();
 
-    // 2. Usuarios.
+    // 2. Usuarios (no con «solo asistencia»).
     const existentes = usuariosPorId_();
     const nuevosUsuarios = [];
     const conTelefono = [];
     trabajos.forEach(function (t) {
+      if (!conUsuarios) return;
       t.b.usuarios.forEach(function (u) {
         const e = existentes[u.usuario_id];
         if (!e) {
@@ -953,8 +967,9 @@ function importarExcel_(monitora, libro, decisiones) {
     const nuevasInsc = [];
     const movidas = [];
     trabajos.forEach(function (t) {
+      if (!conUsuarios) return;   // solo asistencia: no se inscribe a nadie
       t.b.usuarios.forEach(function (u) {
-        const alta = altaImportada_(t.b, u, hoy, t.fechaAlta);
+        const alta = conAsistencia ? altaImportada_(t.b, u, hoy, t.fechaAlta) : t.fechaAlta;
         const suyas = inscripciones.concat(nuevasInsc).filter(function (i) {
           return i.grupo_id === t.grupoId && normalizarId_(i.usuario_id) === u.usuario_id;
         });
@@ -991,7 +1006,7 @@ function importarExcel_(monitora, libro, decisiones) {
     const tratadas = {};   // fecha|grupo ya escritas en esta importación: si dos bloques van al mismo grupo, el primero manda
     const sustituir = {};  // fecha|grupo que se sustituyen
     trabajos.forEach(function (t) {
-      if (!t.sustituir) return;
+      if (!t.sustituir || !conAsistencia) return;
       t.b.fechas.forEach(function (x) {
         if (x.tipo !== 'vacia' && sesiones[x.fecha + '|' + t.grupoId]) sustituir[x.fecha + '|' + t.grupoId] = true;
       });
@@ -1005,8 +1020,14 @@ function importarExcel_(monitora, libro, decisiones) {
     const filasSesion = [];
     const sesionesCambiadas = [];
     const filasAsistencia = [];
+    const saltados = {};
     trabajos.forEach(function (t) {
       const grupo = grupoPorId_(t.grupoId);
+      if (!conAsistencia) {   // solo usuarios: no se escribe ninguna sesión
+        res.grupos.push({ grupo_id: t.grupoId, nombre: grupo.nombre, creado: !!t.creado, clases: 0, sinClase: 0, registros: 0,
+          sinMarcar: 0, yaEnApp: 0, sustituidos: 0, hasta: '' });
+        return;
+      }
       const taller = nombreTaller_(grupo, talleres);
       const r = { grupo_id: t.grupoId, nombre: grupo.nombre, creado: !!t.creado, clases: 0, sinClase: 0, registros: 0, sinMarcar: 0, yaEnApp: 0,
         sustituidos: 0, hasta: t.b.fechas.length ? t.b.fechas[t.b.fechas.length - 1].fecha : '' };
@@ -1016,13 +1037,35 @@ function importarExcel_(monitora, libro, decisiones) {
         if (sustituir[clave]) { fila._fila = sesiones[clave]._fila; sesionesCambiadas.push(fila); r.sustituidos++; }
         else filasSesion.push(fila);
       };
+      // Primero, las marcas de cada día con clase: las de quien estaba en el grupo ese día. Con «solo asistencia», a
+      // quien no estaba se le salta y se avisa.
+      const calculo = {};
+      let ultima = '';   // último día que se escribe (con marcas o con palabra): los vacíos de después no se tocan
+      t.b.fechas.forEach(function (x) {
+        const clave = x.fecha + '|' + t.grupoId;
+        if (tratadas[clave] || (sesiones[clave] && !sustituir[clave])) return;
+        if (x.tipo === 'palabra') { ultima = x.fecha; return; }
+        if (x.tipo !== 'clase') return;
+        const c = calculo[x.fecha] = { filas: [], sinMarca: 0 };
+        t.b.usuarios.forEach(function (u) {
+          const codigo = u.marcas[x.fecha];
+          if (!inscritoEl(t.grupoId, u.usuario_id, x.fecha)) {
+            if (codigo) saltados[u.usuario_id] = u.nombre;
+            return;
+          }
+          if (!codigo) { c.sinMarca++; return; }
+          const fila = filaAsistencia_(grupo, taller, x.fecha, u.usuario_id, codigo, '', email, ahora);
+          if (!yaHay[fila.clave]) c.filas.push(fila);
+        });
+        if (c.filas.length || sustituir[clave]) ultima = x.fecha;
+      });
       t.b.fechas.forEach(function (x) {
         const clave = x.fecha + '|' + t.grupoId;
         if (tratadas[clave]) return;
         if (sesiones[clave] && !sustituir[clave]) { r.yaEnApp++; return; }
-        if (x.tipo === 'vacia' && t.sinMarcas === 'dejar') return;
-        tratadas[clave] = true;
+        if (x.tipo === 'vacia' && (t.sinMarcas === 'dejar' || x.fecha > ultima)) return;
         if (x.tipo !== 'clase') {
+          tratadas[clave] = true;
           const nota = x.tipo === 'palabra'
             ? String(t.notas[x.fecha] !== undefined ? t.notas[x.fecha] : x.nota).trim().substring(0, 200)
             : IMPORTAR_NOTA_SIN_MARCAS;
@@ -1030,22 +1073,24 @@ function importarExcel_(monitora, libro, decisiones) {
           r.sinClase++;
           return;
         }
+        const c = calculo[x.fecha];
+        // Un día sin ninguna marca escrita no se da por hecho (contaría como clase sin asistencia ni faltas).
+        if (!c || (!c.filas.length && !sustituir[clave])) return;
+        tratadas[clave] = true;
+        const filas = c.filas.filter(function (f) { return !yaHay[f.clave]; });
+        filas.forEach(function (f) { yaHay[f.clave] = true; });
+        const sinMarca = c.sinMarca;
         ponerSesion(x.fecha, ESTADO_SESION.REALIZADA, '');
         r.clases++;
-        t.b.usuarios.forEach(function (u) {
-          if (!inscritoEl(t.grupoId, u.usuario_id, x.fecha)) return;
-          const codigo = u.marcas[x.fecha];
-          if (!codigo) { r.sinMarcar++; return; }
-          const fila = filaAsistencia_(grupo, taller, x.fecha, u.usuario_id, codigo, '', email, ahora);
-          if (yaHay[fila.clave]) return;
-          yaHay[fila.clave] = true;
-          filasAsistencia.push(fila);
-          r.registros++;
-        });
+        r.sinMarcar += sinMarca;
+        r.registros += filas.length;
+        filasAsistencia.push.apply(filasAsistencia, filas);
       });
       ['clases', 'sinClase', 'registros', 'sinMarcar', 'yaEnApp', 'sustituidos'].forEach(function (k) { res[k] = (res[k] || 0) + r[k]; });
       res.grupos.push(r);
     });
+    res.saltados = Object.keys(saltados).map(function (id) { return { usuario_id: id, nombre: saltados[id] }; })
+      .sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); });
     actualizarFilas_(HOJAS.SESIONES, sesionesCambiadas);
     anadirFilas_(HOJAS.SESIONES, filasSesion);
     anadirFilas_(HOJAS.ASISTENCIA, filasAsistencia);
