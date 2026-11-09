@@ -459,7 +459,7 @@ Implementado en `Informes.gs` (pestaña Informe de la app y exportación en PDF 
 
 ## 15. Convenciones de trabajo
 
-- No hacer commit, push ni `clasp push` salvo que el dueño lo pida. Todos los archivos en LF.
+- Al terminar y probar cada cambio (9-nov-2026, a petición del dueño; antes, solo cuando lo pedía): `clasp push`, commit y push a GitHub (`main`) y actualizar la implementación de la app con una versión nueva, sin cambiar la URL (`clasp deploy -i <id de la implementación> -d "…"`; el id es el de `clasp deployments` que empieza por `AKfycbwL_`). No a mitad de un cambio. Si el editor de Apps Script estaba abierto, hay que recargarlo antes de implementar desde él. Todos los archivos en LF.
 - Las funciones internas acaban en `_` (así Apps Script no deja llamarlas desde el navegador). Las únicas públicas son las `api_*`, `doGet`, `doPost`, `include`, `onOpen`, las del menú (`menu*`), `setup`, `validarDatos`, `importarUsuariosDesdeHoja` e `importarUsuariosDelCentro`; las cuatro últimas comprueban `soloAdmin_()`.
 
 - Código y comentarios en español, con identificadores consistentes entre archivos. Antes de renombrar algo, buscar todos sus usos (servidor, cliente, hojas y `Config.gs`).
