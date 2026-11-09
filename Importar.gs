@@ -161,7 +161,7 @@ function guardarImportacion_(lectura, grupoId, alta) {
         nuevosUsuarios.push(nuevo);
       } else {
         yaExistian++;
-        if (u.nombre !== d.nombre) avisos.push('El ID ' + id + ' ya existe como «' + u.nombre + '» y en el documento pone «' + d.nombre + '». No se ha cambiado.');
+        if (normalizarNombre_(u.nombre) !== d.nombre) avisos.push('El ID ' + id + ' ya existe como «' + u.nombre + '» y en el documento pone «' + d.nombre + '». No se ha cambiado.');
         if (!u.telefono && d.telefono) { u.telefono = d.telefono; telefonosAnadidos.push(u); }
       }
       if (grupoId) {

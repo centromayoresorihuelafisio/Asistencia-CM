@@ -349,9 +349,22 @@
     const ICONO_COMPARTIR = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M18 16.1c-.8 0-1.4.3-2 .8l-7.1-4.2c.1-.2.1-.5.1-.7s0-.5-.1-.7L16 7.2c.5.5 1.2.8 2 .8a3 3 0 1 0-3-3c0 .2 0 .5.1.7L8 9.8A3 3 0 1 0 8 14.2l7.1 4.2c-.1.2-.1.4-.1.6a2.9 2.9 0 1 0 3-2.9z"/></svg>';
     const ICONO_GUARDAR ='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
 
+    /**
+     * Teléfono para leer: «600123456» → «600 12 34 56» (y «+34600123456» → «+34 600 12 34 56»).
+     * Solo cambia cómo se ve: en la hoja sigue sin espacios, y el enlace tel: usa el guardado.
+     * Si no son 9 cifras (un número extranjero, un texto), se enseña tal cual.
+     */
+    function formatoTelefono(telefono) {
+      const t = String(telefono || '').trim();
+      const m = /^(?:(\+|00)34)?(\d{9})$/.exec(t.replace(/[\s.\-\/()]/g, ''));
+      if (!m) return t;
+      const n = m[2];
+      return (m[1] ? '+34 ' : '') + n.slice(0, 3) + ' ' + n.slice(3, 5) + ' ' + n.slice(5, 7) + ' ' + n.slice(7);
+    }
+
     function enlaceLlamar(telefono) {
       if (!telefono) return '';
-      return '<a class="llamar" href="tel:' + esc(telefono) + '" aria-label="Llamar al ' + esc(telefono) + '">' + ICONO_TELEFONO + '</a>';
+      return '<a class="llamar" href="tel:' + esc(telefono) + '" aria-label="Llamar al ' + esc(formatoTelefono(telefono)) + '">' + ICONO_TELEFONO + '</a>';
     }
 
     // ---------- Servidor ----------
@@ -1704,7 +1717,7 @@
           return '<button type="button" class="boton compacto" data-accion="obs-rapida" data-texto="' + esc(t) + '">' + esc(t) + '</button>';
         }).join('') + '</div>' : '') + '</div>' +
         '<button type="button" class="boton ancho" data-accion="cerrar-usuario">Hecho</button>' +
-        (u.telefono ? '<a class="boton ancho separado" href="tel:' + esc(u.telefono) + '">' + ICONO_TELEFONO + ' Llamar al ' + esc(u.telefono) + '</a>' : '') +
+        (u.telefono ? '<a class="boton ancho separado" href="tel:' + esc(u.telefono) + '">' + ICONO_TELEFONO + ' Llamar al ' + esc(formatoTelefono(u.telefono)) + '</a>' : '') +
         (u.inscripcion_id && !u.fecha_baja ? '<button type="button" class="boton peligro ancho separado" data-accion="pase-baja">Dar de baja de este grupo…</button>' : '') +
         '</div>', true);
       const elegido = $('panel').querySelector('[data-elegido]');
@@ -2189,7 +2202,7 @@
           '<button type="button" class="boton ancho" data-accion="panel-cambio" data-inscripcion="' + esc(u.inscripcion_id) + '">Cambiar de grupo</button>';
       }
       if (u.telefono) {
-        html += '<a class="boton ancho" href="tel:' + esc(u.telefono) + '">' + ICONO_TELEFONO + ' Llamar al ' + esc(u.telefono) + '</a>';
+        html += '<a class="boton ancho" href="tel:' + esc(u.telefono) + '">' + ICONO_TELEFONO + ' Llamar al ' + esc(formatoTelefono(u.telefono)) + '</a>';
       }
       html += '<button type="button" class="boton ancho" data-accion="cerrar-panel">Cerrar</button></div></div>';
       abrirPanel(html);
@@ -3283,7 +3296,7 @@
             }
             return filaPersona({ nombre: u.nombre, boton: true, clase: u.activo ? '' : 'inactiva',
               atributos: ' data-accion="ficha" data-usuario="' + esc(u.usuario_id) + '" data-nombre="' + esc(u.nombre) + '"',
-              detalle: 'ID ' + esc(u.usuario_id) + (u.telefono ? ' · ' + esc(u.telefono) : '') + ' · ' +
+              detalle: 'ID ' + esc(u.usuario_id) + (u.telefono ? ' · ' + esc(formatoTelefono(u.telefono)) : '') + ' · ' +
                 (u.grupos ? u.grupos + (u.grupos === 1 ? ' grupo' : ' grupos') : 'sin grupo'),
               derecha: (u.activo ? '' : '<span class="etiqueta cancelada">Inactivo</span>') + FLECHA });
           }).join('') + '</div>' : '<p class="vacio">No se ha encontrado a nadie.</p>');
@@ -3304,7 +3317,7 @@
       pintar('<div class="bloque">' +
         '<div class="campo"><label for="uId">ID del centro</label><input type="text" id="uId" autocomplete="off" inputmode="numeric" enterkeyhint="next"></div>' +
         '<div class="campo"><label for="uNombre">Apellidos y nombre</label><input type="text" id="uNombre" autocomplete="off" autocapitalize="characters" enterkeyhint="next" placeholder="APELLIDO APELLIDO NOMBRE">' +
-        '<p class="ayuda">Sin comas, sin diminutivos. Se guarda en mayúsculas.</p></div>' +
+        '<p class="ayuda">Sin diminutivos. Se guarda en mayúsculas, sin tildes ni símbolos.</p></div>' +
         '<div class="campo"><label for="uTelefono">Teléfono (opcional)</label><input type="tel" id="uTelefono" autocomplete="off" inputmode="tel" enterkeyhint="done"></div>' +
         (suyos ? opcionesRadio('uGrupoNuevo', 'Inscribir en', suyos.map(function (g) {
           return { valor: g.grupo_id, texto: tallerYGrupo(g.taller, g.nombre), sub: horario(g) };
@@ -3389,7 +3402,7 @@
 
       let html = '<div class="bloque"><h3>Datos</h3>' +
         '<div class="campo"><label for="uNombre">Apellidos y nombre</label><input type="text" id="uNombre" autocapitalize="characters" enterkeyhint="next" value="' + esc(u.nombre) + '"></div>' +
-        '<div class="campo"><label for="uTelefono">Teléfono</label><input type="tel" id="uTelefono" inputmode="tel" enterkeyhint="done" value="' + esc(u.telefono) + '"></div>' +
+        '<div class="campo"><label for="uTelefono">Teléfono</label><input type="tel" id="uTelefono" inputmode="tel" enterkeyhint="done" value="' + esc(formatoTelefono(u.telefono)) + '"></div>' +
         '<label class="check"><input type="checkbox" id="uActivo"' + (u.activo ? ' checked' : '') + '> Usuario activo</label>' +
         '<button type="button" class="boton primario ancho" data-accion="g-guardar-usuario">Guardar cambios</button></div>';
 

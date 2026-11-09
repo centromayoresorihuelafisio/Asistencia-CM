@@ -9,12 +9,24 @@ function normalizarId_(id) {
   return celdaATexto_(id).replace(/\s+/g, '').toUpperCase();
 }
 
+/**
+ * Nombre de un usuario tal como se guarda: mayúsculas, sin tildes ni diéresis (se conserva la Ñ), sin símbolos
+ * ni números (cada uno pasa a ser un espacio: «GARCÍA-LÓPEZ, Mª» → «GARCIA LOPEZ M») y sin espacios sobrantes.
+ */
 function normalizarNombre_(nombre) {
-  return celdaATexto_(nombre).toUpperCase().replace(/\s+/g, ' ').trim();
+  return celdaATexto_(nombre).toUpperCase()
+    .normalize('NFD').replace(/Ñ/g, 'Ñ')   // la Ñ se separa en N + tilde: se vuelve a juntar
+    .replace(/[̀-ͯ]/g, '')             // quita el resto de tildes y diéresis
+    .replace(/[^A-ZÑ]+/g, ' ')                   // cualquier otra cosa (símbolos, números) pasa a ser un espacio
+    .replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Teléfono tal como se guarda: sin espacios, puntos, guiones ni paréntesis («611-22.33 44» → «611223344»).
+ * La «/» se deja, para no juntar dos números de una misma celda. La app lo enseña como «611 22 33 44».
+ */
 function normalizarTelefono_(telefono) {
-  return celdaATexto_(telefono).replace(/\s+/g, '');
+  return celdaATexto_(telefono).replace(/[\s.\-()]+/g, '');
 }
 
 /** Para buscar: mayúsculas y sin tildes. */

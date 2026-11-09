@@ -217,7 +217,7 @@ function validarDatos() {
     if (!id) avisos.push('Usuarios: hay un usuario sin ID' + fila(u));
     else if (usuarios[id]) avisos.push('Usuarios: el ID ' + id + ' está repetido' + fila(u));
     usuarios[id] = true;
-    if (u.nombre !== normalizarNombre_(u.nombre)) avisos.push('Usuarios: el nombre del ID ' + id + ' tiene minúsculas o espacios de más' + fila(u));
+    if (u.nombre !== normalizarNombre_(u.nombre)) avisos.push('Usuarios: el nombre del ID ' + id + ' tiene minúsculas, tildes, símbolos o espacios de más (se guardaría como «' + normalizarNombre_(u.nombre) + '»)' + fila(u));
     if (!id) return;
     const parecidos = parecidosEnIndice_(indiceNombres, id, u.nombre);
     if (parecidos.length) {
