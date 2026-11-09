@@ -1072,7 +1072,7 @@
     // ---------- Atrás del móvil (4-nov-2026) ----------
     // google.script.history funciona dentro del marco de Apps Script. Se añade una entrada al historial por cada
     // paso al que se puede volver: cada pantalla abierta por encima de Inicio (app.pila: Gestión › Usuarios › ficha
-    // son tres), un panel abierto y la selección de varios usuarios. El botón o el gesto atrás quita una entrada y
+    // son tres), un panel abierto y la selección de varios usuarios (Gestión › Usuarios o la Lista de un grupo). El botón o el gesto atrás quita una entrada y
     // llama a atras(), que hace lo mismo que «Volver» (o cierra el panel, o va a Inicio).
     // Al volver con los botones de la app, la entrada que sobra se aprovecha en la siguiente pulsación de atrás.
     // 9-nov-2026: antes había como mucho una entrada por pantalla y, al volver con atrás, se añadía otra en ese
@@ -1088,7 +1088,7 @@
     function entradasNecesarias() {
       const pila = app.pila || [];
       const profundidad = pila.length ? pila.length - (pila[0] === 'inicio' ? 1 : 0) : 0;
-      return profundidad + (seleccionandoUsuarios() ? 1 : 0) + (panelAbierto() ? 1 : 0);
+      return profundidad + (seleccionandoUsuarios() || seleccionandoLista() ? 1 : 0) + (panelAbierto() ? 1 : 0);
     }
     function sincronizarHistorial() {
       if (!historia) return;
@@ -1104,6 +1104,7 @@
       if (window.PWA && window.PWA.cerrarCambio && window.PWA.cerrarCambio()) sincronizarHistorial();   // pantalla de cambiar la contraseña
       else if (panelAbierto()) cerrarPanelComoFondo();
       else if (seleccionandoUsuarios()) salirSeleccion();
+      else if (seleccionandoLista()) salirSeleccionLista();
       else if (app.alVolver) app.alVolver();
       else if (app.vista !== 'inicio') irInicio();
       else if (!entradas) aviso('Pulsa atrás otra vez para salir.');
@@ -1302,13 +1303,16 @@
       if (!app.init.grupos.length) {
         html += '<p class="vacio">No tienes grupos asignados. Créalos en Gestión › Grupos.</p>';
       }
+      // Una tarjeta por grupo (9-nov-2026; antes, dos botones): tocarla abre el pase de esa fecha; «⋮», Altas y bajas.
+      if (app.init.grupos.length) html += '<div class="lista lista-plegable">';
       app.init.grupos.forEach(function (g) {
-        html += '<div class="grupo-fila"><div class="tarjeta-titulo">' + esc(g.nombre) + '</div>' +
-          '<div class="tarjeta-detalle">' + esc([tallerSiHaceFalta(g.taller, g.nombre), horario(g)].filter(Boolean).join(' · ')) + '</div>' +
-          '<div class="botones"><button type="button" class="boton" data-accion="pase" data-grupo="' + esc(g.grupo_id) +
-          '" data-fecha="' + esc(d.fecha) + '">Pasar lista</button>' +
-          '<button type="button" class="boton" data-accion="grupo" data-grupo="' + esc(g.grupo_id) + '">Altas y bajas</button></div></div>';
+        html += '<div class="tarjeta con-accion"><button type="button" class="tarjeta-abrir" data-accion="pase" data-grupo="' + esc(g.grupo_id) +
+          '" data-fecha="' + esc(d.fecha) + '"><div class="tarjeta-cuerpo"><div class="tarjeta-titulo">' + esc(g.nombre) + '</div>' +
+          '<div class="tarjeta-detalle">' + esc([tallerSiHaceFalta(g.taller, g.nombre), horario(g)].filter(Boolean).join(' · ')) + '</div></div></button>' +
+          '<button type="button" class="mas-opciones" data-accion="menu-grupo" data-grupo="' + esc(g.grupo_id) + '" aria-label="Más opciones de ' +
+          esc(g.nombre) + '">' + ICONO_MAS_OPCIONES + '</button></div>';
       });
+      if (app.init.grupos.length) html += '</div>';
       html += '</details>';
       pintar(html);
       const pleg = $('plegPendientes');
@@ -1554,6 +1558,7 @@
     const ICONO_TODOS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z"/></svg>';
     const ICONO_NOTA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
     const ICONO_SIN_CLASE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14v11zM8.5 11.5l1.4-1.4 2.1 2.1 2.1-2.1 1.4 1.4-2.1 2.1 2.1 2.1-1.4 1.4-2.1-2.1-2.1 2.1-1.4-1.4 2.1-2.1-2.1-2.1z"/></svg>';
+    const ICONO_ALTAS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2zm9 4c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></svg>';
     const ICONO_ABRIR_PASE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 3h-4.18A3 3 0 0 0 12 1a3 3 0 0 0-2.82 2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-7 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm-2 14l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>';
 
     function htmlNotaPase(nota) {
@@ -2025,6 +2030,16 @@
         ICONO_SIN_CLASE + '<span>No hubo clase…</span></button></div></div>');
     }
 
+    /** «⋮» de un grupo de Mis grupos (Inicio): pasar lista en la fecha de Inicio o abrir Altas y bajas. */
+    function abrirMenuGrupo(grupoId) {
+      const g = app.init.grupos.find(function (x) { return x.grupo_id === grupoId; });
+      abrirPanel('<div><h3>' + esc(g ? g.nombre : grupoId) + '</h3><div class="menu-opciones">' +
+        '<button type="button" class="opcion-menu" data-accion="pase-desde-menu" data-grupo="' + esc(grupoId) + '" data-fecha="' + esc(app.fecha) + '">' +
+        ICONO_ABRIR_PASE + '<span>Pasar lista</span></button>' +
+        '<button type="button" class="opcion-menu" data-accion="grupo-desde-menu" data-grupo="' + esc(grupoId) + '">' +
+        ICONO_ALTAS + '<span>Altas y bajas</span></button></div></div>');
+    }
+
     /** «No hubo clase» en un pendiente de Inicio: cancela la sesión sin abrir el pase de lista. */
     let cancelarPendiente = null;
     function abrirNoHuboClase(grupoId, fecha) {
@@ -2095,6 +2110,7 @@
       }, function (d, conEsqueleto) {
         d.volver = vuelta;
         app.grupo = d;
+        app.grupoSel = null;
         app.pestana = pestana || 'lista';
         if (conEsqueleto) barra(d.grupo.nombre, subGrupo(d), vuelta);
         else pantallaSecundaria('grupo', titulo, subGrupo(d), vuelta);
@@ -2203,18 +2219,154 @@
       // Botón flotante de Material 3 en la Lista: lleva a Alta con el buscador listo para escribir.
       if (app.pestana === 'lista') html += fab('pestana', 'Inscribir', ' data-pestana="alta" data-enfocar="1"');
       pintar(html);
+      pieListaGrupo();
       if (app.pestana === 'alta' && app.enfocarBuscador) { app.enfocarBuscador = false; $('textoBuscar').focus(); }
     }
 
-    /** Pestaña Lista (en #zonaLista, que se cambia en el sitio tras un alta o una baja). nuevos: ids que llegan (animación). */
+    /**
+     * Pestaña Lista (en #zonaLista, que se cambia en el sitio tras un alta o una baja). nuevos: ids que llegan (animación).
+     * Seleccionando (9-nov-2026, app.grupoSel), cada fila lleva una casilla y tocarla la marca, como en Gestión › Usuarios.
+     */
     function htmlLista(d, nuevos) {
       if (!d.inscritos.length) return '<div id="zonaLista"><p class="vacio">Todavía no hay usuarios inscritos.</p></div>';
-      return '<div id="zonaLista"><p class="ayuda">Toca a un usuario para darle de baja o cambiarle de grupo.</p><div class="lista">' + d.inscritos.map(function (u) {
+      const sel = app.grupoSel;
+      let html = '<div id="zonaLista">';
+      if (sel) {
+        const todos = d.inscritos.every(function (u) { return sel[u.inscripcion_id]; });
+        html += '<div class="cabecera-lista"><button type="button" class="boton compacto" data-accion="gsel-todos">' +
+          (todos ? 'Quitar todos' : 'Seleccionar los ' + d.inscritos.length) + '</button>' +
+          '<button type="button" class="boton compacto" data-accion="gsel-salir">Cancelar</button></div>';
+      } else {
+        html += '<div class="cabecera-lista"><p class="ayuda">Toca a un usuario para darle de baja o cambiarle de grupo.</p>' +
+          '<button type="button" class="boton compacto" data-accion="gsel-empezar">Seleccionar</button></div>';
+      }
+      return html + '<div class="lista">' + d.inscritos.map(function (u) {
+        const detalle = 'ID ' + esc(u.usuario_id) + ' · alta ' + esc(fechaNumerica(u.fecha_alta)) + (u.fecha_baja ? ' · baja ' + esc(fechaNumerica(u.fecha_baja)) : '');
+        if (sel) {
+          const marcado = !!sel[u.inscripcion_id];
+          return filaPersona({ nombre: u.nombre, tocable: true, clase: 'seleccionable' + (marcado ? ' elegida' : ''), detalle: detalle,
+            atributos: ' role="button" tabindex="0" aria-pressed="' + marcado + '" data-accion="gsel-inscrito" data-inscripcion="' + esc(u.inscripcion_id) + '"',
+            derecha: '<span class="casilla-sel" aria-hidden="true">' + ICONO_GUARDAR + '</span>' });
+        }
         return filaPersona({ nombre: u.nombre, tocable: true, clase: nuevos && nuevos[u.inscripcion_id] ? 'entra' : '',
           atributos: ' role="button" tabindex="0" data-accion="inscrito" data-inscripcion="' + esc(u.inscripcion_id) + '"',
-          detalle: 'ID ' + esc(u.usuario_id) + ' · alta ' + esc(fechaNumerica(u.fecha_alta)) + (u.fecha_baja ? ' · baja ' + esc(fechaNumerica(u.fecha_baja)) : ''),
-          derecha: enlaceLlamar(u.telefono) });
+          detalle: detalle, derecha: enlaceLlamar(u.telefono) });
       }).join('') + '</div></div>';
+    }
+
+    // --- Selección de varios en la Lista del grupo (9-nov-2026) ---
+    // app.grupoSel: { inscripcion_id: true } (null si no se está seleccionando). Con «Seleccionar» o manteniendo
+    // pulsada una fila; atrás o «Cancelar» la cierran. Acciones: dar de baja y cambiar de grupo, con api_usuariosEnBloque.
+
+    function seleccionandoLista() { return app.vista === 'grupo' && app.pestana === 'lista' && !!app.grupoSel; }
+
+    /** Vuelve a pintar la Lista (en su sitio) y el pie y el botón flotante según se esté seleccionando o no. */
+    function pintarListaGrupo() {
+      if ($('zonaLista') && app.grupo) $('zonaLista').outerHTML = htmlLista(app.grupo);
+      pieListaGrupo();
+    }
+    function pieListaGrupo() {
+      if (app.vista !== 'grupo') return;
+      const sel = app.pestana === 'lista' ? app.grupoSel : null;
+      const boton = $('vista').querySelector('.fab');
+      if (boton) boton.classList.toggle('oculto', !!sel);
+      if (!sel) { pie(''); return; }
+      const n = Object.keys(sel).length;
+      pie('<div class="pie-seleccion"><span class="cuantos-seleccion" role="status">' + (n === 1 ? '1 seleccionado' : n + ' seleccionados') + '</span>' +
+        '<button type="button" class="boton lleno" data-accion="gsel-acciones"' + (n ? '' : ' disabled') + '>Acciones</button></div>');
+    }
+
+    function empezarSeleccionLista(insc) {
+      app.grupoSel = {};
+      if (insc) app.grupoSel[insc] = true;
+      pintarListaGrupo();
+      sincronizarHistorial();
+    }
+    function salirSeleccionLista() {
+      app.grupoSel = null;
+      pintarListaGrupo();
+    }
+    function alternarSeleccionLista(insc) {
+      if (app.grupoSel[insc]) delete app.grupoSel[insc];
+      else app.grupoSel[insc] = true;
+      pintarListaGrupo();
+    }
+    function seleccionarTodosLista() {
+      const sel = app.grupoSel;
+      const todos = app.grupo.inscritos.every(function (u) { return sel[u.inscripcion_id]; });
+      app.grupo.inscritos.forEach(function (u) {
+        if (todos) delete sel[u.inscripcion_id];
+        else sel[u.inscripcion_id] = true;
+      });
+      pintarListaGrupo();
+    }
+
+    /** Usuarios elegidos en la Lista (los que siguen en ella). */
+    function elegidosLista() {
+      return app.grupo.inscritos.filter(function (u) { return app.grupoSel && app.grupoSel[u.inscripcion_id]; });
+    }
+    function aQuienesLista() {
+      const e = elegidosLista();
+      return e.length === 1 ? 'a ' + nombreVisible(e[0].nombre) : 'a ' + e.length + ' usuarios';
+    }
+
+    function abrirAccionesLista() {
+      const e = elegidosLista();
+      if (!e.length) return;
+      abrirPanel('<div><h3>' + (e.length === 1 ? esc(nombreVisible(e[0].nombre)) : e.length + ' usuarios') + '</h3><div class="pila">' +
+        '<button type="button" class="boton peligro ancho" data-accion="gsel-baja">Dar de baja</button>' +
+        '<button type="button" class="boton ancho" data-accion="gsel-cambio">Cambiar de grupo</button>' +
+        '<button type="button" class="boton ancho" data-accion="cerrar-panel">Cancelar</button></div></div>');
+    }
+    function abrirBajaLista() {
+      abrirPanel('<div><h3>Dar de baja ' + esc(aQuienesLista()) + '</h3>' + camposBaja() +
+        '<div class="botones"><button type="button" class="boton" data-accion="gsel-acciones">Volver</button>' +
+        '<button type="button" class="boton peligro" data-accion="gsel-baja-ok" data-en-curso="Dando de baja…">Dar de baja</button></div></div>', true);
+    }
+    function abrirCambioLista() {
+      const destinos = app.grupo.destinos;
+      abrirPanel('<div><h3>Cambiar de grupo ' + esc(aQuienesLista()) + '</h3>' + camposCambio(destinos) +
+        '<div class="botones"><button type="button" class="boton" data-accion="gsel-acciones">Volver</button>' +
+        (destinos.length ? '<button type="button" class="boton primario" data-accion="gsel-cambio-ok" data-en-curso="Cambiando de grupo…">Cambiar de grupo</button>' : '') +
+        '</div></div>', true);
+    }
+    function pedirBajaLista() {
+      const fecha = valor('fechaBaja');
+      const motivo = elegido('motivoBaja');
+      if (!fecha) return errorCampo('fechaBaja', 'Indica el último día en el grupo.');
+      if (!motivo) return errorCampo('motivoBaja', 'Elige el motivo de la baja.');
+      enBloqueLista('baja', { grupo_id: app.grupo.grupo.grupo_id, fecha_baja: fecha, motivo: motivo }, function (h) {
+        return h === 1 ? '1 usuario dado de baja' : h + ' usuarios dados de baja';
+      });
+    }
+    function pedirCambioLista() {
+      const destino = elegido('grupoDestino');
+      const fecha = valor('fechaCambio');
+      if (!destino) return errorCampo('grupoDestino', 'Elige el grupo nuevo.');
+      if (!fecha) return errorCampo('fechaCambio', 'Indica el primer día en el grupo nuevo.');
+      const g = app.grupo.destinos.find(function (x) { return x.grupo_id === destino; });
+      enBloqueLista('cambiar', { grupo_id: app.grupo.grupo.grupo_id, grupo_destino: destino, fecha: fecha }, function (h) {
+        return (h === 1 ? '1 cambio de grupo' : h + ' cambios de grupo') + (g ? ' · ' + g.nombre : '');
+      });
+    }
+
+    /** Llama a api_usuariosEnBloque con los elegidos de la Lista; al terminar, sale de la selección y pide el grupo de nuevo. */
+    function enBloqueLista(accion, datos, textoHechos) {
+      const grupoId = app.grupo.grupo.grupo_id;
+      const ids = elegidosLista().map(function (u) { return u.usuario_id; });
+      llamar('api_usuariosEnBloque', ids, accion, datos).then(function (r) {
+        anticuar('inscripciones');
+        precargar();
+        const saltados = r.saltados || [];
+        if (app.vista === 'grupo' && app.grupo && app.grupo.grupo.grupo_id === grupoId) {
+          cerrarPanel();
+          app.grupoSel = null;
+          pintarListaGrupo();
+        }
+        refrescarGrupo(grupoId);
+        aviso((r.hechos ? textoHechos(r.hechos) : 'Sin cambios') + (saltados.length ? ' · ' + saltados.length + ' sin cambiar' : ''), false,
+          saltados.length ? { texto: 'Ver', fn: function () { verSaltados(saltados); } } : null);
+      }).catch(avisoError);
     }
 
     /** Panel de un usuario de la pestaña Lista: baja, cambio de grupo y llamada, con el usuario ya elegido. */
@@ -3322,8 +3474,8 @@
       pintar('<div class="lista">' +
         entradaGestion('g-grupos', 'grupos', 'Grupos y talleres', (esAdmin() ? '' : 'Tuyos · ') + activos + (activos === 1 ? ' grupo activo' : ' grupos activos')) +
         entradaGestion('g-usuarios', 'usuarios', 'Usuarios', g.totalUsuarios + ' en la base de datos') +
-        entradaGestion('g-dias', 'dias', 'Días libres', textoProximos(proximos) + ' · asuntos propios y otros días sin clase de un grupo') +
-        entradaGestion('g-importar', 'importar', 'Importar asistencia y usuarios', 'Desde el Excel de una monitora') + '</div>' +
+        entradaGestion('g-dias', 'dias', 'Días libres', textoProximos(proximos)) +
+        entradaGestion('g-importar', 'importar', 'Importar asistencia y usuarios', 'Desde Excel') + '</div>' +
         // Solo en la app instalable (9-nov-2026), y no mientras el admin ve la app como otra monitora
         (window.PWA && !app.init.monitora.real ? '<div class="lista separado">' +
           entradaGestion('g-cuenta', 'cuenta', 'Tu cuenta', 'Usuario ' + usuarioCuenta()) + '</div>' : '')
@@ -3348,11 +3500,11 @@
       const c = app.conf;
       const proximos = c.periodos.filter(function (d) { return d.fecha >= app.init.hoy; }).length;
       pintar('<div class="lista">' +
-        entradaGestion('g-curso', 'curso', 'Curso', c.config.curso + ' · ' + fechaNumerica(c.config.inicio) + ' a ' + fechaNumerica(c.config.fin) + ' · trimestres') +
-        entradaGestion('g-periodos', 'dias', 'Periodos no lectivos', textoProximos(proximos) + ' · festivos y vacaciones de todos los grupos') +
+        entradaGestion('g-curso', 'curso', 'Curso', c.config.curso) +
+        entradaGestion('g-periodos', 'dias', 'Periodos no lectivos', textoProximos(proximos)) +
         entradaGestion('g-estados', 'estados', 'Estados de asistencia', c.estados.map(function (e) { return e.etiqueta; }).join(', ')) +
-        entradaGestion('g-listas', 'listas', 'Listas', 'Motivos de baja, tipos de día libre y observaciones rápidas') +
-        entradaGestion('g-monitoras', 'monitoras', 'Monitoras', c.monitoras.filter(function (m) { return m.activa; }).length + ' activas · usuarios, contraseñas y ver como') + '</div>'
+        entradaGestion('g-listas', 'listas', 'Listas', 'Motivos de baja, días libres y observaciones') +
+        entradaGestion('g-monitoras', 'monitoras', 'Monitoras', c.monitoras.filter(function (m) { return m.activa; }).length + ' activas') + '</div>'
       );
     }
 
@@ -3876,7 +4028,7 @@
      * flotante. Debajo, plegados y sin poder tocarlos, los de todos los grupos (Configuración › Periodos no lectivos).
      */
     function irDias() {
-      pantallaSecundaria('g-dias', 'Días libres', 'No cuentan como pendientes', volverGestion);
+      pantallaSecundaria('g-dias', 'Días libres', '', volverGestion);
       const generales = app.gest.diasEspeciales.filter(function (d) { return !d.grupo_id && d.fecha >= app.init.hoy; });
       let html = listaDiasLibres(diasDeGrupos(), true, 'No hay ninguno apuntado.');
       html += '<details class="plegable"><summary>De todos los grupos (' + textoProximos(generales.length) + ')</summary><div class="relleno">' +
@@ -3888,7 +4040,7 @@
 
     /** Configuración › Periodos no lectivos: los días libres de todos los grupos (grupo vacío). */
     function irPeriodos() {
-      pantallaSecundaria('g-periodos', 'Periodos no lectivos', 'Todos los grupos · no cuentan como pendientes', volverConfiguracion);
+      pantallaSecundaria('g-periodos', 'Periodos no lectivos', 'Todos los grupos', volverConfiguracion);
       pintar('<p class="ayuda">Festivos y vacaciones del centro: ningún grupo tiene clase. Los días libres de un solo grupo se apuntan en Gestión › Días libres.</p>' +
         listaDiasLibres(app.conf.periodos, true, 'No hay ninguno apuntado.') + fab('g-periodo-nuevo', 'Añadir periodo'));
     }
@@ -4290,7 +4442,6 @@
         '<input type="number" id="cPendientes" inputmode="numeric" enterkeyhint="next" min="1" max="60" value="' + esc(c.diasPendientes) + '"></div>' +
         '<div class="campo"><label for="cFaltas">Avisar en el pase de lista a partir de… faltas seguidas</label>' +
         '<input type="number" id="cFaltas" inputmode="numeric" enterkeyhint="done" min="2" max="20" value="' + esc(c.faltasSeguidas) + '"></div>' +
-        '<p class="ayuda">Fuera de estas fechas no se avisa de pendientes. Los grupos nuevos se apuntan en el curso indicado. Los trimestres son los de «Este trimestre» en el Informe.</p>' +
         '<button type="button" class="boton primario ancho" data-accion="g-guardar-curso">Guardar</button></div>');
     }
 
@@ -4319,7 +4470,7 @@
 
     function irListas() {
       const l = app.conf.listas;
-      pantallaSecundaria('g-listas', 'Listas', 'Motivos de baja, tipos de día libre y observaciones rápidas', volverConfiguracion);
+      pantallaSecundaria('g-listas', 'Listas', '', volverConfiguracion);
       pintar('<div class="bloque"><h3>Motivos de baja</h3>' +
         '<div class="campo"><label for="lMotivos">Uno por línea</label><textarea id="lMotivos" rows="7">' + esc(l.motivo_baja.join('\n')) + '</textarea>' +
         '<p class="ayuda">«' + esc(app.conf.motivoReservado) + '» se mantiene siempre: lo usa la acción de cambiar de grupo.</p></div>' +
@@ -4471,7 +4622,7 @@
     }
 
     function irImportar() {
-      pantallaSecundaria('g-importar', 'Importar asistencia y usuarios', 'Desde el Excel de una monitora', volverGestion);
+      pantallaSecundaria('g-importar', 'Importar asistencia y usuarios', 'Desde Excel', volverGestion);
       if (app.imp && app.imp.resultado) pintarResultadoImportar();
       else if (app.imp && app.imp.analisis) pintarVistaPrevia();
       else pintarElegirArchivo();
@@ -4813,7 +4964,9 @@
       const fila = ev.target.closest('.fila-usuario');
       // Gestión › Usuarios (9-nov-2026): mantener pulsada una fila empieza a seleccionar, con ella marcada.
       const filaSel = app.vista === 'g-usuarios' && !seleccionandoUsuarios() ? ev.target.closest('#gListaUsuarios .fila-persona[data-usuario]') : null;
-      if (!celda && !filaSel && (!fila || ev.target.closest('a.llamar, .mas-opciones'))) return;
+      // Lo mismo en la Lista de Altas y bajas (sin tocar el botón de llamar)
+      const filaLista = app.vista === 'grupo' && !seleccionandoLista() && !ev.target.closest('a') ? ev.target.closest('#zonaLista .fila-persona[data-inscripcion]') : null;
+      if (!celda && !filaSel && !filaLista && (!fila || ev.target.closest('a.llamar, .mas-opciones'))) return;
       pulsacionLarga = {
         x: ev.clientX,
         y: ev.clientY,
@@ -4822,6 +4975,7 @@
           saltarClic = true;
           vibrar();
           if (filaSel) empezarSeleccion(filaSel);
+          else if (filaLista) empezarSeleccionLista(filaLista.getAttribute('data-inscripcion'));
           else if (celda) abrirPanelCelda(Number(celda.getAttribute('data-fila')), Number(celda.getAttribute('data-col')));
           else abrirPanelUsuario(Number(fila.getAttribute('data-indice')));
         }, MS_PULSACION_LARGA)
@@ -5147,7 +5301,7 @@
         case 'confirmar-si': if (confirmacionPendiente) confirmacionPendiente(); break;
         case 'parecido-usar': cerrarPanel(); if (parecidosPendiente) parecidosPendiente.usar(dato('usuario')); break;
         case 'parecido-crear': cerrarPanel(); if (parecidosPendiente) parecidosPendiente.crear(); break;
-        case 'pestana': app.pestana = dato('pestana'); app.enfocarBuscador = !!dato('enfocar'); pintarGrupo(); break;
+        case 'pestana': app.grupoSel = null; app.pestana = dato('pestana'); app.enfocarBuscador = !!dato('enfocar'); pintarGrupo(); break;
         case 'inscribir': inscribir({ usuario_id: dato('usuario') }); break;
         case 'crear-usuario': {
           const id = valor('nuevoId');
@@ -5224,6 +5378,17 @@
         case 'sel-activo': pedirActivoSeleccion(true); break;
         case 'sel-inscribir-ok': pedirInscribirSeleccion(); break;
         case 'sel-baja-ok': pedirBajaSeleccion(); break;
+        case 'gsel-empezar': empezarSeleccionLista(null); break;
+        case 'gsel-salir': salirSeleccionLista(); break;
+        case 'gsel-todos': seleccionarTodosLista(); break;
+        case 'gsel-inscrito': alternarSeleccionLista(dato('inscripcion')); break;
+        case 'gsel-acciones': abrirAccionesLista(); break;
+        case 'gsel-baja': abrirBajaLista(); break;
+        case 'gsel-cambio': abrirCambioLista(); break;
+        case 'gsel-baja-ok': pedirBajaLista(); break;
+        case 'gsel-cambio-ok': pedirCambioLista(); break;
+        case 'menu-grupo': abrirMenuGrupo(dato('grupo')); break;
+        case 'grupo-desde-menu': { const id = dato('grupo'); cerrarPanel(); abrirGrupo(id, 'lista', irInicio); break; }
         case 'g-crear-usuario': crearUsuario(); break;
         case 'g-guardar-usuario': guardarFicha(); break;
         case 'g-inscribir-usuario': inscribirDesdeFicha(); break;

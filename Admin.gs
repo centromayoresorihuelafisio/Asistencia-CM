@@ -314,6 +314,8 @@ function guardarUsuario_(monitora, datos, nuevo) {
  *   inactivo, vuelve a activo, como altaUsuario_). La monitora, solo en sus grupos (a cualquier usuario).
  * - baja { fecha_baja, motivo, grupo_id }: da de baja de sus inscripciones abiertas (sin fecha de baja) que hayan
  *   empezado ese día o antes; de un solo grupo si se elige. La monitora, solo de sus grupos.
+ * - cambiar { grupo_id, grupo_destino, fecha } (Lista de Altas y bajas, 9-nov-2026): cambio de grupo (regla 8) de
+ *   quien sigue en grupo_id: baja el día anterior con «Cambio de grupo» y alta en el destino desde la fecha.
  * - inactivo / activo: cambia el campo activo (no toca las inscripciones). La monitora, solo usuarios de sus grupos.
  * Lo que no se puede hacer con alguno no para a los demás: va en saltados, con el motivo.
  * Devuelve { hechos, saltados: [{ usuario_id, nombre, motivo }] }.
@@ -339,6 +341,11 @@ function usuariosEnBloque_(monitora, ids, accion, datos) {
     if (valoresLista_(LISTA_MOTIVO_BAJA).indexOf(datos.motivo) < 0 || datos.motivo === MOTIVO_CAMBIO_GRUPO) {
       throw errorApp_('Elige un motivo de baja de la lista.');
     }
+  }
+  if (accion === ACCION_BLOQUE.CAMBIAR) {
+    if (!datos.grupo_id || !datos.grupo_destino) throw errorApp_('Elige el grupo nuevo.');
+    if (datos.grupo_id === datos.grupo_destino) throw errorApp_('El grupo de destino es el mismo que el de origen.');
+    comprobarFecha_(datos.fecha, 'del cambio');
   }
 
   return conBloqueo_(function () {
@@ -396,6 +403,36 @@ function usuariosEnBloque_(monitora, ids, accion, datos) {
         else if (r.conBaja) saltar(id, 'Ya tenía la baja');
         else saltar(id, datos.grupo_id ? 'No está en ese grupo' : esAdmin_(monitora) ? 'No está en ningún grupo' : 'No está en ninguno de tus grupos');
       });
+
+    } else if (accion === ACCION_BLOQUE.CAMBIAR) {
+      comprobarAccesoGrupo_(monitora, grupoPorId_(datos.grupo_id));
+      const destino = grupoPorId_(datos.grupo_destino);
+      if (!destino || destino.activo === NO) throw errorApp_('El grupo de destino no existe o no está activo.');
+      const ultimoDia = sumarDias_(datos.fecha, -1);
+      const abiertas = {};
+      const conBaja = {};
+      leerTabla_(HOJAS.INSCRIPCIONES).forEach(function (i) {
+        if (i.grupo_id !== datos.grupo_id) return;
+        const id = normalizarId_(i.usuario_id);
+        if (i.fecha_baja) conBaja[id] = true;
+        else abiertas[id] = i;
+      });
+      const bajas = [];
+      const altas = [];
+      existentes.forEach(function (id) {
+        const insc = abiertas[id];
+        if (!insc) { saltar(id, conBaja[id] ? 'Ya tenía la baja' : 'No está en ese grupo'); return; }
+        if (ultimoDia < insc.fecha_alta) { saltar(id, 'Su alta es posterior a esa fecha'); return; }
+        if (haySolape_(id, destino.grupo_id, datos.fecha, null)) { saltar(id, 'Ya está en el grupo nuevo'); return; }
+        insc.fecha_baja = ultimoDia;
+        insc.motivo_baja = MOTIVO_CAMBIO_GRUPO;
+        bajas.push(insc);
+        altas.push({ inscripcion_id: nuevoId_(), usuario_id: id, grupo_id: destino.grupo_id,
+          fecha_alta: datos.fecha, fecha_baja: '', motivo_baja: '' });
+      });
+      actualizarFilas_(HOJAS.INSCRIPCIONES, bajas);
+      anadirFilas_(HOJAS.INSCRIPCIONES, altas);
+      hechos = altas.length;
 
     } else {
       const activo = accion === ACCION_BLOQUE.ACTIVO ? SI : NO;
