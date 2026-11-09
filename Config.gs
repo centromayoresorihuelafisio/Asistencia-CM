@@ -118,6 +118,11 @@ const LISTA_OBS_RAPIDA = 'obs_rapida';
 // Motivo reservado para la acción «Cambiar de grupo».
 const MOTIVO_CAMBIO_GRUPO = 'Cambio de grupo';
 
+// Gestión › Usuarios: cuántos usuarios se pueden cambiar a la vez con la selección múltiple (9-nov-2026)
+const MAX_USUARIOS_BLOQUE = 500;
+// Acciones de la selección múltiple (api_usuariosEnBloque)
+const ACCION_BLOQUE = { INSCRIBIR: 'inscribir', BAJA: 'baja', INACTIVO: 'inactivo', ACTIVO: 'activo' };
+
 // Letra de cada día de la semana. El índice es el de Date.getDay() (0 = domingo).
 const LETRAS_DIAS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 // Orden en que se muestran y guardan los días de un grupo.

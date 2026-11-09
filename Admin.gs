@@ -306,6 +306,113 @@ function guardarUsuario_(monitora, datos, nuevo) {
   });
 }
 
+// ---------- Varios usuarios a la vez (9-nov-2026) ----------
+
+/**
+ * Selección múltiple de Gestión › Usuarios. ids: los usuario_id elegidos. accion (ACCION_BLOQUE):
+ * - inscribir { grupo_id, fecha_alta }: inscribe en el grupo a quien no esté ya en él en esas fechas (si estaba
+ *   inactivo, vuelve a activo, como altaUsuario_). La monitora, solo en sus grupos (a cualquier usuario).
+ * - baja { fecha_baja, motivo, grupo_id }: da de baja de sus inscripciones abiertas (sin fecha de baja) que hayan
+ *   empezado ese día o antes; de un solo grupo si se elige. La monitora, solo de sus grupos.
+ * - inactivo / activo: cambia el campo activo (no toca las inscripciones). La monitora, solo usuarios de sus grupos.
+ * Lo que no se puede hacer con alguno no para a los demás: va en saltados, con el motivo.
+ * Devuelve { hechos, saltados: [{ usuario_id, nombre, motivo }] }.
+ */
+function usuariosEnBloque_(monitora, ids, accion, datos) {
+  datos = datos || {};
+  const vistos = {};
+  const lista = (Array.isArray(ids) ? ids : []).map(normalizarId_).filter(function (id) {
+    if (!id || vistos[id]) return false;
+    vistos[id] = true;
+    return true;
+  });
+  if (!lista.length) throw errorApp_('Elige al menos un usuario.');
+  if (lista.length > MAX_USUARIOS_BLOQUE) throw errorApp_('Como mucho ' + MAX_USUARIOS_BLOQUE + ' usuarios a la vez.');
+  const acciones = Object.keys(ACCION_BLOQUE).map(function (k) { return ACCION_BLOQUE[k]; });
+  if (acciones.indexOf(accion) < 0) throw errorApp_('Acción no válida.');
+  if (accion === ACCION_BLOQUE.INSCRIBIR) {
+    if (!datos.grupo_id) throw errorApp_('Elige el grupo.');
+    comprobarFecha_(datos.fecha_alta, 'de alta');
+  }
+  if (accion === ACCION_BLOQUE.BAJA) {
+    comprobarFecha_(datos.fecha_baja, 'de baja');
+    if (valoresLista_(LISTA_MOTIVO_BAJA).indexOf(datos.motivo) < 0 || datos.motivo === MOTIVO_CAMBIO_GRUPO) {
+      throw errorApp_('Elige un motivo de baja de la lista.');
+    }
+  }
+
+  return conBloqueo_(function () {
+    const usuarios = usuariosPorId_();
+    const saltados = [];
+    const saltar = function (id, motivo) {
+      saltados.push({ usuario_id: id, nombre: usuarios[id] ? usuarios[id].nombre : '', motivo: motivo });
+    };
+    const existentes = lista.filter(function (id) {
+      if (usuarios[id]) return true;
+      saltar(id, 'No existe');
+      return false;
+    });
+    let hechos = 0;
+
+    if (accion === ACCION_BLOQUE.INSCRIBIR) {
+      const grupo = grupoPorId_(datos.grupo_id);
+      comprobarAccesoGrupo_(monitora, grupo);
+      const nuevas = [];
+      const reactivados = [];
+      existentes.forEach(function (id) {
+        if (haySolape_(id, datos.grupo_id, datos.fecha_alta, null)) { saltar(id, 'Ya está en el grupo en esas fechas'); return; }
+        nuevas.push({ inscripcion_id: nuevoId_(), usuario_id: id, grupo_id: datos.grupo_id,
+          fecha_alta: datos.fecha_alta, fecha_baja: '', motivo_baja: '' });
+        const u = usuarios[id];
+        if (u.activo === NO) { u.activo = SI; reactivados.push(u); }
+      });
+      anadirFilas_(HOJAS.INSCRIPCIONES, nuevas);
+      actualizarFilas_(HOJAS.USUARIOS, reactivados);
+      hechos = nuevas.length;
+
+    } else if (accion === ACCION_BLOQUE.BAJA) {
+      if (datos.grupo_id) comprobarAccesoGrupo_(monitora, grupoPorId_(datos.grupo_id));
+      const grupos = {};
+      leerTabla_(HOJAS.GRUPOS).forEach(function (g) { grupos[g.grupo_id] = g; });
+      const elegidos = {};
+      existentes.forEach(function (id) { elegidos[id] = { abiertas: 0, posteriores: 0, conBaja: 0 }; });
+      const cambiadas = [];
+      leerTabla_(HOJAS.INSCRIPCIONES).forEach(function (i) {
+        const r = elegidos[normalizarId_(i.usuario_id)];
+        if (!r) return;
+        if (datos.grupo_id ? i.grupo_id !== datos.grupo_id : !puedeGrupo_(monitora, grupos[i.grupo_id])) return;
+        if (i.fecha_baja) { r.conBaja++; return; }
+        if (i.fecha_alta > datos.fecha_baja) { r.posteriores++; return; }
+        i.fecha_baja = datos.fecha_baja;
+        i.motivo_baja = datos.motivo;
+        cambiadas.push(i);
+        r.abiertas++;
+      });
+      actualizarFilas_(HOJAS.INSCRIPCIONES, cambiadas);
+      existentes.forEach(function (id) {
+        const r = elegidos[id];
+        if (r.abiertas) hechos++;
+        else if (r.posteriores) saltar(id, 'Su alta es posterior a esa fecha');
+        else if (r.conBaja) saltar(id, 'Ya tenía la baja');
+        else saltar(id, datos.grupo_id ? 'No está en ese grupo' : esAdmin_(monitora) ? 'No está en ningún grupo' : 'No está en ninguno de tus grupos');
+      });
+
+    } else {
+      const activo = accion === ACCION_BLOQUE.ACTIVO ? SI : NO;
+      const suyos = usuariosDeMonitora_(monitora);
+      const cambiados = [];
+      existentes.forEach(function (id) {
+        if (suyos && !suyos[id]) { saltar(id, 'No es de tus grupos'); return; }
+        const u = usuarios[id];
+        if ((u.activo === NO ? NO : SI) !== activo) { u.activo = activo; cambiados.push(u); }
+        hechos++;
+      });
+      actualizarFilas_(HOJAS.USUARIOS, cambiados);
+    }
+    return { hechos: hechos, saltados: saltados };
+  });
+}
+
 // ---------- Días libres (hoja Dias especiales) ----------
 
 /**
@@ -423,7 +530,7 @@ function guardarConfig_(monitora, datos) {
   comprobarAdmin_(monitora);
   datos = datos || {};
   const curso = String(datos.curso || '').trim();
-  if (!curso) throw errorApp_('Escribe el nombre del curso (por ejemplo 2026-2027).');
+  if (!curso) throw errorApp_('Escribe los años del curso (por ejemplo 2026-2027).');
   comprobarFecha_(datos.inicio, 'de inicio de curso');
   comprobarFecha_(datos.fin, 'de fin de curso');
   if (datos.fin < datos.inicio) throw errorApp_('El fin de curso no puede ser anterior al inicio.');
@@ -431,7 +538,7 @@ function guardarConfig_(monitora, datos) {
   comprobarFecha_(datos.trimestre2, 'de inicio del 2.º trimestre');
   comprobarFecha_(datos.trimestre3, 'de inicio del 3.º trimestre');
   if (!(datos.inicio < datos.trimestre2 && datos.trimestre2 < datos.trimestre3 && datos.trimestre3 <= datos.fin)) {
-    throw errorApp_('Los trimestres tienen que empezar dentro del curso y en orden: primer día, 2.º trimestre, 3.º trimestre, último día.');
+    throw errorApp_('Los trimestres tienen que empezar dentro del curso y en orden: inicio de curso, 2.º trimestre, 3.º trimestre, fin de curso.');
   }
   const dias = parseInt(datos.diasPendientes, 10);
   if (!(dias >= 1 && dias <= 60)) throw errorApp_('Los días de pendientes deben estar entre 1 y 60.');

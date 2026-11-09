@@ -126,6 +126,11 @@ function api_guardarUsuario(datos, nuevo) {
   return responder_(function (m) { return guardarUsuario_(m, datos, !!nuevo); });
 }
 
+/** 9-nov-2026. Selección múltiple de Gestión › Usuarios: inscribir, dar de baja o marcar inactivos o activos. */
+function api_usuariosEnBloque(ids, accion, datos) {
+  return responder_(function (m) { return usuariosEnBloque_(m, ids, accion, datos); });
+}
+
 function api_guardarDiaEspecial(datos) {
   return responder_(function (m) { return guardarDiaEspecial_(m, datos); });
 }
@@ -182,7 +187,7 @@ function accionesPWA_() {
     deshacerBaja: api_deshacerBaja, deshacerAlta: api_deshacerAlta, deshacerCancelar: api_deshacerCancelar,
     historial: api_historial, informe: api_informe, exportarInforme: api_exportarInforme,
     enviarInforme: api_enviarInforme, gestion: api_gestion, configuracion: api_configuracion, guardarGrupo: api_guardarGrupo,
-    usuariosGestion: api_usuariosGestion, usuario: api_usuario, guardarUsuario: api_guardarUsuario,
+    usuariosGestion: api_usuariosGestion, usuario: api_usuario, guardarUsuario: api_guardarUsuario, usuariosEnBloque: api_usuariosEnBloque,
     guardarDiaEspecial: api_guardarDiaEspecial, borrarDiaEspecial: api_borrarDiaEspecial,
     guardarEstado: api_guardarEstado, guardarConfig: api_guardarConfig, guardarLista: api_guardarLista,
     guardarMonitora: api_guardarMonitora, nuevaContrasenaMonitora: api_nuevaContrasenaMonitora,

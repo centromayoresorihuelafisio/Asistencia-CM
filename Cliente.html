@@ -1070,10 +1070,14 @@
     }
 
     // ---------- Atrás del móvil (4-nov-2026) ----------
-    // google.script.history funciona dentro del marco de Apps Script. Se añade una entrada al historial cuando
-    // hay algo a lo que volver: una pantalla que no es Inicio y, aparte, un panel abierto. El botón o el gesto
-    // atrás quita una entrada y llama a atras(), que hace lo mismo que «Volver» (o cierra el panel, o va a Inicio).
+    // google.script.history funciona dentro del marco de Apps Script. Se añade una entrada al historial por cada
+    // paso al que se puede volver: cada pantalla abierta por encima de Inicio (app.pila: Gestión › Usuarios › ficha
+    // son tres), un panel abierto y la selección de varios usuarios. El botón o el gesto atrás quita una entrada y
+    // llama a atras(), que hace lo mismo que «Volver» (o cierra el panel, o va a Inicio).
     // Al volver con los botones de la app, la entrada que sobra se aprovecha en la siguiente pulsación de atrás.
+    // 9-nov-2026: antes había como mucho una entrada por pantalla y, al volver con atrás, se añadía otra en ese
+    // momento; Chrome se salta las entradas añadidas sin que la persona toque la pantalla, así que dos atrás
+    // seguidos desde una pantalla de segundo nivel sacaban de la app. Ahora atrás nunca añade entradas.
     // En la app instalable (PWA, 6-nov-2026), pwa/api.js da lo mismo con el historial normal del navegador (PWA.historia).
     // Sin ninguno de los dos no se hace nada.
 
@@ -1082,7 +1086,9 @@
     let entradas = 0;   // entradas añadidas por la app por encima de la de partida
 
     function entradasNecesarias() {
-      return (app.vista !== 'inicio' ? 1 : 0) + (panelAbierto() ? 1 : 0);
+      const pila = app.pila || [];
+      const profundidad = pila.length ? pila.length - (pila[0] === 'inicio' ? 1 : 0) : 0;
+      return profundidad + (seleccionandoUsuarios() ? 1 : 0) + (panelAbierto() ? 1 : 0);
     }
     function sincronizarHistorial() {
       if (!historia) return;
@@ -1095,7 +1101,9 @@
     }
     function atras() {
       if (!app.init) return;
-      if (panelAbierto()) cerrarPanelComoFondo();
+      if (window.PWA && window.PWA.cerrarCambio && window.PWA.cerrarCambio()) sincronizarHistorial();   // pantalla de cambiar la contraseña
+      else if (panelAbierto()) cerrarPanelComoFondo();
+      else if (seleccionandoUsuarios()) salirSeleccion();
       else if (app.alVolver) app.alVolver();
       else if (app.vista !== 'inicio') irInicio();
       else if (!entradas) aviso('Pulsa atrás otra vez para salir.');
@@ -1237,7 +1245,13 @@
       html += htmlPorGuardar();
 
       if (d.pendientes.length) {
-        html += '<h2 class="seccion peligro">Pendientes (' + d.pendientes.length + ')</h2>';
+        // Plegados (9-nov-2026): solo se ve «Pendientes» con su número; al tocarlo se despliegan. Así Hoy y Mis
+        // grupos quedan a la vista aunque haya muchos. Abiertos o no, se recuerda mientras la app está abierta.
+        const n = d.pendientes.length;
+        html += '<details class="plegable pendientes" id="plegPendientes"' + (app.pendientesAbiertos ? ' open' : '') + '>' +
+          '<summary><span class="numero-pendientes" aria-hidden="true">' + n + '</span><span class="texto-pendientes">' +
+          (n === 1 ? 'Pendiente' : 'Pendientes') + '<small>' + (n === 1 ? '1 lista sin pasar' : n + ' listas sin pasar') + '</small></span></summary>' +
+          '<div class="cuerpo-pendientes">';
         // Agrupados por día («Lun 2 nov») y, dentro, por hora (4-nov-2026). La tarjeta entera abre el pase;
         // «⋮» abre un menú con «No hubo clase» (abrirMenuPendiente).
         let diaActual = null;
@@ -1255,7 +1269,7 @@
               '" data-fecha="' + esc(p.fecha) + '" aria-label="Más opciones de ' + esc(p.nombre) + ', ' + esc(fechaLarga(p.fecha)) + '">' +
               ICONO_MAS_OPCIONES + '</button>') + '</div>';
         });
-        html += '</div>';
+        html += '</div></div></details>';
       }
 
       // Progreso del día y «Todo al día» (5-nov-2026): solo cuentan los grupos con alguien inscrito y sin día libre.
@@ -1297,6 +1311,8 @@
       });
       html += '</details>';
       pintar(html);
+      const pleg = $('plegPendientes');
+      if (pleg) pleg.addEventListener('toggle', function () { app.pendientesAbiertos = pleg.open; });
       animarProgreso();
       actualizarInsignia();
     }
@@ -3283,6 +3299,8 @@
       listas: '<path d="M3 13h2v-2H3zm0 4h2v-2H3zm0-8h2V7H3zm4 4h14v-2H7zm0 4h14v-2H7zM7 7v2h14V7z"/>',
       monitoras: '<path d="M20 6h-4V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zM10 4h4v2h-4zm2 6a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm4 8H8v-1c0-1.3 2.7-2 4-2s4 .7 4 2z"/>',
       cuenta: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 4a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7zm0 14a8 8 0 0 1-6.2-3c.9-1.8 3.9-2.8 6.2-2.8s5.3 1 6.2 2.8A8 8 0 0 1 12 20z"/>',
+      contrasena: '<path d="M18 8h-1V6A5 5 0 0 0 7 6v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zm-6 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm3.1-9H8.9V6a3.1 3.1 0 0 1 6.2 0z"/>',
+      salir: '<path d="M10.1 15.6 11.5 17l5-5-5-5-1.4 1.4 2.6 2.6H3v2h9.7zM19 3H5a2 2 0 0 0-2 2v4h2V5h14v14H5v-4H3v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/>',
       importar: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zm4 18H6V4h7v5h5zM8 15.4l1.4 1.4 1.6-1.6V19h2v-3.8l1.6 1.6 1.4-1.4-4-4z"/>'
     };
     function iconoGestion(nombre) {
@@ -3308,7 +3326,7 @@
         entradaGestion('g-importar', 'importar', 'Importar asistencia y usuarios', 'Desde el Excel de una monitora') + '</div>' +
         // Solo en la app instalable (9-nov-2026), y no mientras el admin ve la app como otra monitora
         (window.PWA && !app.init.monitora.real ? '<div class="lista separado">' +
-          entradaGestion('g-cuenta', 'cuenta', 'Tu cuenta', 'Usuario ' + (app.init.monitora.usuario || (window.PWA.cuenta() || {}).usuario || '') + ' · cambiar la contraseña o cerrar la sesión') + '</div>' : '')
+          entradaGestion('g-cuenta', 'cuenta', 'Tu cuenta', 'Usuario ' + usuarioCuenta()) + '</div>' : '')
       );
     }
 
@@ -3441,6 +3459,7 @@
     // --- Usuarios ---
 
     function irUsuarios() {
+      app.usuarios.sel = null;
       pantallaSecundaria('g-usuarios', 'Usuarios', app.gest.totalUsuarios + ' en la base de datos', volverGestion);
       pintar('<div class="campo buscador"><label for="gBuscarUsuario">Buscar por ID, nombre o teléfono</label>' +
         '<input type="search" id="gBuscarUsuario" autocomplete="off" enterkeyhint="search" value="' + esc(app.usuarios.texto) + '"></div>' +
@@ -3455,21 +3474,212 @@
       const numero = ++app.busqueda;
       pedirCon(false, 'api_usuariosGestion', [app.usuarios.texto]).then(function (r) {
         if (numero !== app.busqueda || !$('gListaUsuarios')) return;
-        $('gListaUsuarios').innerHTML = (r.encontrados > r.usuarios.length
-          ? '<p class="ayuda">Se muestran ' + r.usuarios.length + ' de ' + r.encontrados + '. Escribe para afinar la búsqueda.</p>' : '') +
-          (r.usuarios.length ? '<div class="lista">' + r.usuarios.map(function (u) {
-            // Una monitora solo abre la ficha de los usuarios de sus grupos (propio); los demás, solo nombre e ID.
-            if (u.propio === false) {
-              return filaPersona({ nombre: u.nombre, clase: u.activo ? '' : 'inactiva',
-                detalle: 'ID ' + esc(u.usuario_id) + ' · ' + (u.grupos ? 'de otros grupos' : 'sin grupo') });
-            }
-            return filaPersona({ nombre: u.nombre, boton: true, clase: u.activo ? '' : 'inactiva',
-              atributos: ' data-accion="ficha" data-usuario="' + esc(u.usuario_id) + '" data-nombre="' + esc(u.nombre) + '"',
-              detalle: 'ID ' + esc(u.usuario_id) + (u.telefono ? ' · ' + esc(formatoTelefono(u.telefono)) : '') + ' · ' +
-                (u.grupos ? u.grupos + (u.grupos === 1 ? ' grupo' : ' grupos') : 'sin grupo'),
-              derecha: (u.activo ? '' : '<span class="etiqueta cancelada">Inactivo</span>') + FLECHA });
-          }).join('') + '</div>' : '<p class="vacio">No se ha encontrado a nadie.</p>');
+        app.usuarios.ultimos = r;
+        pintarListaUsuarios();
       }).catch(function (e) { if ($('gListaUsuarios')) $('gListaUsuarios').innerHTML = '<p class="vacio">' + esc(e.message) + '</p>'; });
+    }
+
+    /**
+     * Lista de Gestión › Usuarios con lo último que ha llegado del servidor. Seleccionando (9-nov-2026), cada fila
+     * lleva una casilla y tocarla la marca; arriba, «Seleccionar los N» y «Cancelar», y abajo, cuántos y «Acciones».
+     */
+    function pintarListaUsuarios() {
+      const r = app.usuarios.ultimos;
+      const zona = $('gListaUsuarios');
+      if (!r || !zona) return;
+      const sel = app.usuarios.sel;
+      const datosFila = function (u) {
+        return ' data-usuario="' + esc(u.usuario_id) + '" data-nombre="' + esc(u.nombre) + '" data-activo="' + (u.activo ? '1' : '') + '"';
+      };
+      let html = '';
+      if (sel) {
+        const todos = r.usuarios.length && r.usuarios.every(function (u) { return sel[u.usuario_id]; });
+        html += '<div class="cabecera-lista"><button type="button" class="boton compacto" data-accion="sel-todos">' +
+          (todos ? 'Quitar todos' : 'Seleccionar los ' + r.usuarios.length) + '</button>' +
+          '<button type="button" class="boton compacto" data-accion="sel-salir">Cancelar</button></div>';
+      } else {
+        html += '<div class="cabecera-lista"><p class="ayuda">' + (r.encontrados > r.usuarios.length
+          ? 'Se muestran ' + r.usuarios.length + ' de ' + r.encontrados + '. Escribe para afinar la búsqueda.'
+          : r.encontrados + (r.encontrados === 1 ? ' usuario' : ' usuarios')) + '</p>' +
+          (r.usuarios.length ? '<button type="button" class="boton compacto" data-accion="sel-empezar">Seleccionar</button>' : '') + '</div>';
+      }
+      html += r.usuarios.length ? '<div class="lista">' + r.usuarios.map(function (u) {
+        const detalle = 'ID ' + esc(u.usuario_id) + (u.telefono ? ' · ' + esc(formatoTelefono(u.telefono)) : '') + ' · ' +
+          (u.propio === false ? (u.grupos ? 'de otros grupos' : 'sin grupo') : u.grupos ? u.grupos + (u.grupos === 1 ? ' grupo' : ' grupos') : 'sin grupo');
+        const inactivo = u.activo ? '' : '<span class="etiqueta cancelada">Inactivo</span>';
+        if (sel) {
+          const marcado = !!sel[u.usuario_id];
+          return filaPersona({ nombre: u.nombre, boton: true, clase: 'seleccionable' + (marcado ? ' elegida' : '') + (u.activo ? '' : ' inactiva'),
+            atributos: ' data-accion="sel-usuario" aria-pressed="' + marcado + '"' + datosFila(u), detalle: detalle,
+            derecha: inactivo + '<span class="casilla-sel" aria-hidden="true">' + ICONO_GUARDAR + '</span>' });
+        }
+        // Una monitora solo abre la ficha de los usuarios de sus grupos (propio); los demás, solo nombre e ID.
+        if (u.propio === false) {
+          return filaPersona({ nombre: u.nombre, clase: u.activo ? '' : 'inactiva', atributos: datosFila(u), detalle: detalle });
+        }
+        return filaPersona({ nombre: u.nombre, boton: true, clase: u.activo ? '' : 'inactiva',
+          atributos: ' data-accion="ficha"' + datosFila(u), detalle: detalle, derecha: inactivo + FLECHA });
+      }).join('') + '</div>' : '<p class="vacio">No se ha encontrado a nadie.</p>';
+      zona.innerHTML = html;
+      const boton = $('vista').querySelector('.fab');
+      if (boton) boton.classList.toggle('oculto', !!sel);
+      if (sel) {
+        const n = Object.keys(sel).length;
+        pie('<div class="pie-seleccion"><span class="cuantos-seleccion" role="status">' + (n === 1 ? '1 seleccionado' : n + ' seleccionados') + '</span>' +
+          '<button type="button" class="boton lleno" data-accion="sel-acciones"' + (n ? '' : ' disabled') + '>Acciones</button></div>');
+      } else {
+        pie('');
+      }
+    }
+
+    // --- Selección de varios usuarios (9-nov-2026) ---
+    // Con «Seleccionar» o manteniendo pulsada una fila. app.usuarios.sel: { usuario_id: { nombre, activo } } (null
+    // si no se está seleccionando). Se conserva al cambiar la búsqueda, para elegir de varias. Atrás la cierra.
+
+    function seleccionandoUsuarios() { return app.vista === 'g-usuarios' && !!(app.usuarios && app.usuarios.sel); }
+
+    function datosSeleccion(fila) {
+      return { nombre: fila.getAttribute('data-nombre'), activo: !!fila.getAttribute('data-activo') };
+    }
+
+    function empezarSeleccion(fila) {
+      app.usuarios.sel = {};
+      if (fila) app.usuarios.sel[fila.getAttribute('data-usuario')] = datosSeleccion(fila);
+      pintarListaUsuarios();
+      sincronizarHistorial();
+    }
+
+    function salirSeleccion() {
+      app.usuarios.sel = null;
+      pintarListaUsuarios();
+    }
+
+    function alternarSeleccion(fila) {
+      const sel = app.usuarios.sel;
+      const id = fila.getAttribute('data-usuario');
+      if (sel[id]) delete sel[id];
+      else sel[id] = datosSeleccion(fila);
+      pintarListaUsuarios();
+    }
+
+    function seleccionarTodos() {
+      const sel = app.usuarios.sel;
+      const lista = app.usuarios.ultimos.usuarios;
+      const todos = lista.every(function (u) { return sel[u.usuario_id]; });
+      lista.forEach(function (u) {
+        if (todos) delete sel[u.usuario_id];
+        else sel[u.usuario_id] = { nombre: u.nombre, activo: u.activo };
+      });
+      pintarListaUsuarios();
+    }
+
+    function idsSeleccionados() { return Object.keys(app.usuarios.sel || {}); }
+
+    /** «a 1 usuario» / «a 3 usuarios» (o el nombre, si es uno solo). */
+    function aQuienes() {
+      const ids = idsSeleccionados();
+      return ids.length === 1 ? 'a ' + nombreVisible(app.usuarios.sel[ids[0]].nombre) : 'a ' + ids.length + ' usuarios';
+    }
+
+    function abrirAccionesSeleccion() {
+      const ids = idsSeleccionados();
+      if (!ids.length) return;
+      const sel = app.usuarios.sel;
+      const hayInactivos = ids.some(function (id) { return !sel[id].activo; });
+      const hayActivos = ids.some(function (id) { return sel[id].activo; });
+      const uno = ids.length === 1;
+      abrirPanel('<div><h3>' + (uno ? esc(nombreVisible(sel[ids[0]].nombre)) : ids.length + ' usuarios') + '</h3><div class="pila">' +
+        '<button type="button" class="boton ancho" data-accion="sel-inscribir">Inscribir en un grupo</button>' +
+        '<button type="button" class="boton ancho" data-accion="sel-baja">Dar de baja</button>' +
+        (hayActivos ? '<button type="button" class="boton ancho" data-accion="sel-inactivo">Marcar como ' + (uno ? 'inactivo' : 'inactivos') + '</button>' : '') +
+        (hayInactivos ? '<button type="button" class="boton ancho" data-accion="sel-activo">Marcar como ' + (uno ? 'activo' : 'activos') + '</button>' : '') +
+        '<button type="button" class="boton ancho" data-accion="cerrar-panel">Cancelar</button></div></div>');
+    }
+
+    function opcionesGrupos(lista) {
+      return lista.map(function (g) { return { valor: g.grupo_id, texto: tallerYGrupo(g.taller, g.nombre), sub: horario(g) }; });
+    }
+
+    function abrirInscribirSeleccion() {
+      const grupos = app.init.grupos;
+      abrirPanel('<div><h3>Inscribir ' + esc(aQuienes()) + '</h3>' +
+        (grupos.length ? opcionesRadio('selGrupo', 'Grupo', opcionesGrupos(grupos), '') + campoFecha('selFecha', 'Desde')
+          : '<p class="vacio">No tienes grupos. Créalos en Gestión › Grupos y talleres.</p>') +
+        '<div class="botones"><button type="button" class="boton" data-accion="sel-acciones">Volver</button>' +
+        (grupos.length ? '<button type="button" class="boton primario" data-accion="sel-inscribir-ok" data-en-curso="Inscribiendo…">Inscribir</button>' : '') +
+        '</div></div>', true);
+    }
+
+    function abrirBajaSeleccion() {
+      abrirPanel('<div><h3>Dar de baja ' + esc(aQuienes()) + '</h3>' +
+        opcionesRadio('selGrupoBaja', 'De qué grupo', [{ valor: '', texto: esAdmin() ? 'De todos sus grupos' : 'De todos tus grupos' }]
+          .concat(opcionesGrupos(app.init.grupos)), '') +
+        campoFecha('fechaBaja', 'Último día en el grupo') +
+        opcionesRadio('motivoBaja', 'Motivo', app.init.motivosBaja.map(function (m) { return { valor: m, texto: m }; }), '') +
+        '<div class="botones"><button type="button" class="boton" data-accion="sel-acciones">Volver</button>' +
+        '<button type="button" class="boton peligro" data-accion="sel-baja-ok" data-en-curso="Dando de baja…">Dar de baja</button></div></div>', true);
+    }
+
+    function pedirActivoSeleccion(activo) {
+      const n = idsSeleccionados().length;
+      const que = (activo ? 'activo' : 'inactivo') + (n === 1 ? '' : 's');
+      confirmar('¿Marcar ' + (n === 1 ? 'como ' : n + ' usuarios como ') + que + '?',
+        activo ? 'Vuelven a salir como activos.' : 'Siguen inscritos en sus grupos. Para quitarlos de las listas, dalos de baja.',
+        'Marcar ' + que, false, function () {
+          usuariosEnBloque(activo ? 'activo' : 'inactivo', {}, 'usuario', function (h) {
+            return h === 1 ? '1 usuario marcado como ' + (activo ? 'activo' : 'inactivo') : h + ' usuarios marcados como ' + que;
+          });
+        }, 'Guardando…');
+    }
+
+    function pedirInscribirSeleccion() {
+      const grupoId = elegido('selGrupo');
+      const fecha = valor('selFecha');
+      if (!grupoId) return errorCampo('selGrupo', 'Elige el grupo.');
+      if (!fecha) return errorCampo('selFecha', 'Indica desde cuándo.');
+      const g = app.init.grupos.find(function (x) { return x.grupo_id === grupoId; });
+      usuariosEnBloque('inscribir', { grupo_id: grupoId, fecha_alta: fecha }, 'inscripciones', function (h) {
+        return (h === 1 ? '1 inscripción' : h + ' inscripciones') + (g ? ' · ' + g.nombre : '');
+      });
+    }
+
+    function pedirBajaSeleccion() {
+      const grupoId = elegido('selGrupoBaja');
+      const fecha = valor('fechaBaja');
+      const motivo = elegido('motivoBaja');
+      if (!fecha) return errorCampo('fechaBaja', 'Indica el último día en el grupo.');
+      if (!motivo) return errorCampo('motivoBaja', 'Elige el motivo de la baja.');
+      usuariosEnBloque('baja', { grupo_id: grupoId, fecha_baja: fecha, motivo: motivo }, 'inscripciones', function (h) {
+        return h === 1 ? '1 usuario dado de baja' : h + ' usuarios dados de baja';
+      });
+    }
+
+    /**
+     * Llama a api_usuariosEnBloque con los seleccionados. Al terminar sale de la selección y vuelve a pedir la lista;
+     * si alguno no se ha podido cambiar, el aviso lo dice y «Ver» enseña quién y por qué.
+     */
+    function usuariosEnBloque(accion, datos, cambio, textoHechos) {
+      const ids = idsSeleccionados();
+      const sigue = siSiguePara();
+      llamar('api_usuariosEnBloque', ids, accion, datos).then(function (r) {
+        anticuar(cambio);
+        precargar();
+        const saltados = r.saltados || [];
+        sigue(function () {
+          cerrarPanel();
+          app.usuarios.sel = null;
+          pintarListaUsuarios();
+          buscarUsuariosGestion();
+        })();
+        aviso((r.hechos ? textoHechos(r.hechos) : 'Sin cambios') + (saltados.length ? ' · ' + saltados.length + ' sin cambiar' : ''), false,
+          saltados.length ? { texto: 'Ver', fn: function () { verSaltados(saltados); } } : null);
+      }).catch(avisoError);
+    }
+
+    function verSaltados(saltados) {
+      abrirPanel('<div><h3>Sin cambiar</h3><div class="lista">' + saltados.map(function (x) {
+        return filaPersona({ nombre: x.nombre || x.usuario_id, detalle: 'ID ' + esc(x.usuario_id) + ' · ' + esc(x.motivo) });
+      }).join('') + '</div><div class="botones"><button type="button" class="boton" data-accion="cerrar-panel">Cerrar</button></div></div>', true);
     }
 
     /**
@@ -4037,15 +4247,19 @@
       document.body.classList.add('viendo-como');
     }
 
-    /** Gestión › Tu cuenta: quién tiene la sesión en este aparato, cambiar la contraseña y cerrar la sesión. */
+    /** Gestión › Tu cuenta: cambiar la contraseña y cerrar la sesión (9-nov-2026: arriba solo «Usuario …»). */
     function irCuenta() {
-      const m = app.init.monitora;
-      pantallaSecundaria('g-cuenta', 'Tu cuenta', m.nombre || m.email, volverGestion);
-      pintar('<div class="bloque"><p class="ayuda">Has entrado como</p><p class="cifra-texto"><b>' + esc(m.nombre || m.email) + '</b></p>' +
-        '<p class="ayuda">Usuario ' + esc(m.usuario || (window.PWA.cuenta() || {}).usuario || '') + ' · ' + (m.rol === 'admin' ? 'Administración' : 'Monitora') + '</p></div>' +
-        '<p class="ayuda">La sesión se queda abierta en este móvil hasta que la cierres. Ciérrala si vas a dejar de usarlo o si es de otra persona.</p>' +
-        '<button type="button" class="boton ancho separado" data-accion="cuenta-contrasena">Cambiar mi contraseña</button>' +
-        '<button type="button" class="boton peligro ancho separado" data-accion="cuenta-salir">Cerrar sesión en este móvil</button>');
+      pantallaSecundaria('g-cuenta', 'Tu cuenta', 'Usuario ' + usuarioCuenta(), volverGestion);
+      pintar('<div class="lista">' +
+        '<button type="button" class="tarjeta" data-accion="cuenta-contrasena">' + iconoGestion('contrasena') +
+        '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">Cambiar contraseña</div></div>' + FLECHA + '</button>' +
+        '<button type="button" class="tarjeta" data-accion="cuenta-salir">' + iconoGestion('salir') +
+        '<div class="tarjeta-cuerpo"><div class="tarjeta-titulo">Cerrar sesión</div></div>' + FLECHA + '</button></div>');
+    }
+
+    /** Usuario con el que se ha entrado en la app instalable. */
+    function usuarioCuenta() {
+      return app.init.monitora.usuario || (window.PWA.cuenta() || {}).usuario || '';
     }
 
     function cambiarMiContrasena() {
@@ -4066,12 +4280,12 @@
       const c = app.conf.config;
       pantallaSecundaria('g-curso', 'Curso', '', volverConfiguracion);
       pintar('<div class="bloque">' +
-        '<div class="campo"><label for="cCurso">Nombre del curso</label><input type="text" id="cCurso" enterkeyhint="done" value="' + esc(c.curso) + '" placeholder="2026-2027"></div>' +
-        '<div class="fila-campos"><div class="campo"><label for="cInicio">Primer día de clase</label><input type="date" id="cInicio" value="' + esc(c.inicio) + '"></div>' +
-        '<div class="campo"><label for="cFin">Último día de clase</label><input type="date" id="cFin" value="' + esc(c.fin) + '"></div></div>' +
+        '<div class="campo"><label for="cCurso">Años del curso</label><input type="text" id="cCurso" enterkeyhint="done" value="' + esc(c.curso) + '" placeholder="2026-2027"></div>' +
+        '<div class="fila-campos"><div class="campo"><label for="cInicio">Inicio de curso</label><input type="date" id="cInicio" value="' + esc(c.inicio) + '"></div>' +
+        '<div class="campo"><label for="cFin">Fin de curso</label><input type="date" id="cFin" value="' + esc(c.fin) + '"></div></div>' +
         // Trimestres (6-nov-2026): el periodo «Este trimestre» del Informe.
-        '<div class="fila-campos"><div class="campo"><label for="cTrimestre2">Empieza el 2.º trimestre</label><input type="date" id="cTrimestre2" value="' + esc(c.trimestre2) + '"></div>' +
-        '<div class="campo"><label for="cTrimestre3">Empieza el 3.º trimestre</label><input type="date" id="cTrimestre3" value="' + esc(c.trimestre3) + '"></div></div>' +
+        '<div class="fila-campos"><div class="campo"><label for="cTrimestre2">2.º trimestre</label><input type="date" id="cTrimestre2" value="' + esc(c.trimestre2) + '"></div>' +
+        '<div class="campo"><label for="cTrimestre3">3.º trimestre</label><input type="date" id="cTrimestre3" value="' + esc(c.trimestre3) + '"></div></div>' +
         '<div class="campo"><label for="cPendientes">Avisar de listas sin pasar de los últimos… (días)</label>' +
         '<input type="number" id="cPendientes" inputmode="numeric" enterkeyhint="next" min="1" max="60" value="' + esc(c.diasPendientes) + '"></div>' +
         '<div class="campo"><label for="cFaltas">Avisar en el pase de lista a partir de… faltas seguidas</label>' +
@@ -4084,13 +4298,13 @@
       const datos = { curso: valor('cCurso'), inicio: valor('cInicio'), fin: valor('cFin'), trimestre2: valor('cTrimestre2'), trimestre3: valor('cTrimestre3'),
         diasPendientes: valor('cPendientes'), faltasSeguidas: valor('cFaltas') };
       const entero = function (v, min, max) { const n = Number(v); return v !== '' && Math.floor(n) === n && n >= min && n <= max; };
-      if (!datos.curso) return errorCampo('cCurso', 'Escribe el nombre del curso (por ejemplo, 2026-2027).');
-      if (!datos.inicio) return errorCampo('cInicio', 'Indica el primer día de clase.');
-      if (!datos.fin) return errorCampo('cFin', 'Indica el último día de clase.');
-      if (datos.fin < datos.inicio) return errorCampo('cFin', 'El último día es anterior al primero.');
-      if (!datos.trimestre2) return errorCampo('cTrimestre2', 'Indica el primer día del 2.º trimestre.');
-      if (datos.trimestre2 <= datos.inicio || datos.trimestre2 > datos.fin) return errorCampo('cTrimestre2', 'Tiene que caer dentro del curso, después del primer día.');
-      if (!datos.trimestre3) return errorCampo('cTrimestre3', 'Indica el primer día del 3.º trimestre.');
+      if (!datos.curso) return errorCampo('cCurso', 'Escribe los años del curso (por ejemplo, 2026-2027).');
+      if (!datos.inicio) return errorCampo('cInicio', 'Indica el inicio de curso.');
+      if (!datos.fin) return errorCampo('cFin', 'Indica el fin de curso.');
+      if (datos.fin < datos.inicio) return errorCampo('cFin', 'El fin de curso es anterior al inicio.');
+      if (!datos.trimestre2) return errorCampo('cTrimestre2', 'Indica cuándo empieza el 2.º trimestre.');
+      if (datos.trimestre2 <= datos.inicio || datos.trimestre2 > datos.fin) return errorCampo('cTrimestre2', 'Tiene que caer dentro del curso, después del inicio.');
+      if (!datos.trimestre3) return errorCampo('cTrimestre3', 'Indica cuándo empieza el 3.º trimestre.');
       if (datos.trimestre3 <= datos.trimestre2) return errorCampo('cTrimestre3', 'Tiene que ser posterior al inicio del 2.º trimestre.');
       if (datos.trimestre3 > datos.fin) return errorCampo('cTrimestre3', 'Tiene que caer dentro del curso.');
       if (!entero(datos.diasPendientes, 1, 60)) return errorCampo('cPendientes', 'Escribe un número de días entre 1 y 60.');
@@ -4597,7 +4811,9 @@
       // Una casilla del Historial (9-nov-2026) abre su panel con todos los estados.
       const celda = ev.target.closest('td.editable[data-accion="celda"]');
       const fila = ev.target.closest('.fila-usuario');
-      if (!celda && (!fila || ev.target.closest('a.llamar, .mas-opciones'))) return;
+      // Gestión › Usuarios (9-nov-2026): mantener pulsada una fila empieza a seleccionar, con ella marcada.
+      const filaSel = app.vista === 'g-usuarios' && !seleccionandoUsuarios() ? ev.target.closest('#gListaUsuarios .fila-persona[data-usuario]') : null;
+      if (!celda && !filaSel && (!fila || ev.target.closest('a.llamar, .mas-opciones'))) return;
       pulsacionLarga = {
         x: ev.clientX,
         y: ev.clientY,
@@ -4605,7 +4821,8 @@
           pulsacionLarga = null;
           saltarClic = true;
           vibrar();
-          if (celda) abrirPanelCelda(Number(celda.getAttribute('data-fila')), Number(celda.getAttribute('data-col')));
+          if (filaSel) empezarSeleccion(filaSel);
+          else if (celda) abrirPanelCelda(Number(celda.getAttribute('data-fila')), Number(celda.getAttribute('data-col')));
           else abrirPanelUsuario(Number(fila.getAttribute('data-indice')));
         }, MS_PULSACION_LARGA)
       };
@@ -4995,6 +5212,18 @@
         }
         case 'g-usuarios': irUsuarios(); break;
         case 'g-usuario-nuevo': formularioUsuarioNuevo(); break;
+        // Selección de varios usuarios (9-nov-2026)
+        case 'sel-empezar': empezarSeleccion(null); break;
+        case 'sel-salir': salirSeleccion(); break;
+        case 'sel-todos': seleccionarTodos(); break;
+        case 'sel-usuario': alternarSeleccion(el); break;
+        case 'sel-acciones': abrirAccionesSeleccion(); break;
+        case 'sel-inscribir': abrirInscribirSeleccion(); break;
+        case 'sel-baja': abrirBajaSeleccion(); break;
+        case 'sel-inactivo': pedirActivoSeleccion(false); break;
+        case 'sel-activo': pedirActivoSeleccion(true); break;
+        case 'sel-inscribir-ok': pedirInscribirSeleccion(); break;
+        case 'sel-baja-ok': pedirBajaSeleccion(); break;
         case 'g-crear-usuario': crearUsuario(); break;
         case 'g-guardar-usuario': guardarFicha(); break;
         case 'g-inscribir-usuario': inscribirDesdeFicha(); break;

@@ -368,6 +368,17 @@
     });
   }
 
+  /**
+   * Botón atrás con la pantalla de cambiar la contraseña abierta desde Tu cuenta: la cierra como «Cancelar».
+   * Devuelve si la ha cerrado (la de entrada y la de cambio obligatorio no se cierran).
+   */
+  function cerrarCambio() {
+    const cancelar = pantalla && pantalla.querySelector('#pwaCancelar');
+    if (!cancelar) return false;
+    cancelar.click();
+    return true;
+  }
+
   /** Quién tiene la sesión en este aparato: { usuario, nombre }. */
   function cuenta() {
     const s = leerSesion();
@@ -380,6 +391,7 @@
     salir: salir,
     verComo: verComo,
     cambiarContrasena: cambiarContrasena,
+    cerrarCambio: cerrarCambio,
     cuenta: cuenta,
     urlServidor: urlServidor
   };

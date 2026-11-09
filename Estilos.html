@@ -725,6 +725,27 @@
   }
   details.plegable[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
   details.plegable[open] > summary { border-bottom: 1px solid var(--md-outline); border-radius: var(--md-shape-lista) var(--md-shape-lista) 0 0; }
+  /* Pendientes de Inicio plegados (9-nov-2026): una fila con el número en rojo; al abrirla, las tarjetas debajo */
+  details.plegable.pendientes { margin-top: 12px; background: transparent; }
+  details.plegable.pendientes > summary { background: var(--md-surface); border-left: 4px solid var(--md-error); }
+  details.plegable.pendientes[open] > summary { border-bottom: 0; border-radius: var(--md-shape-lista); }
+  .numero-pendientes {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    border-radius: 16px;
+    background: var(--md-error);
+    color: var(--md-on-primary);
+    font-size: var(--fs-md);
+    font-weight: 700;
+  }
+  .texto-pendientes { display: flex; flex-direction: column; color: var(--md-error); }
+  .texto-pendientes small { font-size: var(--fs-sm); font-weight: 400; color: var(--md-on-surface-med); }
+  .cuerpo-pendientes { padding-top: 4px; }
   .grupo-fila { padding: 14px 16px; }
   .grupo-fila + .grupo-fila { border-top: 1px solid var(--md-outline); }
   .grupo-fila .botones { margin-top: 10px; }
@@ -1707,6 +1728,28 @@
   .fila-persona > .flecha { margin-right: 8px; }
   .fila-persona > .etiqueta { flex: none; }
   .fila-persona > .boton { flex: none; }
+  /* Selección de varios usuarios (Gestión › Usuarios, 9-nov-2026): casilla a la derecha y fila tintada si está marcada */
+  .cabecera-lista { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 4px 8px; min-height: 48px; }
+  .cabecera-lista .ayuda { margin: 0; }
+  .fila-persona.seleccionable { cursor: pointer; }
+  .fila-persona.elegida { background: var(--md-principal-suave); }
+  .casilla-sel {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-right: 4px;
+    border: 2px solid var(--md-on-surface-med);
+    border-radius: 6px;
+    color: transparent;
+  }
+  .casilla-sel svg { width: 18px; height: 18px; }
+  .elegida .casilla-sel { background: var(--md-relleno); border-color: var(--md-relleno); color: var(--md-on-primary); }
+  .pie-seleccion { display: flex; align-items: center; gap: 12px; }
+  .cuantos-seleccion { flex: 1; min-width: 0; font-size: var(--fs-md); font-weight: 600; }
+  .pie-seleccion .boton { flex: none; padding-left: 24px; padding-right: 24px; }
   .fila-persona .ya-en-grupo { color: var(--md-success); font-weight: 600; }
   .fila-persona > .etiqueta.inscrito { min-width: 96px; min-height: 40px; justify-content: center; }
   .panel .fila-persona { background: var(--md-surface); }
