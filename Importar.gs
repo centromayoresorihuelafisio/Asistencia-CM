@@ -678,6 +678,7 @@ function leerBloquesHoja_(h, r, columnas, ctx) {
     b.dias = ORDEN_DIAS.filter(function (d) { return letras[d]; });
     delete b.vistos;
     let raras = 0;
+    const letrasRaras = {};
     fechas.forEach(function (fecha) {
       // De cada usuario, la primera casilla con algo (si la fecha sale en dos columnas).
       const valores = b.usuarios.map(function (u) {
@@ -705,9 +706,14 @@ function leerBloquesHoja_(h, r, columnas, ctx) {
         if (codigo) { b.usuarios[k].marcas[fecha] = codigo; alguna = true; }
       });
       raras += otras.length;
+      otras.forEach(function (v) { letrasRaras[v] = true; });
       b.fechas.push({ fecha: fecha, tipo: alguna ? 'clase' : 'vacia', nota: '' });
     });
-    if (raras) b.avisos.push(raras + (raras === 1 ? ' casilla con una letra desconocida se deja' : ' casillas con letras desconocidas se dejan') + ' sin marcar.');
+    if (raras) {
+      b.avisos.push(raras + (raras === 1 ? ' casilla con una letra desconocida se deja' : ' casillas con letras desconocidas se dejan') +
+        ' sin marcar (' + Object.keys(letrasRaras).slice(0, 10).join(', ') + ').');
+    }
+    b.raras = raras;
     // Los días sin ninguna marca después de la última clase (o día con palabra) no son del Excel: se quitan.
     let ultima = -1;
     b.fechas.forEach(function (x, k) { if (x.tipo !== 'vacia') ultima = k; });
@@ -730,17 +736,19 @@ function altaImportada_(b, u, hoy, fechaAlta) {
 /** Contexto para leer un libro: letras de los estados (hoja Estados, también los desactivados), curso y hoy. */
 function contextoImportar_() {
   const letras = {};
-  const codigos = {};
-  leerTabla_(HOJAS.ESTADOS).forEach(function (e) {
-    if (!e.codigo) return;
-    codigos[e.codigo] = true;
+  const estados = leerTabla_(HOJAS.ESTADOS).filter(function (e) { return e.codigo; });
+  estados.forEach(function (e) {
     const l = textoImportado_(e.letra);
-    if (l && !letras[l]) letras[l] = e.codigo;
+    if (l.length === 1 && !letras[l]) letras[l] = e.codigo;
   });
-  // Si la hoja Estados no tiene la letra de un estado de siempre (columna letra vacía o de una hoja antigua), se usa
-  // la de siempre: X Asistido, F Falta, J Justificada, E Evento (9-nov-2026: sin esto, las X no se reconocían).
-  DATOS_INICIALES.estados.forEach(function (e) {
-    if (codigos[e.codigo] && !letras[e.letra] && !Object.keys(letras).some(function (l) { return letras[l] === e.codigo; })) letras[e.letra] = e.codigo;
+  // Las letras de los Excel son siempre X Asistido, F Falta, J Justificada y E Evento. Si la hoja Estados no usa una de
+  // ellas para otro estado (columna letra vacía, con otra letra o con otro contenido), vale la de siempre: su código o,
+  // si no existe, el primer estado de su tipo (9-nov-2026: sin esto, las X no se reconocían en la hoja del dueño).
+  DATOS_INICIALES.estados.forEach(function (d) {
+    if (letras[d.letra]) return;
+    const e = estados.find(function (x) { return x.codigo === d.codigo; }) ||
+      estados.find(function (x) { return x.tipo === d.tipo && x.activo !== NO; });
+    if (e) letras[d.letra] = e.codigo;
   });
   return { letras: letras, inicioCurso: config_().inicio, hoy: hoy_() };
 }
@@ -809,7 +817,7 @@ function analizarImportacion_(monitora, libro) {
       });
     });
     // Sin ninguna marca reconocida en días con algo escrito: casi seguro que las letras no son las de la hoja Estados.
-    if (b.conFechas && !Object.keys(marcas).length && b.fechas.some(function (x) { return x.tipo !== 'vacia'; })) {
+    if (b.conFechas && !Object.keys(marcas).length && (b.raras || b.fechas.some(function (x) { return x.tipo !== 'vacia'; }))) {
       b.avisos.unshift('No se ha reconocido ninguna marca de asistencia. Revisa en Configuración › Estados de asistencia la letra de cada estado (X, F, J, E).');
     }
     // Grupo de la monitora con los mismos días y la misma hora (si solo hay uno).
@@ -849,6 +857,8 @@ function analizarImportacion_(monitora, libro) {
   return {
     archivo: libro.nombre, curso: lectura.anioCurso, avisos: lectura.avisos, hojasIgnoradas: lectura.hojasIgnoradas,
     bloques: bloques, yaEnApp: yaEnApp,
+    // Qué estado es cada letra de las casillas (se enseña arriba de la vista previa).
+    letras: Object.keys(ctx.letras).sort().map(function (l) { return { letra: l, codigo: ctx.letras[l] }; }),
     grupos: grupos.map(function (g) { return grupoParaCliente_(g, porTaller); })
       .sort(function (a, b) { return (a.taller + a.nombre).localeCompare(b.taller + b.nombre, 'es'); }),
     talleres: talleres.map(function (t) { return { taller_id: t.taller_id, nombre: t.nombre || t.taller_id }; })

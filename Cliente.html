@@ -4306,6 +4306,9 @@
       let html = '<div class="resumen-importar"><strong>' + esc(a.archivo) + '</strong><span>' +
         esc(textoCuantos(a.bloques.length, 'grupo encontrado', 'grupos encontrados')) + (a.curso ? ' · curso ' + esc(a.curso) : '') + '</span></div>';
       a.avisos.forEach(function (t) { html += '<div class="banda especial">' + esc(t) + '</div>'; });
+      if ((a.letras || []).length) {
+        html += '<p class="ayuda">Letras de las casillas: ' + esc(a.letras.map(function (x) { return x.letra + ' = ' + estadoInfo(x.codigo).etiqueta; }).join(' · ')) + '. Vacía = sin marcar.</p>';
+      }
       if (a.hojasIgnoradas.length) html += '<p class="ayuda">Pestañas sin grupos reconocibles: ' + esc(a.hojasIgnoradas.join(', ')) + '.</p>';
       a.bloques.forEach(function (b) { html += htmlBloqueImportar(b); });
       html += '<button type="button" class="boton ancho separado" data-accion="imp-otro">Elegir otro archivo</button>';
