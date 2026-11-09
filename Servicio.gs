@@ -366,6 +366,9 @@ function datosSesion_(monitora, grupoId, fecha) {
     }
   });
 
+  // En una sesión hecha, quien no tiene marca está «sin marcar» (9-nov-2026: pendiente solo para él, por ejemplo una
+  // casilla vacía de un Excel importado o un alta con fecha anterior). En una sesión nueva o cancelada, el de por defecto.
+  const sinMarca = sesion && sesion.estado === ESTADO_SESION.REALIZADA ? ESTADO_SIN_MARCAR : ESTADO_POR_DEFECTO;
   const lista = inscritosEn_(grupoId, fecha).map(function (i) {
     const id = normalizarId_(i.usuario_id);
     const u = usuarios[id] || {};
@@ -375,7 +378,7 @@ function datosSesion_(monitora, grupoId, fecha) {
       usuario_id: id,
       nombre: u.nombre || ('(ID ' + id + ' sin ficha)'),
       telefono: u.telefono || '',
-      estado: g ? g.estado : ESTADO_POR_DEFECTO,
+      estado: g ? g.estado : sinMarca,
       observaciones: g ? g.observaciones : '',
       inscripcion_id: i.inscripcion_id,
       fecha_baja: i.fecha_baja,
@@ -425,8 +428,10 @@ function guardarSesion_(monitora, payload) {
       const id = normalizarId_(r && r.usuario_id);
       if (!id) throw errorApp_('Hay un usuario sin ID en la lista.');
       if (recibidos[id]) throw errorApp_('El usuario con ID ' + id + ' aparece dos veces en la lista.');
-      if (codigos.indexOf(r.estado) < 0) throw errorApp_('El estado «' + r.estado + '» no existe en la hoja Estados.');
-      recibidos[id] = { estado: r.estado, observaciones: String(r.observaciones || '').trim() };
+      const estado = String(r.estado || '');
+      // Estado vacío = «sin marcar»: cuenta como de la lista, pero no se guarda ninguna fila (y se quita la que hubiera).
+      if (estado !== ESTADO_SIN_MARCAR && codigos.indexOf(estado) < 0) throw errorApp_('El estado «' + estado + '» no existe en la hoja Estados.');
+      recibidos[id] = { estado: estado, observaciones: String(r.observaciones || '').trim() };
     });
 
     const inscritos = inscritosEn_(grupoId, fecha).map(function (i) { return normalizarId_(i.usuario_id); });
@@ -446,13 +451,14 @@ function guardarSesion_(monitora, payload) {
     leerTabla_(HOJAS.ASISTENCIA).forEach(function (a) {
       if (a.fecha !== fecha || a.grupo_id !== grupoId) return;
       const id = normalizarId_(a.usuario_id);
-      if (recibidos[id] && !existentes[id]) existentes[id] = a;
+      if (recibidos[id] && recibidos[id].estado !== ESTADO_SIN_MARCAR && !existentes[id]) existentes[id] = a;
       else sobrantes.push(a._fila);
     });
 
     const actualizar = [];
     const nuevas = [];
     Object.keys(recibidos).forEach(function (id) {
+      if (recibidos[id].estado === ESTADO_SIN_MARCAR) return;
       const fila = {
         clave: fecha + '|' + grupoId + '|' + id,
         fecha: fecha,
@@ -474,8 +480,114 @@ function guardarSesion_(monitora, payload) {
     borrarFilas_(HOJAS.ASISTENCIA, sobrantes);
 
     guardarFilaSesion_(grupoId, fecha, ESTADO_SESION.REALIZADA, String(payload.nota || '').trim(), emailRegistro_(monitora), ahora);
-    return { guardados: Object.keys(recibidos).length };
+    return { guardados: actualizar.length + nuevas.length };
   });
+}
+
+/** Fila de Asistencia de un usuario en una sesión (guardar el pase, el Historial y la importación la escriben igual). */
+function filaAsistencia_(grupo, taller, fecha, usuarioId, estado, observaciones, email, ahora) {
+  return {
+    clave: fecha + '|' + grupo.grupo_id + '|' + usuarioId,
+    fecha: fecha,
+    grupo_id: grupo.grupo_id,
+    usuario_id: usuarioId,
+    estado: estado,
+    taller: taller,
+    grupo: grupo.nombre || grupo.grupo_id,
+    mes: fecha.substring(0, 7),
+    observaciones: observaciones || '',
+    registrada_por: email,
+    timestamp: ahora
+  };
+}
+
+/**
+ * Historial editable (9-nov-2026): guarda de una vez las casillas cambiadas en la cuadrícula de un grupo.
+ * cambios: [{ fecha, usuario_id, estado }], estado vacío = «sin marcar» (quita la fila). Cada usuario tiene que
+ * estar inscrito ese día. Un día sin sesión pasa a ser una sesión hecha (los demás inscritos quedan sin marcar);
+ * un día sin clase (cancelada) no se cambia desde aquí: se abre su pase.
+ * Las observaciones que hubiera se conservan.
+ */
+function guardarCeldas_(monitora, grupoId, cambios) {
+  if (!Array.isArray(cambios) || !cambios.length) throw errorApp_('No hay cambios que guardar.');
+  if (cambios.length > MAX_CAMBIOS_HISTORIAL) throw errorApp_('Demasiados cambios de una vez. Guárdalos en varias veces.');
+  const hoy = hoy_();
+  const codigos = {};
+  estados_().forEach(function (e) { codigos[e.codigo] = true; });
+  const porClave = {};
+  cambios.forEach(function (c) {
+    const fecha = String(c && c.fecha || '');
+    const id = normalizarId_(c && c.usuario_id);
+    const estado = String(c && c.estado || '');
+    comprobarFecha_(fecha, 'de la clase');
+    if (fecha > hoy) throw errorApp_('No se puede pasar lista de un día que todavía no ha llegado.');
+    if (!id) throw errorApp_('Hay un cambio sin usuario.');
+    if (estado !== ESTADO_SIN_MARCAR && !codigos[estado]) throw errorApp_('El estado «' + estado + '» no existe en la hoja Estados.');
+    porClave[fecha + '|' + id] = { fecha: fecha, usuario_id: id, estado: estado };   // si se repite, manda el último
+  });
+
+  return conBloqueo_(function () {
+    const grupo = grupoPorId_(grupoId);
+    comprobarAccesoGrupo_(monitora, grupo);
+    const sesiones = sesionesPorClave_();
+    const inscripciones = leerTabla_(HOJAS.INSCRIPCIONES).filter(function (i) { return i.grupo_id === grupoId; });
+    const inscrito = function (id, fecha) {
+      return inscripciones.some(function (i) {
+        return normalizarId_(i.usuario_id) === id && i.fecha_alta && i.fecha_alta <= fecha && (!i.fecha_baja || fecha <= i.fecha_baja);
+      });
+    };
+    const fechas = {};
+    Object.keys(porClave).forEach(function (k) {
+      const c = porClave[k];
+      const s = sesiones[c.fecha + '|' + grupoId];
+      if (s && s.estado === ESTADO_SESION.CANCELADA) {
+        throw errorApp_('El ' + fechaLegible_(c.fecha) + ' no hubo clase. Abre su pase de lista para cambiarlo.');
+      }
+      if (!inscrito(c.usuario_id, c.fecha)) throw errorApp_('El usuario con ID ' + c.usuario_id + ' no estaba en el grupo el ' + fechaLegible_(c.fecha) + '.');
+      fechas[c.fecha] = true;
+    });
+
+    const taller = nombreTaller_(grupo, talleresPorId_());
+    const email = emailRegistro_(monitora);
+    const ahora = marcaDeTiempo_();
+    const actualizar = [];
+    const borrar = [];
+    const vistos = {};
+    leerTabla_(HOJAS.ASISTENCIA).forEach(function (a) {
+      if (a.grupo_id !== grupoId || !fechas[a.fecha]) return;
+      const k = a.fecha + '|' + normalizarId_(a.usuario_id);
+      const c = porClave[k];
+      if (!c) return;
+      if (vistos[k] || c.estado === ESTADO_SIN_MARCAR) { borrar.push(a._fila); return; }   // sobrante o «sin marcar»
+      vistos[k] = true;
+      const fila = filaAsistencia_(grupo, taller, a.fecha, c.usuario_id, c.estado, a.observaciones, email, ahora);
+      fila._fila = a._fila;
+      actualizar.push(fila);
+    });
+    const nuevas = [];
+    Object.keys(porClave).forEach(function (k) {
+      const c = porClave[k];
+      if (vistos[k] || c.estado === ESTADO_SIN_MARCAR) return;
+      nuevas.push(filaAsistencia_(grupo, taller, c.fecha, c.usuario_id, c.estado, '', email, ahora));
+    });
+    actualizarFilas_(HOJAS.ASISTENCIA, actualizar);
+    anadirFilas_(HOJAS.ASISTENCIA, nuevas);
+    borrarFilas_(HOJAS.ASISTENCIA, borrar);   // al final: están por encima de las añadidas
+
+    // Un día que no tenía sesión pasa a ser una sesión hecha.
+    const sesionesNuevas = Object.keys(fechas).filter(function (f) { return !sesiones[f + '|' + grupoId]; }).map(function (f) {
+      return { fecha: f, grupo_id: grupoId, estado: ESTADO_SESION.REALIZADA, nota: '', registrada_por: email, timestamp: ahora };
+    });
+    anadirFilas_(HOJAS.SESIONES, sesionesNuevas);
+    return { guardados: Object.keys(porClave).length, sesionesNuevas: sesionesNuevas.length };
+  });
+}
+
+/** «21 de octubre», para los mensajes de error. */
+function fechaLegible_(fecha) {
+  const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const p = String(fecha).split('-').map(Number);
+  return p[2] + ' de ' + meses[p[1] - 1];
 }
 
 function guardarFilaSesion_(grupoId, fecha, estado, nota, email, ahora) {

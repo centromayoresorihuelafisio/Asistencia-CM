@@ -120,6 +120,12 @@ function datosConfiguracion_(monitora) {
  */
 function guardarGrupo_(monitora, datos) {
   datos = datos || {};
+  const v = validarGrupo_(monitora, datos);
+  return conBloqueo_(function () { return escribirGrupo_(monitora, datos, v); });
+}
+
+/** Comprueba los datos de un grupo antes de guardarlo. Devuelve { nombre, dias, hora, correos, tallerNuevo }. */
+function validarGrupo_(monitora, datos) {
   const admin = esAdmin_(monitora);
   const nombre = String(datos.nombre || '').replace(/\s+/g, ' ').trim();
   if (!nombre) throw errorApp_('Escribe el nombre del grupo.');
@@ -137,47 +143,54 @@ function guardarGrupo_(monitora, datos) {
     if (!correos.length) correos.push(monitora.email);
   }
   const tallerNuevo = String(datos.taller_nuevo || '').replace(/\s+/g, ' ').trim();
+  return { nombre: nombre, dias: dias, hora: hora, correos: correos, tallerNuevo: tallerNuevo };
+}
 
-  return conBloqueo_(function () {
-    // Taller: uno existente o uno nuevo (si ya existe con ese nombre, se reutiliza).
-    let tallerId = String(datos.taller_id || '');
-    const talleres = leerTabla_(HOJAS.TALLERES);
-    if (tallerNuevo) {
-      const igual = talleres.find(function (t) { return sinTildes_(t.nombre) === sinTildes_(tallerNuevo); });
-      if (igual) {
-        tallerId = igual.taller_id;
-      } else {
-        tallerId = identificadorLibre_(aIdentificador_(tallerNuevo), talleres.map(function (t) { return t.taller_id; }));
-        anadirFilas_(HOJAS.TALLERES, [{ taller_id: tallerId, nombre: tallerNuevo, activo: SI }]);
-      }
-    } else if (!talleres.some(function (t) { return t.taller_id === tallerId; })) {
-      throw errorApp_('Elige el taller o escribe uno nuevo.');
+/**
+ * Escribe un grupo ya validado (validarGrupo_). Se llama siempre dentro de un bloqueo (guardarGrupo_ o la
+ * importación, que crea varios grupos en el mismo bloqueo). Devuelve { grupo_id }.
+ */
+function escribirGrupo_(monitora, datos, v) {
+  const admin = esAdmin_(monitora);
+  const nombre = v.nombre, dias = v.dias, hora = v.hora, correos = v.correos, tallerNuevo = v.tallerNuevo;
+  // Taller: uno existente o uno nuevo (si ya existe con ese nombre, se reutiliza).
+  let tallerId = String(datos.taller_id || '');
+  const talleres = leerTabla_(HOJAS.TALLERES);
+  if (tallerNuevo) {
+    const igual = talleres.find(function (t) { return sinTildes_(t.nombre) === sinTildes_(tallerNuevo); });
+    if (igual) {
+      tallerId = igual.taller_id;
+    } else {
+      tallerId = identificadorLibre_(aIdentificador_(tallerNuevo), talleres.map(function (t) { return t.taller_id; }));
+      anadirFilas_(HOJAS.TALLERES, [{ taller_id: tallerId, nombre: tallerNuevo, activo: SI }]);
     }
+  } else if (!talleres.some(function (t) { return t.taller_id === tallerId; })) {
+    throw errorApp_('Elige el taller o escribe uno nuevo.');
+  }
 
-    const grupos = leerTabla_(HOJAS.GRUPOS);
-    const repetido = grupos.find(function (g) {
-      return g.grupo_id !== datos.grupo_id && g.taller_id === tallerId && g.activo !== NO &&
-        sinTildes_(g.nombre) === sinTildes_(nombre);
-    });
-    if (repetido) throw errorApp_('Ya hay un grupo activo con ese nombre en este taller.');
-
-    const campos = {
-      taller_id: tallerId, nombre: nombre, monitoras: correos.join(','), dias: dias.join(','),
-      hora: hora, activo: datos.activo === false ? NO : SI
-    };
-    if (datos.grupo_id) {
-      const g = grupos.find(function (x) { return x.grupo_id === datos.grupo_id; });
-      if (!g) throw errorApp_('No se encuentra el grupo. Vuelve a abrir la pantalla.');
-      if (!puedeGrupo_(monitora, g)) throw errorApp_('No tienes acceso a este grupo.');
-      if (!admin) campos.monitoras = g.monitoras;   // la monitora no cambia las monitoras del grupo
-      Object.assign(g, campos);
-      actualizarFilas_(HOJAS.GRUPOS, [g]);
-      return { grupo_id: g.grupo_id };
-    }
-    const id = identificadorLibre_(aIdentificador_(nombre), grupos.map(function (g) { return g.grupo_id; }));
-    anadirFilas_(HOJAS.GRUPOS, [Object.assign({ grupo_id: id, curso: config_().curso }, campos)]);
-    return { grupo_id: id };
+  const grupos = leerTabla_(HOJAS.GRUPOS);
+  const repetido = grupos.find(function (g) {
+    return g.grupo_id !== datos.grupo_id && g.taller_id === tallerId && g.activo !== NO &&
+      sinTildes_(g.nombre) === sinTildes_(nombre);
   });
+  if (repetido) throw errorApp_('Ya hay un grupo activo con ese nombre en este taller.');
+
+  const campos = {
+    taller_id: tallerId, nombre: nombre, monitoras: correos.join(','), dias: dias.join(','),
+    hora: hora, activo: datos.activo === false ? NO : SI
+  };
+  if (datos.grupo_id) {
+    const g = grupos.find(function (x) { return x.grupo_id === datos.grupo_id; });
+    if (!g) throw errorApp_('No se encuentra el grupo. Vuelve a abrir la pantalla.');
+    if (!puedeGrupo_(monitora, g)) throw errorApp_('No tienes acceso a este grupo.');
+    if (!admin) campos.monitoras = g.monitoras;   // la monitora no cambia las monitoras del grupo
+    Object.assign(g, campos);
+    actualizarFilas_(HOJAS.GRUPOS, [g]);
+    return { grupo_id: g.grupo_id };
+  }
+  const id = identificadorLibre_(aIdentificador_(nombre), grupos.map(function (g) { return g.grupo_id; }));
+  anadirFilas_(HOJAS.GRUPOS, [Object.assign({ grupo_id: id, curso: config_().curso }, campos)]);
+  return { grupo_id: id };
 }
 
 // ---------- Usuarios ----------

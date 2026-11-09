@@ -105,6 +105,10 @@ const ESTADO_SESION = { REALIZADA: 'realizada', CANCELADA: 'cancelada' };
 
 // Estado con el que empieza cada usuario en un pase de lista nuevo.
 const ESTADO_POR_DEFECTO = 'ASI';
+// «Sin marcar» (9-nov-2026): en una sesión hecha, un usuario inscrito sin fila en Asistencia está pendiente solo
+// para él (por ejemplo, una casilla vacía de un Excel importado). No es un estado de la hoja Estados: entre cliente y
+// servidor viaja como estado vacío, y al guardar no se escribe ninguna fila (no cuenta en ninguna estadística).
+const ESTADO_SIN_MARCAR = '';
 
 const LISTA_MOTIVO_BAJA = 'motivo_baja';
 const LISTA_TIPO_DIA = 'tipo_dia';
@@ -158,6 +162,35 @@ const MAX_PARECIDOS = 5;
 const IMPORTAR_CABECERA_ID = ['ID'];
 const IMPORTAR_CABECERA_NOMBRE = ['USUARIO', 'NOMBRE', 'APELLIDOS NOMBRE', 'APELLIDO APELLIDO NOMBRE'];
 const IMPORTAR_CABECERA_TELEFONO = ['TELEFONO', 'TFNO', 'TLF'];
+
+// Importar desde la app (9-nov-2026, Gestión › Importar desde Excel): los Excel de asistencia de las monitoras.
+// Una casilla de día en la cabecera: letra del día y número («L.7», «M 23», «V7»).
+const IMPORTAR_PATRON_DIA = /^([LMXJVSD])\s*[.\-]?\s*(\d{1,2})$/;
+// Una fila de la cabecera es la de los días si tiene al menos tantas casillas de día.
+const IMPORTAR_MIN_DIAS = 3;
+// Meses de la fila de encima de los días (en mayúsculas y sin tildes; se comparan sin signos).
+const IMPORTAR_MESES = {
+  ENE: 1, ENERO: 1, FEB: 2, FEBRERO: 2, MAR: 3, MARZO: 3, ABR: 4, ABRIL: 4, MAY: 5, MAYO: 5, JUN: 6, JUNIO: 6,
+  JUL: 7, JULIO: 7, AGO: 8, AGOSTO: 8, SEP: 9, SEPT: 9, SEPTIEMBRE: 9, SETIEMBRE: 9, OCT: 10, OCTUBRE: 10,
+  NOV: 11, NOVIEMBRE: 11, DIC: 12, DICIEMBRE: 12
+};
+// El curso empieza en este mes: los meses desde aquí son del primer año del curso y los anteriores, del segundo.
+const IMPORTAR_MES_INICIO_CURSO = 8;
+// Marcas que se ignoran (como una casilla vacía). «V» se usó un tiempo y ya no se usa (dueño, 9-nov-2026).
+const IMPORTAR_MARCAS_IGNORADAS = ['V'];
+// Una columna es una palabra escrita en vertical («VACACIONES», «ASUNTO PROPIO») si tiene al menos tantas
+// casillas que no son marcas de estado. Esas columnas se importan como «No hubo clase» con la palabra como nota.
+const IMPORTAR_MIN_LETRAS_PALABRA = 3;
+// Nota de los días sin ninguna marca anteriores a la última clase con marcas, si se importan como «No hubo clase».
+const IMPORTAR_NOTA_SIN_MARCAS = 'Sin marcas en el Excel';
+// Una hora en la fila que separa dos grupos de una misma pestaña («L-X | 17:00h 18:00h», «17H-18:00H»).
+const IMPORTAR_PATRON_HORA = /(\d{1,2})\s*(?:[:.]\s*(\d{2}))?\s*H\b|\b(\d{1,2})[:.](\d{2})\b/i;
+// Límites de lo que se lee de cada archivo (para no colgar la app con una hoja enorme).
+const IMPORTAR_MAX_HOJAS = 30;
+const IMPORTAR_MAX_FILAS = 1500;
+const IMPORTAR_MAX_COLUMNAS = 400;
+// Historial editable (9-nov-2026): cambios que se guardan de una vez como mucho.
+const MAX_CAMBIOS_HISTORIAL = 1000;
 
 // Documento del centro «Usuarios Activos y Listas Espera» (sección 10).
 // Cada pestaña se reconoce por una palabra de su nombre (en mayúsculas y sin tildes).

@@ -83,6 +83,11 @@ function api_historial(grupo_id, mes) {
   return responder_(function (m) { return historialGrupo_(m, grupo_id, mes); });
 }
 
+// Historial editable (9-nov-2026): casillas cambiadas en la cuadrícula, [{ fecha, usuario_id, estado }]
+function api_guardarCeldas(grupo_id, cambios) {
+  return responder_(function (m) { return guardarCeldas_(m, grupo_id, cambios); });
+}
+
 function api_informe(desde, hasta, taller_id) {
   return responder_(function (m) { return informeParaCliente_(m, desde, hasta, taller_id); });
 }
@@ -141,6 +146,16 @@ function api_guardarLista(lista, valores) {
   return responder_(function (m) { return guardarLista_(m, lista, valores); });
 }
 
+// Importar desde Excel (9-nov-2026, Gestión › Importar desde Excel): libro = { nombre, hojas: [{ nombre, filas }] }
+
+function api_analizarImportacion(libro) {
+  return responder_(function (m) { return analizarImportacion_(m, libro); });
+}
+
+function api_importarExcel(libro, decisiones) {
+  return responder_(function (m) { return importarExcel_(m, libro, decisiones); });
+}
+
 // Monitoras y sus cuentas de la app (6-nov-2026; usuario y contraseña desde el 9-nov-2026)
 
 function api_guardarMonitora(datos, nuevo) {
@@ -171,7 +186,8 @@ function accionesPWA_() {
     guardarDiaEspecial: api_guardarDiaEspecial, borrarDiaEspecial: api_borrarDiaEspecial,
     guardarEstado: api_guardarEstado, guardarConfig: api_guardarConfig, guardarLista: api_guardarLista,
     guardarMonitora: api_guardarMonitora, nuevaContrasenaMonitora: api_nuevaContrasenaMonitora,
-    cerrarSesionesMonitora: api_cerrarSesionesMonitora
+    cerrarSesionesMonitora: api_cerrarSesionesMonitora,
+    guardarCeldas: api_guardarCeldas, analizarImportacion: api_analizarImportacion, importarExcel: api_importarExcel
   };
 }
 

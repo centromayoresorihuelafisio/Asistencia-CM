@@ -489,6 +489,8 @@
   .etiqueta.guardando::before { animation: md-latido var(--dur-barrido) var(--ease) infinite alternate; }
   .etiqueta.sin-guardar { --icono: var(--ic-alerta); background: var(--md-error); color: var(--md-on-primary); }
   .etiqueta.por-enviar { --icono: var(--ic-subiendo); background: var(--md-surface-container-high); color: var(--md-on-surface-med); }
+  /* Casillas sin marcar del Historial (9-nov-2026) */
+  .etiqueta.sin-marcar { background: var(--md-surface-container-high); color: var(--md-on-surface-med); }
 
   /* ---------- Campos (como .md-campo--compacto de fisio: etiqueta encima) ---------- */
   /* Fecha de Inicio y mes del Historial (5-nov-2026): una pastilla blanca con las flechas (chevrones SVG,
@@ -1317,6 +1319,41 @@
   .celda.muestra { border: 1px solid var(--md-outline); }
   .leyenda { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: var(--fs-sm); color: var(--md-on-surface-med); margin-bottom: 16px; }
   .bloque h3 .celda { margin-right: 4px; }
+  /* Historial editable (9-nov-2026): «?» = sin marcar; una casilla que se puede tocar y una recién cambiada */
+  .celda.sin-marcar { border: 1.5px dashed var(--md-outline-strong); color: var(--md-on-surface-med); background: var(--md-surface); }
+  table.historial td.editable { cursor: pointer; -webkit-user-select: none; user-select: none; }
+  table.historial td.editable:active { background: var(--md-surface-container-high); }
+  table.historial td.cambiada .celda, table.historial td.cambiada:empty { box-shadow: 0 0 0 2px var(--md-foco); }
+  table.historial td.cambiada:empty { border-radius: 50%; }
+  .ayuda-hist .estado-celdas { font-weight: 600; color: var(--md-on-surface); }
+
+  /* ---------- Importar desde Excel (9-nov-2026) ---------- */
+  .resumen-importar { display: flex; flex-direction: column; gap: 2px; margin: 0 4px 12px; }
+  .resumen-importar strong { font-size: var(--fs-md); word-break: break-word; }
+  .resumen-importar span { color: var(--md-on-surface-med); font-size: var(--fs-sm); }
+  .bloque-importar { display: flex; flex-direction: column; gap: 4px; }
+  .bloque-importar.apagado .casilla-titulo strong { color: var(--md-on-surface-med); }
+  .casilla-titulo, .casilla-linea { display: flex; align-items: flex-start; gap: 12px; min-height: 48px; padding: 4px 0; cursor: pointer; }
+  .casilla-titulo input, .casilla-linea input { flex: none; width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--md-relleno); }
+  .casilla-titulo span, .casilla-linea span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .casilla-titulo strong { font-size: var(--fs-md); word-break: break-word; }
+  .casilla-titulo small, .casilla-linea small { color: var(--md-on-surface-med); font-size: var(--fs-sm); }
+  .detalle-importar { margin: 0 0 4px; color: var(--md-on-surface-med); font-size: var(--fs-sm); }
+  .grupo-nuevo-importar { padding: 12px; border-radius: var(--md-shape-lg); background: var(--md-surface-container-low); margin-bottom: 8px; }
+  .nota-dia { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .nota-dia span { flex: none; width: 64px; font-size: var(--fs-sm); color: var(--md-on-surface-med); }
+  .nota-dia input { flex: 1; min-width: 0; }
+  .bloque-importar details.plegable { margin-top: 4px; }
+  .avisos-importar ul { margin: 8px 0; padding-left: 20px; font-size: var(--fs-sm); color: var(--md-on-surface-med); }
+  .avisos-importar li { margin-bottom: 4px; }
+  .lista-puntos { margin: 8px 0 12px; padding-left: 20px; line-height: 1.45; }
+  .lista-puntos li { margin-bottom: 4px; }
+  .boton-archivo { position: relative; cursor: pointer; }
+  .boton-archivo:focus-within { outline: 2px solid var(--md-foco); outline-offset: 2px; }
+  .cargando-importar { display: flex; align-items: center; gap: 12px; }
+  .cargando-importar .girador-boton { border-color: var(--md-outline); border-top-color: var(--md-relleno); }
+  .pie-texto { flex: 1; min-width: 0; color: var(--md-on-surface-med); font-size: var(--fs-sm); }
+  .hecho-importar svg { color: var(--md-success); }
 
   /* ---------- Informe ---------- */
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 4px; }

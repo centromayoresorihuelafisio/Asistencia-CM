@@ -3,3 +3,4 @@ sim/pwa/
 pwa/dist/
 # Excel de ejemplo con datos personales: no se suben (el repositorio es público)
 ejemplos/
+sim/*.xlsx
